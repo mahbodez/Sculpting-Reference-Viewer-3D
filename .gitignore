@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.idea/
+.vscode/
+
+# Session sidecars written next to models
+*.refview.json
+
+# Local scratch
+_*.py
+_shot_*.png
+_out.txt
+
+# Resource files except the default matcaps
+*.png
+*.jpg
+*.jpeg
+*.obj
+*.OBJ
+!/resources/matcaps/charcoal.png
+!/resources/matcaps/clay_terracotta.png
+!/resources/matcaps/jade.png
+!/resources/matcaps/steel.png
+!/resources/matcaps/studio_white.png
+!/resources/matcaps/wax_skin.png
