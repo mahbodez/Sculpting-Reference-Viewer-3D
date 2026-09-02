@@ -12,8 +12,9 @@ dist/
 # Session sidecars written next to models
 *.refview.json
 
-# Local scratch
-_*.py
+# Local scratch.  The leading slash matters: a bare "_*.py" also matches every
+# package __init__.py, which quietly leaves the packages out of the repository.
+/_*.py
 _shot_*.png
 _out.txt
 
