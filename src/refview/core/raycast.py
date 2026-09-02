@@ -1,10 +1,9 @@
-"""Ray/mesh intersection used by the measuring tool.
+"""Ray/mesh intersection used by the measuring and annotating tools.
 
-The implementation is a vectorised Moller-Trumbore test over the whole index
-buffer, guarded by a bounding-box slab test.  For the mesh sizes a sculpting
-reference viewer deals with (hundreds of thousands of triangles) a single
-numpy pass per click is comfortably interactive, and it keeps the code free of
-an acceleration structure that would need maintaining.
+The test itself is a vectorised Moller-Trumbore pass.  It runs only over the
+triangles the mesh's :class:`~refview.core.spatial.TriangleIndex` reports as
+reachable, which is what keeps hovering and painting responsive once a model
+runs into the millions of triangles.
 """
 
 from __future__ import annotations
@@ -46,7 +45,14 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     if mesh.triangle_count == 0 or not intersects_bounds(origin, direction, mesh.bounds):
         return None
 
-    corners = mesh.positions[mesh.indices].astype(np.float64)
+    candidates = mesh.spatial_index.candidates(origin, direction)
+    if candidates.size == 0:
+        return None
+
+    # Only the candidate triangles are expanded to float64; on a large mesh
+    # materialising the whole corner array per ray costs far more than the
+    # intersection maths does.
+    corners = mesh.positions[mesh.indices[candidates]].astype(np.float64)
     v0, v1, v2 = corners[:, 0], corners[:, 1], corners[:, 2]
     edge1 = v1 - v0
     edge2 = v2 - v0
@@ -77,8 +83,8 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     if not valid.any():
         return None
 
-    candidates = np.flatnonzero(valid)
-    best = candidates[np.argmin(t[candidates])]
+    reachable = np.flatnonzero(valid)
+    best = int(reachable[np.argmin(t[reachable])])
     distance = float(t[best])
     point = origin + direction * distance
 
@@ -87,7 +93,7 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     normal = normal / length if length > _EPSILON else np.array([0.0, 0.0, 1.0])
     if float(np.dot(normal, direction)) > 0.0:
         normal = -normal
-    return Hit(point=point, normal=normal, triangle=int(best), distance=distance)
+    return Hit(point=point, normal=normal, triangle=int(candidates[best]), distance=distance)
 
 
 def snap_to_vertex(hit: Hit, mesh: Mesh, max_distance: float) -> np.ndarray:

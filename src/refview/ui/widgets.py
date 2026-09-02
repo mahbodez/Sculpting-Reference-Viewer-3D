@@ -6,12 +6,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
+    QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QPushButton,
+    QScrollArea,
     QSlider,
-    QDoubleSpinBox,
     QWidget,
 )
 
@@ -64,6 +66,19 @@ class SliderSpin(QWidget):
 
     def value(self) -> float:
         return self._spin.value()
+
+    def set_range(self, minimum: float, maximum: float) -> None:
+        """Re-scale the control, e.g. once a model's size is known."""
+        self._minimum, self._maximum = minimum, maximum
+        current = self.value()
+        for widget, converted in (
+            (self._slider, (int(minimum * self._scale), int(maximum * self._scale))),
+            (self._spin, (minimum, maximum)),
+        ):
+            blocked = widget.blockSignals(True)
+            widget.setRange(*converted)
+            widget.blockSignals(blocked)
+        self.set_value(current)
 
     def set_value(self, value: float) -> None:
         value = min(max(value, self._minimum), self._maximum)
@@ -122,6 +137,20 @@ class ColorButton(QPushButton):
         if chosen.isValid():
             self.set_color((chosen.redF(), chosen.greenF(), chosen.blueF()))
             self.colorChanged.emit(self._color)
+
+
+def scrollable(widget: QWidget) -> QScrollArea:
+    """Wrap a panel so it scrolls when it is taller than the dock.
+
+    The controls keep their natural height and the viewport grows to the dock's
+    width, which is what stops a long panel from squashing its own rows.
+    """
+    area = QScrollArea()
+    area.setWidget(widget)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    return area
 
 
 def form_group(title: str) -> tuple[QGroupBox, QFormLayout]:

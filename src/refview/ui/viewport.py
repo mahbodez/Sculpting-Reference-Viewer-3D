@@ -8,10 +8,13 @@ endpoint handle of an unlocked measurement moves that point; a drag with the
 annotate tool armed paints; anything else orbits.  With the measuring tool
 armed a left *click* -- as opposed to a drag -- places a measurement point, so
 that gesture too shares the button without fighting the camera.  Holding Alt
-always orbits, which is the escape hatch while painting.
+always orbits, which is the escape hatch while painting, and holding Shift
+snaps the orbit to round angles.
 """
 
 from __future__ import annotations
+
+from dataclasses import astuple
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
@@ -22,7 +25,10 @@ from ..core.annotation import Stroke
 from ..core.commands import AddItem, ReplaceItems, SetAttributes
 from ..core.history import ANNOTATIONS, MEASUREMENTS
 from ..core.measurement import Measurement
+from ..core.pedestal import build_pedestal
+from ..core.section import section_segments
 from ..render.mesh_renderer import SceneRenderer
+from ..render.stroke_renderer import build_segment_vertices
 from .annotate_tool import AnnotateTool
 from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
@@ -64,6 +70,10 @@ class Viewport(QOpenGLWidget):
         self._travel = 0.0
         self._grab_previous: tuple[Measurement, str, tuple] | None = None
         self._erase_previous: list[Stroke] | None = None
+        # Signatures of the generated scene geometry, so a light-slider tweak
+        # does not re-cut the model or rebuild the pedestal.
+        self._pedestal_key: tuple | None = None
+        self._section_key: tuple | None = None
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -72,7 +82,8 @@ class Viewport(QOpenGLWidget):
         state.mesh_changed.connect(self._upload_mesh)
         state.matcap_changed.connect(self._upload_matcap)
         state.annotations_changed.connect(self._upload_strokes)
-        for signal in (state.render_changed, state.camera_changed, state.measurements_changed):
+        state.render_changed.connect(self._sync_scene)
+        for signal in (state.camera_changed, state.measurements_changed):
             signal.connect(self.update)
 
     # ------------------------------------------------------------------
@@ -88,6 +99,7 @@ class Viewport(QOpenGLWidget):
         self._upload_mesh()
         self._upload_matcap()
         self._upload_strokes()
+        self._sync_scene()
 
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
@@ -117,7 +129,8 @@ class Viewport(QOpenGLWidget):
         self.makeCurrent()
         self._renderer.set_mesh(self._state.mesh)
         self.doneCurrent()
-        self.update()
+        self._pedestal_key = self._section_key = None
+        self._sync_scene()
 
     def _upload_matcap(self) -> None:
         if not self._ready:
@@ -135,6 +148,52 @@ class Viewport(QOpenGLWidget):
         self._renderer.set_strokes(list(self._state.annotations) if settings.visible else [])
         self.doneCurrent()
         self.update()
+
+    def _sync_scene(self) -> None:
+        """Regenerate the pedestal and the cut contour when their settings move.
+
+        Both are derived geometry rather than document state, so they are built
+        here on demand instead of being kept in the viewer state.
+        """
+        if self._ready:
+            render = self._state.render
+            pedestal_key = (id(self._state.mesh), astuple(render.pedestal))
+            if pedestal_key != self._pedestal_key:
+                self._pedestal_key = pedestal_key
+                self._upload_pedestal()
+            section_key = (id(self._state.mesh), astuple(render.section))
+            if section_key != self._section_key:
+                self._section_key = section_key
+                self._upload_contour()
+        self.update()
+
+    def _upload_pedestal(self) -> None:
+        mesh = self._state.mesh
+        settings = self._state.render.pedestal
+        disc = None if mesh is None else build_pedestal(mesh.bounds, settings)
+        self.makeCurrent()
+        self._renderer.set_pedestal(disc)
+        self.doneCurrent()
+
+    def _upload_contour(self) -> None:
+        """Cut the mesh with each section plane and expand the result to strokes."""
+        settings = self._state.render.section
+        mesh = self._state.mesh
+        blocks = []
+        if mesh is not None and settings.enabled and settings.show_contour:
+            for plane in settings.planes():
+                segments = section_segments(mesh, plane)
+                # The stroke shader lifts along the supplied normal, so point it
+                # into the material that survives the cut.
+                blocks.append(
+                    build_segment_vertices(
+                        segments, settings.contour_color, settings.contour_width, -plane.normal
+                    )
+                )
+        vertices = np.concatenate(blocks) if blocks else np.zeros((0, 14), dtype=np.float32)
+        self.makeCurrent()
+        self._renderer.set_contour(vertices)
+        self.doneCurrent()
 
     def _release_gl(self) -> None:
         """Free every GL object while the owning context is still current."""
@@ -225,7 +284,10 @@ class Viewport(QOpenGLWidget):
                     self._travel,
                     abs(x - self._press_position[0]) + abs(y - self._press_position[1]),
                 )
-            if self._navigation.drag(x, y, self._state.camera, self.width(), self.height()):
+            snap = self._snap_degrees(event)
+            if self._navigation.drag(
+                x, y, self._state.camera, self.width(), self.height(), snap
+            ):
                 self.update()
             return
 
@@ -400,6 +462,11 @@ class Viewport(QOpenGLWidget):
     def _orbit_override(event) -> bool:
         """Alt forces the camera gesture, whichever tool is armed."""
         return bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+
+    def _snap_degrees(self, event) -> float:
+        """Orbit increment while Shift is held, or 0 for a free orbit."""
+        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        return self._state.navigation.snap_angle_deg if shift else 0.0
 
     def _picker(self) -> SurfacePicker:
         return SurfacePicker(self._state.camera, self._state.mesh, self.width(), self.height())

@@ -18,7 +18,8 @@ from ..core.annotation import AnnotateMode
 from ..core.camera import Projection
 from ..core.commands import AddItem
 from ..core.history import MEASUREMENTS
-from ..core.obj_loader import ObjLoadError
+from ..core.mesh import MeshLoadError
+from ..core.mesh_io import MESH_FILTER, MESH_SUFFIXES
 from ..core.session import SESSION_SUFFIX
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
@@ -26,9 +27,12 @@ from .panels.annotate_panel import AnnotatePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.matcap_panel import MatcapPanel
 from .panels.measure_panel import MeasurePanel
+from .panels.model_panel import ModelPanel
+from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
 from .state import ViewerState
 from .viewport import Viewport
+from .widgets import scrollable
 
 CONTROLS_TEXT = """
 <h3>Navigation</h3>
@@ -37,6 +41,7 @@ CONTROLS_TEXT = """
 <tr><td><b>Right / middle drag</b></td><td>Pan</td></tr>
 <tr><td><b>Wheel</b></td><td>Zoom towards the cursor</td></tr>
 <tr><td><b>Alt + left drag</b></td><td>Orbit even while a tool is armed</td></tr>
+<tr><td><b>Shift + left drag</b></td><td>Orbit in round steps (set the angle in Camera)</td></tr>
 <tr><td><b>F</b></td><td>Frame the object</td></tr>
 <tr><td><b>P</b></td><td>Toggle perspective / orthographic</td></tr>
 <tr><td><b>1</b> ... <b>6</b></td><td>Front, back, left, right, top, bottom</td></tr>
@@ -54,6 +59,12 @@ CONTROLS_TEXT = """
 <tr><td><b>Left drag</b></td><td>Paint freehand, a line or a circle on the surface</td></tr>
 <tr><td><b>E</b></td><td>Switch between the brush and the eraser</td></tr>
 </table>
+<h3>Cross-section</h3>
+<table cellpadding='3'>
+<tr><td><b>Ctrl+K</b></td><td>Cut the model with a plane</td></tr>
+<tr><td><b>Section panel</b></td><td>Pick the plane, slide it, and keep the top,
+the bottom or a slice</td></tr>
+</table>
 <h3>Saved views</h3>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+B</b></td><td>Save the current camera</td></tr>
@@ -67,6 +78,13 @@ CONTROLS_TEXT = """
 </table>
 <p>Undo covers measurements, annotations and saved views.  Camera moves are
 not recorded, so a hundred orbits never bury the edit you wanted back.</p>
+<p>OBJ, STL, GLB and glTF models can be opened or dropped onto the window.
+A glTF file states that its units are metres, so the measurement panel adopts
+that automatically; OBJ and STL declare nothing and are left alone.</p>
+<p>Formats also disagree about which axis points up, so a file can arrive lying
+on its side.  The Model tab turns it upright: pick the up axis the file used,
+flip it if it came in upside down, and spin it a quarter turn to face forwards.
+Measurements and annotations turn with the model.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never
 interfere with typing names into the panels.</p>
 """
@@ -92,9 +110,11 @@ class MainWindow(QMainWindow):
         self._viewport = Viewport(self._state)
         self.setCentralWidget(self._viewport)
 
+        self._model_panel = ModelPanel(self._state)
         self._matcap_panel = MatcapPanel(self._state)
         self._shading_panel = ShadingPanel(self._state)
         self._measure_panel = MeasurePanel(self._state)
+        self._section_panel = SectionPanel(self._state)
         self._annotate_panel = AnnotatePanel(self._state)
         self._camera_panel = CameraPanel(self._state)
 
@@ -113,11 +133,19 @@ class MainWindow(QMainWindow):
     def _build_dock(self) -> None:
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
+        # Every panel scrolls, because several are taller than the dock on a
+        # laptop screen.  The matcap panel is the exception: it manages its own
+        # scrolling so that its gallery can take the space the artist drags it.
         tabs.addTab(self._matcap_panel, "Matcap")
-        tabs.addTab(self._shading_panel, "Shading")
-        tabs.addTab(self._measure_panel, "Measure")
-        tabs.addTab(self._annotate_panel, "Annotate")
-        tabs.addTab(self._camera_panel, "Camera")
+        for panel, title in (
+            (self._model_panel, "Model"),
+            (self._shading_panel, "Shading"),
+            (self._section_panel, "Section"),
+            (self._measure_panel, "Measure"),
+            (self._annotate_panel, "Annotate"),
+            (self._camera_panel, "Camera"),
+        ):
+            tabs.addTab(scrollable(panel), title)
 
         dock = QDockWidget("Controls", self)
         dock.setObjectName("controls_dock")
@@ -125,7 +153,7 @@ class MainWindow(QMainWindow):
         dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
-        dock.setMinimumWidth(340)
+        dock.setMinimumWidth(360)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._dock = dock
 
@@ -156,6 +184,13 @@ class MainWindow(QMainWindow):
                 f"{label}  ({index})",
                 lambda _=False, d=direction: self._camera_panel.look_along(d),
             )
+        view_menu.addSeparator()
+        self._section_action = self._menu_action(
+            view_menu, "Cross-&section", self._toggle_section, "Ctrl+K", checkable=True
+        )
+        self._menu_action(
+            view_menu, "Section Plane From &View", self._section_panel.set_plane_from_view
+        )
         view_menu.addSeparator()
         view_menu.addAction(self._dock.toggleViewAction())
 
@@ -245,6 +280,8 @@ class MainWindow(QMainWindow):
         self._state.render_changed.connect(self._shading_panel.update_enabled)
         self._state.camera_changed.connect(self._camera_panel.refresh_camera)
         self._state.history_changed.connect(self._update_history_actions)
+        self._state.render_changed.connect(self._sync_section_action)
+        self._state.mesh_changed.connect(self._model_panel.refresh)
 
         self._viewport.measurement_created.connect(self._on_measurement_created)
         self._viewport.pick_failed.connect(
@@ -289,6 +326,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{measurement.name}: {settings.format_length(measurement.length)}", 5000
         )
+
+    def _sync_section_action(self) -> None:
+        """Keep the menu entry agreeing with the panel's own checkbox."""
+        self._section_action.setChecked(self._state.render.section.enabled)
 
     def _update_history_actions(self) -> None:
         history = self._state.history
@@ -342,6 +383,15 @@ class MainWindow(QMainWindow):
             self._set_annotating(True)
         self.statusBar().showMessage(mode.label, 2000)
 
+    def _toggle_section(self) -> None:
+        self._section_panel.toggle()
+        section = self._state.render.section
+        self._section_action.setChecked(section.enabled)
+        self.statusBar().showMessage(
+            f"Cross-section {'on' if section.enabled else 'off'}: {section.mode.label.lower()}",
+            2000,
+        )
+
     def _toggle_projection(self) -> None:
         camera = self._state.camera
         camera.projection = (
@@ -360,10 +410,10 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def open_model(self, path: str | Path) -> None:
-        """Load an OBJ, reporting failures without tearing down the window."""
+        """Load a model, reporting failures without tearing down the window."""
         try:
             self._state.load_mesh(path)
-        except (ObjLoadError, OSError) as error:
+        except (MeshLoadError, OSError) as error:
             QMessageBox.critical(self, "Open Model", str(error))
             return
         self._session_path = self._state.default_session_path()
@@ -376,7 +426,7 @@ class MainWindow(QMainWindow):
             self,
             "Open Model",
             str(start if start.is_dir() else Path.home()),
-            "Wavefront OBJ (*.obj)",
+            MESH_FILTER,
         )
         if path:
             self.open_model(path)
@@ -415,7 +465,7 @@ class MainWindow(QMainWindow):
     def load_session(self, path: str | Path) -> None:
         try:
             self._state.load_session(path)
-        except (OSError, ValueError, ObjLoadError) as error:
+        except (OSError, ValueError, MeshLoadError) as error:
             QMessageBox.critical(self, "Load Session", str(error))
             return
         self._session_path = Path(path)
@@ -423,10 +473,12 @@ class MainWindow(QMainWindow):
 
     def _refresh_panels(self) -> None:
         for panel in (
+            self._model_panel,
             self._matcap_panel,
             self._shading_panel,
             self._measure_panel,
             self._annotate_panel,
+            self._section_panel,
             self._camera_panel,
         ):
             panel.refresh()
@@ -443,7 +495,7 @@ class MainWindow(QMainWindow):
         for url in event.mimeData().urls():
             path = Path(url.toLocalFile())
             suffix = path.suffix.lower()
-            if suffix == ".obj":
+            if suffix in MESH_SUFFIXES:
                 self.open_model(path)
             elif suffix == ".json":
                 self.load_session(path)
@@ -458,4 +510,4 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _droppable(url) -> bool:
         path = Path(url.toLocalFile())
-        return path.suffix.lower() in (".obj", ".json", *_IMAGE_SUFFIXES)
+        return path.suffix.lower() in (*MESH_SUFFIXES, ".json", *_IMAGE_SUFFIXES)

@@ -1,4 +1,4 @@
-"""Geometry for the surface annotations.
+"""Geometry for the surface annotations and the cross-section contour.
 
 Strokes are drawn as real geometry rather than as a 2D overlay so that the
 depth buffer hides the ones on the far side of the model -- paint on the back
@@ -40,6 +40,22 @@ def build_vertices(strokes: list[Stroke]) -> np.ndarray:
     return np.concatenate(blocks, axis=0)
 
 
+def build_segment_vertices(
+    segments: np.ndarray, color, width: float, normal=(0.0, 0.0, 0.0)
+) -> np.ndarray:
+    """Expand loose ``(n, 2, 3)`` segments -- the section contour -- the same way.
+
+    The contour is not a polyline: plane-cut triangles produce segments in no
+    particular order, and joining them into loops would buy nothing the shader
+    does not already handle.
+    """
+    segments = np.asarray(segments, dtype=np.float64).reshape(-1, 2, 3)
+    if len(segments) == 0:
+        return np.zeros((0, _FLOATS_PER_VERTEX), dtype=np.float32)
+    lift = np.tile(np.asarray(normal, dtype=np.float64), (len(segments), 1))
+    return _expand(segments[:, 0], segments[:, 1], lift, lift, color, width)
+
+
 def _segment_block(stroke: Stroke) -> np.ndarray | None:
     if not stroke.is_drawable:
         return None
@@ -48,9 +64,18 @@ def _segment_block(stroke: Stroke) -> np.ndarray | None:
     if stroke.closed and len(points) > 2:
         points = np.vstack((points, points[:1]))
         normals = np.vstack((normals, normals[:1]))
+    return _expand(points[:-1], points[1:], normals[:-1], normals[1:], stroke.color, stroke.width)
 
-    head, tail = points[:-1], points[1:]
-    head_normal, tail_normal = normals[:-1], normals[1:]
+
+def _expand(
+    head: np.ndarray,
+    tail: np.ndarray,
+    head_normal: np.ndarray,
+    tail_normal: np.ndarray,
+    color,
+    width: float,
+) -> np.ndarray:
+    """Six vertices per segment, in the layout the stroke shader expects."""
     count = len(head)
 
     # Corner order: (head, left) (tail, left) (tail, right) then the second
@@ -67,9 +92,9 @@ def _segment_block(stroke: Stroke) -> np.ndarray | None:
     block[..., 0:3] = position
     block[..., 3:6] = other
     block[..., 6:9] = normal
-    block[..., 9:12] = np.asarray(stroke.color, dtype=np.float32)
+    block[..., 9:12] = np.asarray(color, dtype=np.float32)
     block[..., 12] = side
-    block[..., 13] = stroke.width
+    block[..., 13] = width
     return block.reshape(-1, _FLOATS_PER_VERTEX)
 
 
@@ -96,7 +121,11 @@ class StrokeBuffers:
         return self._vertex_count == 0
 
     def upload(self, strokes: list[Stroke]) -> None:
-        vertices = np.ascontiguousarray(build_vertices(strokes), dtype=np.float32)
+        self.upload_vertices(build_vertices(strokes))
+
+    def upload_vertices(self, vertices: np.ndarray) -> None:
+        """Replace the buffer contents with a prepared vertex block."""
+        vertices = np.ascontiguousarray(vertices, dtype=np.float32)
         self._vertex_count = len(vertices)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo)
         if vertices.nbytes > self._capacity:

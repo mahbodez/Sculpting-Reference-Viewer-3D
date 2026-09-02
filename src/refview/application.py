@@ -19,7 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="refview",
         description="A 3D reference viewer for clay sculpting: matcaps, shading and measurements.",
     )
-    parser.add_argument("model", nargs="?", type=Path, help="OBJ file to open on startup")
+    parser.add_argument(
+        "model", nargs="?", type=Path, help="model to open on startup (OBJ, STL, GLB or glTF)"
+    )
     parser.add_argument("--matcap", type=Path, help="matcap image to apply on startup")
     parser.add_argument("--session", type=Path, help="session file to restore on startup")
     return parser

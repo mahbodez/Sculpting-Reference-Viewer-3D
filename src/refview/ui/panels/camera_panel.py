@@ -46,8 +46,13 @@ class CameraPanel(Panel):
             "Vertical field of view.  In orthographic mode it still sets the\n"
             "framing, so switching projection keeps the object the same size."
         )
+        self._snap = SliderSpin(0.0, 90.0, 15.0, decimals=0, step=5.0, suffix=" deg")
+        self._snap.setToolTip(
+            "Orbit increment while Shift is held.  0 turns snapping off."
+        )
         form.addRow("Type", self._projection)
         form.addRow("FOV", self._fov)
+        form.addRow("Shift snap", self._snap)
         self._add(box)
 
         views_box, _ = form_group("Standard Views")
@@ -101,6 +106,7 @@ class CameraPanel(Panel):
 
         self._projection.currentIndexChanged.connect(self._on_projection)
         self._fov.valueChanged.connect(self._on_fov)
+        self._snap.valueChanged.connect(self._on_snap)
 
         # Scoped to the panel so F2 keeps its usual meaning everywhere else.
         rename = QShortcut(QKeySequence("F2"), self)
@@ -120,6 +126,10 @@ class CameraPanel(Panel):
             return
         self.state.camera.fov_deg = value
         self.state.notify_camera()
+
+    def _on_snap(self, value: float) -> None:
+        if not self._busy:
+            self.state.navigation.snap_angle_deg = value
 
     def look_along(self, direction) -> None:
         camera = self.state.camera
@@ -147,6 +157,7 @@ class CameraPanel(Panel):
         with self._suppressed():
             self._projection.setCurrentIndex(self._projection.findData(camera.projection.value))
             self._fov.set_value(camera.fov_deg)
+            self._snap.set_value(self.state.navigation.snap_angle_deg)
 
     def refresh_bookmarks(self) -> None:
         row = self.state.bookmarks.current_index

@@ -120,7 +120,8 @@ class AnnotateTool:
         self, x: float, y: float, picker: SurfacePicker, settings: AnnotationSettings
     ) -> None:
         """Add one freehand point, unless the cursor has barely moved."""
-        if self._last_sample is not None and math.dist(self._last_sample, (x, y)) < self.SAMPLE_STEP:
+        previous = self._last_sample
+        if previous is not None and math.dist(previous, (x, y)) < self.SAMPLE_STEP:
             return
         self._last_sample = (x, y)
         self._extend(picker.hit(x, y), settings, AnnotateMode.FREEHAND)

@@ -9,6 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .pedestal import PedestalSettings
+from .section import SectionSettings
+
 Color = tuple[float, float, float]
 
 
@@ -25,6 +28,7 @@ class ShadingMode(str, Enum):
     BLINN_PHONG = "blinn_phong"
     PBR = "pbr"
     NORMALS = "normals"
+    HIGH_QUALITY = "high_quality"
 
     @property
     def label(self) -> str:
@@ -35,6 +39,7 @@ class ShadingMode(str, Enum):
             ShadingMode.BLINN_PHONG: "Blinn-Phong",
             ShadingMode.PBR: "PBR (GGX)",
             ShadingMode.NORMALS: "Normals",
+            ShadingMode.HIGH_QUALITY: "High Quality",
         }[self]
 
     @property
@@ -52,7 +57,13 @@ class ShadingMode(str, Enum):
             ShadingMode.PHONG,
             ShadingMode.BLINN_PHONG,
             ShadingMode.PBR,
+            ShadingMode.HIGH_QUALITY,
         )
+
+    @property
+    def uses_quality(self) -> bool:
+        """Whether the shadow and occlusion pre-passes need to run."""
+        return self is ShadingMode.HIGH_QUALITY
 
 
 @dataclass
@@ -97,6 +108,28 @@ class SurfaceSettings:
 
 
 @dataclass
+class QualitySettings:
+    """Soft shadows and ambient occlusion for the high-quality mode.
+
+    Both are screen- and light-space approximations rather than traced rays:
+    the point is a reference view that stays interactive while you turn it.
+    """
+
+    #: How dark a fully shadowed surface goes, 0 (off) to 1.
+    shadow_strength: float = 0.55
+    #: Radius of the shadow-map blur, in shadow texels.  Larger reads softer.
+    shadow_softness: float = 2.0
+    #: Depth offset that keeps a lit surface from shadowing itself.
+    shadow_bias: float = 0.0022
+    #: Occlusion sampling radius, as a share of the scene radius.
+    ao_radius: float = 0.09
+    #: How strongly cavities darken, 0 (off) to 1.
+    ao_intensity: float = 0.85
+    show_shadows: bool = True
+    show_occlusion: bool = True
+
+
+@dataclass
 class RenderSettings:
     """Everything the viewport needs in order to draw a frame."""
 
@@ -104,9 +137,21 @@ class RenderSettings:
     matcap: MatcapSettings = field(default_factory=MatcapSettings)
     light: LightSettings = field(default_factory=LightSettings)
     surface: SurfaceSettings = field(default_factory=SurfaceSettings)
+    quality: QualitySettings = field(default_factory=QualitySettings)
+    section: SectionSettings = field(default_factory=SectionSettings)
+    pedestal: PedestalSettings = field(default_factory=PedestalSettings)
     matcap_path: str | None = None
     flat_shading: bool = False
     show_wireframe: bool = False
     wireframe_color: Color = (0.08, 0.09, 0.11)
     background_top: Color = (0.26, 0.27, 0.30)
     background_bottom: Color = (0.10, 0.10, 0.12)
+
+
+@dataclass
+class NavigationSettings:
+    """How mouse gestures drive the camera."""
+
+    #: Orbit increment, in degrees, while Shift is held.  Snapping to round
+    #: angles makes it possible to come back to the same three-quarter view.
+    snap_angle_deg: float = 15.0

@@ -6,6 +6,27 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .spatial import TriangleIndex
+
+
+class MeshLoadError(RuntimeError):
+    """Raised when a file cannot be interpreted as a triangle mesh."""
+
+
+@dataclass(frozen=True)
+class MeshUnits:
+    """The real-world unit a file declared its coordinates in.
+
+    Only some formats say: glTF is defined in metres, while OBJ and STL carry
+    no unit at all.  When a loader knows, the viewer adopts it for measurement
+    readouts instead of making the artist guess.
+    """
+
+    #: Label shown next to a length, e.g. ``"m"``.
+    name: str
+    #: Multiplier from scene units to that label.
+    scale: float = 1.0
+
 
 @dataclass(frozen=True)
 class Bounds:
@@ -48,7 +69,16 @@ class Mesh:
     regardless of where the artist modelled the object.
     """
 
-    __slots__ = ("positions", "normals", "indices", "name", "source_offset", "_bounds")
+    __slots__ = (
+        "positions",
+        "normals",
+        "indices",
+        "name",
+        "source_offset",
+        "units",
+        "_bounds",
+        "_index",
+    )
 
     def __init__(
         self,
@@ -57,6 +87,7 @@ class Mesh:
         indices: np.ndarray,
         name: str = "mesh",
         source_offset: np.ndarray | None = None,
+        units: MeshUnits | None = None,
     ) -> None:
         self.positions = np.ascontiguousarray(positions, dtype=np.float32).reshape(-1, 3)
         self.normals = np.ascontiguousarray(normals, dtype=np.float32).reshape(-1, 3)
@@ -69,7 +100,9 @@ class Mesh:
         self.source_offset = (
             np.zeros(3) if source_offset is None else np.asarray(source_offset, dtype=np.float64)
         )
+        self.units = units
         self._bounds: Bounds | None = None
+        self._index: TriangleIndex | None = None
 
     # -- geometry -------------------------------------------------------
 
@@ -92,6 +125,31 @@ class Mesh:
         """Expanded triangle corners, shape ``(T, 3, 3)``."""
         return self.positions[self.indices]
 
+    @property
+    def spatial_index(self) -> TriangleIndex:
+        """Picking accelerator, built on first use and kept for the mesh's life."""
+        if self._index is None:
+            self._index = TriangleIndex(self.triangles)
+        return self._index
+
+    def transformed(self, rotation: np.ndarray) -> "Mesh":
+        """Return a copy turned by a 3x3 rotation, e.g. to fix the up axis.
+
+        Rotations leave normals valid as they are, so no inverse-transpose is
+        needed; anything that is not a rotation would need one.
+        """
+        rotation = np.asarray(rotation, dtype=np.float64)
+        if np.allclose(rotation, np.eye(3)):
+            return self
+        return Mesh(
+            self.positions @ rotation.T.astype(np.float32),
+            self.normals @ rotation.T.astype(np.float32),
+            self.indices,
+            self.name,
+            source_offset=rotation @ self.source_offset,
+            units=self.units,
+        )
+
     def recentered(self) -> "Mesh":
         """Return a copy whose bounding-box centre sits at the origin."""
         offset = self.bounds.center
@@ -103,6 +161,7 @@ class Mesh:
             self.indices,
             self.name,
             source_offset=self.source_offset + offset,
+            units=self.units,
         )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid

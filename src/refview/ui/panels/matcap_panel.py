@@ -14,22 +14,33 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSplitter,
+    QVBoxLayout,
     QWidget,
 )
 
 from ...core.settings import MatcapSettings
 from ...paths import available_matcaps, matcap_dir
 from ...render.texture import MatcapLoadError
-from ..widgets import ColorButton, SliderSpin, form_group
+from ..widgets import ColorButton, SliderSpin, form_group, scrollable
 from .base import Panel
 
 _THUMBNAIL = QSize(56, 56)
+#: Starting split between the gallery and the adjustments, in pixels.  The
+#: handle between them is draggable, so this is only where it opens.
+_GALLERY_HEIGHT = 220
 
 
 class MatcapPanel(Panel):
     """Picks the matcap image and tunes how it is sampled."""
 
     def _build(self) -> None:
+        """A draggable split: thumbnails above, adjustments below.
+
+        The gallery is the one control that benefits from as much room as the
+        artist wants to give it, so it gets a splitter rather than a fixed
+        height, and the adjustments under it scroll in whatever is left.
+        """
         self._gallery = QListWidget()
         self._gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self._gallery.setIconSize(_THUMBNAIL)
@@ -37,10 +48,14 @@ class MatcapPanel(Panel):
         self._gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self._gallery.setMovement(QListWidget.Movement.Static)
         self._gallery.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._gallery.setMaximumHeight(210)
+        self._gallery.setMinimumHeight(90)
         self._gallery.setWordWrap(True)
         self._gallery.itemSelectionChanged.connect(self._on_selected)
-        self._add(self._gallery)
+
+        controls = QWidget()
+        column = QVBoxLayout(controls)
+        column.setContentsMargins(0, 8, 0, 0)
+        column.setSpacing(8)
 
         buttons = QWidget()
         row = QHBoxLayout(buttons)
@@ -51,7 +66,7 @@ class MatcapPanel(Panel):
         rescan.clicked.connect(self.reload_gallery)
         row.addWidget(browse_button)
         row.addWidget(rescan)
-        self._add(buttons)
+        column.addWidget(buttons)
 
         box, form = form_group("Adjustments")
         self._rotation = SliderSpin(-180.0, 180.0, 0.0, decimals=0, step=1.0, suffix=" deg")
@@ -69,12 +84,21 @@ class MatcapPanel(Panel):
         form.addRow("Saturation", self._saturation)
         form.addRow("Tint", self._tint)
         form.addRow("", self._flip_y)
-        self._add(box)
+        column.addWidget(box)
 
         reset = QPushButton("Reset Adjustments")
         reset.clicked.connect(self._reset)
-        self._add(reset)
-        self._add_stretch()
+        column.addWidget(reset)
+        column.addStretch(1)
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self._gallery)
+        splitter.addWidget(scrollable(controls))
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(False)
+        splitter.setSizes([_GALLERY_HEIGHT, 400])
+        self._add(splitter)
 
         self._rotation.valueChanged.connect(lambda v: self._apply("rotation_deg", v))
         self._contrast.valueChanged.connect(lambda v: self._apply("contrast", v))

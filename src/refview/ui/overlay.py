@@ -391,6 +391,11 @@ class ViewportOverlay:
             lines.append(f"{state.mesh.name}  -  {state.mesh.triangle_count:,} tris")
             projection = state.camera.projection.label
             lines.append(f"{projection}  -  {state.camera.fov_deg:.0f} deg FOV")
+            section = state.render.section
+            if section.enabled:
+                offset = state.measurement_settings.format_length(section.offset)
+                axis = section.axis.label.split(" ")[0]
+                lines.append(f"Section: {section.mode.label.lower()} {axis} at {offset}")
         if tool.active:
             hint = "click the second point" if tool.has_pending else "click the first point"
             if state.measurement_settings.free_placement:

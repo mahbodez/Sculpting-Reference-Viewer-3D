@@ -1,8 +1,8 @@
 # Reference Viewer
 
-A small, fast 3D reference viewer for clay sculpting. Load an OBJ, drop a
-matcap on it, orbit around it, and take the measurements you need — with the
-numbers saved by name in the side panel and drawn on the model.
+A small, fast 3D reference viewer for clay sculpting. Load an OBJ, STL or
+glTF, drop a matcap on it, orbit around it, and take the measurements you need
+— with the numbers saved by name in the side panel and drawn on the model.
 
 Built with PySide6 and OpenGL 3.3.
 
@@ -12,7 +12,10 @@ Built with PySide6 and OpenGL 3.3.
 
 **Viewing**
 
-- Loads a Wavefront OBJ and centres it on the origin automatically.
+- Loads OBJ, STL (binary or ASCII) and glTF/GLB files, centring the model on
+  the origin automatically. glTF is the one common format that declares its
+  unit — metres — and the measurement panel adopts it; OBJ and STL declare
+  nothing, so nothing is guessed.
 - Matcap shading with adjustable rotation, contrast, gamma, brightness,
   saturation, tint and vertical flip.
 - Analytic shading modes: Lambert, Phong, Blinn-Phong, Cook-Torrance PBR and a
@@ -30,6 +33,7 @@ Built with PySide6 and OpenGL 3.3.
 | Right or middle drag | Pan |
 | Wheel | Zoom towards whatever the cursor is over |
 | Alt + left drag | Orbit even while a tool is armed |
+| Shift + left drag | Orbit in whole steps of the snap angle (15° by default) |
 | `F` | Frame the object |
 | `P` | Toggle perspective / orthographic |
 | `1` … `6` | Front, back, left, right, top, bottom |
@@ -42,6 +46,41 @@ Built with PySide6 and OpenGL 3.3.
 - Save any camera pose under a name, rename it in place (`F2` or a double
   click), overwrite it, and cycle through the list with `[` and `]` or recall
   directly with `Ctrl+1` … `Ctrl+9`.
+
+**Orientation**
+
+Formats disagree about which axis points up — CAD and Blender exports are
+usually Z-up, most sculpting tools are Y-up, and STL declares nothing — so a
+file can arrive lying on its side. The Model tab turns it upright: pick the up
+axis the file used, flip it if it came in upside down, and spin it a quarter
+turn to face forwards. Measurements and annotations turn with the model, and
+going back to the previous setting puts everything exactly where it was.
+
+**Cross-section**
+
+- Cut the scene with a plane: X, Y, Z, or any direction — *Set Plane From View*
+  squares the cut up with whatever you are looking at. `Ctrl+K` toggles it.
+- Keep the material below the plane, above it, or a slice of a thickness you
+  set, which is the view that shows how a form is built at that level.
+- The profile at the cut is traced as a bright contour, and the exposed
+  interior is flooded flat so the cut reads as solid material rather than as a
+  hollow shell.
+
+**High Quality**
+
+A shading mode that adds soft shadows from the key light and screen-space
+ambient occlusion to the usual clay shading, with strength, softness, bias,
+radius and intensity all adjustable. Neither traces a ray: a shadow map, a
+depth and normal pre-pass and one occlusion pass cost a few milliseconds
+between them, so the view stays live while you orbit it. Turn off *Light
+follows camera* for a shadow that stays put as the model turns.
+
+**Pedestal**
+
+Stand the model on a disc, either at its lowest vertex or at a level you
+choose, with adjustable diameter, thickness and colour. It is ordinary
+geometry, so it catches the cast shadow — which is what makes contact and
+height readable.
 
 **Measuring**
 
@@ -119,7 +158,7 @@ refview resources/models/Pose_02.obj --matcap resources/matcaps/clay_terracotta.
 
 ### Desktop releases
 
-Push a tag such as `v1.0.0` to build self-contained archives for Windows,
+Push a tag such as `v1.1.0` to build self-contained archives for Windows,
 Intel macOS and Apple Silicon macOS. The GitHub Actions release workflow
 publishes the three archives to a GitHub release automatically.
 
@@ -157,13 +196,15 @@ Point `REFVIEW_RESOURCES` at another directory to use your own library.
 
 ```
 src/refview/
-  core/      pure Python, no Qt: mesh, OBJ loader, camera, raycasting,
+  core/      pure Python, no Qt: mesh, the OBJ/STL/glTF loaders, the picking
+             index, camera, raycasting, cross-sections, the pedestal,
              measurements, annotations, bookmarks, undo commands, settings,
              session persistence
-  render/    OpenGL: shader programs, matcap textures, the scene and stroke
-             renderers
+  render/    OpenGL: shader programs, matcap textures, offscreen targets, the
+             scene and stroke renderers
   ui/        Qt: viewport widget, navigation, measuring and annotating tools,
-             the 2D overlay, the observable document, panels and the main window
+             the 2D overlay, the observable document, panels and the main
+             window
 tools/       the matcap generator
 tests/       pytest suite for the core layer
 ```
@@ -191,10 +232,21 @@ Annotations go the other way and are drawn as geometry, because paint on the
 back of the model has to be hidden by it. Each segment becomes a quad that the
 vertex shader widens in screen space, which keeps the brush a constant number
 of pixels wide at any zoom — something `glLineWidth` cannot promise on a core
-profile.
+profile. The section contour is expanded through the same shader.
+
+Every click, hover and painted sample casts a ray, so picking speed is what
+decides whether a large scan still feels direct. Triangles are sorted along a
+Morton curve into leaf boxes; a ray tests every box in one vectorised sweep and
+then intersects only the triangles in the leaves it entered. On a
+half-million-triangle mesh that is about 0.5 ms per ray against 90 ms for the
+brute-force pass it replaced.
 
 ## Tests
 
 ```bash
 pytest
 ```
+
+## Changelog
+
+Release notes live in [CHANGELOG.md](CHANGELOG.md).

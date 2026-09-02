@@ -1,4 +1,4 @@
-"""Shading mode, lighting and surface material controls."""
+"""Shading mode, lighting, surface material and scene furniture controls."""
 
 from __future__ import annotations
 
@@ -62,6 +62,43 @@ class ShadingPanel(Panel):
         surface_form.addRow("Reflection", self._reflection)
         self._add(self._surface_box)
 
+        self._quality_box, quality_form = form_group("High Quality")
+        self._quality_box.setToolTip(
+            "Soft shadows and ambient occlusion, used by the High Quality shading mode"
+        )
+        self._shadows = QCheckBox("Soft shadows")
+        self._shadow_strength = SliderSpin(0.0, 1.0, 0.55)
+        self._shadow_softness = SliderSpin(0.0, 8.0, 2.0, decimals=1, step=0.5)
+        self._shadow_bias = SliderSpin(0.0, 0.02, 0.0022, decimals=4, step=0.0005)
+        self._shadow_bias.setToolTip("Raise this if a lit surface shadows itself in stripes")
+        self._occlusion = QCheckBox("Ambient occlusion")
+        self._ao_radius = SliderSpin(0.01, 0.4, 0.09, decimals=3)
+        self._ao_intensity = SliderSpin(0.0, 2.0, 0.85)
+        quality_form.addRow("", self._shadows)
+        quality_form.addRow("Strength", self._shadow_strength)
+        quality_form.addRow("Softness", self._shadow_softness)
+        quality_form.addRow("Bias", self._shadow_bias)
+        quality_form.addRow("", self._occlusion)
+        quality_form.addRow("AO radius", self._ao_radius)
+        quality_form.addRow("AO strength", self._ao_intensity)
+        self._add(self._quality_box)
+
+        pedestal_box, pedestal_form = form_group("Pedestal")
+        self._pedestal = QCheckBox("Stand the model on a disc")
+        self._pedestal_snap = QCheckBox("Sit at the lowest point")
+        self._pedestal_level = SliderSpin(-1.0, 1.0, 0.0, decimals=3)
+        self._pedestal_level.setToolTip("Height of the top face, in scene units")
+        self._pedestal_diameter = SliderSpin(0.5, 4.0, 1.35)
+        self._pedestal_thickness = SliderSpin(0.005, 0.5, 0.06, decimals=3)
+        self._pedestal_color = ColorButton((0.34, 0.35, 0.38))
+        pedestal_form.addRow("", self._pedestal)
+        pedestal_form.addRow("", self._pedestal_snap)
+        pedestal_form.addRow("Level", self._pedestal_level)
+        pedestal_form.addRow("Diameter", self._pedestal_diameter)
+        pedestal_form.addRow("Thickness", self._pedestal_thickness)
+        pedestal_form.addRow("Colour", self._pedestal_color)
+        self._add(pedestal_box)
+
         background_box, background_form = form_group("Background")
         self._background_top = ColorButton((0.26, 0.27, 0.30))
         self._background_bottom = ColorButton((0.10, 0.10, 0.12))
@@ -101,6 +138,21 @@ class ShadingPanel(Panel):
         self._ambient_color.colorChanged.connect(self._light_setter("ambient_color"))
         self._follow.toggled.connect(self._light_setter("follow_camera"))
 
+        self._shadows.toggled.connect(self._quality_setter("show_shadows"))
+        self._shadow_strength.valueChanged.connect(self._quality_setter("shadow_strength"))
+        self._shadow_softness.valueChanged.connect(self._quality_setter("shadow_softness"))
+        self._shadow_bias.valueChanged.connect(self._quality_setter("shadow_bias"))
+        self._occlusion.toggled.connect(self._quality_setter("show_occlusion"))
+        self._ao_radius.valueChanged.connect(self._quality_setter("ao_radius"))
+        self._ao_intensity.valueChanged.connect(self._quality_setter("ao_intensity"))
+
+        self._pedestal.toggled.connect(self._pedestal_setter("enabled"))
+        self._pedestal_snap.toggled.connect(self._pedestal_setter("snap_to_lowest"))
+        self._pedestal_level.valueChanged.connect(self._pedestal_setter("level"))
+        self._pedestal_diameter.valueChanged.connect(self._pedestal_setter("diameter"))
+        self._pedestal_thickness.valueChanged.connect(self._pedestal_setter("thickness"))
+        self._pedestal_color.colorChanged.connect(self._pedestal_setter("color"))
+
         self._diffuse.colorChanged.connect(self._surface_setter("diffuse_color"))
         self._specular_color.colorChanged.connect(self._surface_setter("specular_color"))
         self._specular_level.valueChanged.connect(self._surface_setter("specular_level"))
@@ -116,6 +168,14 @@ class ShadingPanel(Panel):
     def _surface_setter(self, field: str):
         """Slot that writes one field of the surface settings."""
         return lambda value: self._apply(self.state.render.surface, field, value)
+
+    def _quality_setter(self, field: str):
+        """Slot that writes one field of the high-quality settings."""
+        return lambda value: self._apply(self.state.render.quality, field, value)
+
+    def _pedestal_setter(self, field: str):
+        """Slot that writes one field of the pedestal settings."""
+        return lambda value: self._apply(self.state.render.pedestal, field, value)
 
     # -- reactions ------------------------------------------------------
 
@@ -136,6 +196,8 @@ class ShadingPanel(Panel):
         mode = self.state.render.shading_mode
         self._light_box.setEnabled(mode.uses_lighting)
         self._surface_box.setEnabled(mode.uses_lighting)
+        self._quality_box.setEnabled(mode.uses_quality)
+        self._pedestal_level.setEnabled(not self.state.render.pedestal.snap_to_lowest)
 
     def _reset(self) -> None:
         self.state.render.light = LightSettings()
@@ -146,7 +208,25 @@ class ShadingPanel(Panel):
     def refresh(self) -> None:
         render = self.state.render
         light, surface = render.light, render.surface
+        quality, pedestal = render.quality, render.pedestal
+        radius = self.state.camera.scene_radius
         with self._suppressed():
+            self._shadows.setChecked(quality.show_shadows)
+            self._shadow_strength.set_value(quality.shadow_strength)
+            self._shadow_softness.set_value(quality.shadow_softness)
+            self._shadow_bias.set_value(quality.shadow_bias)
+            self._occlusion.setChecked(quality.show_occlusion)
+            self._ao_radius.set_value(quality.ao_radius)
+            self._ao_intensity.set_value(quality.ao_intensity)
+
+            self._pedestal.setChecked(pedestal.enabled)
+            self._pedestal_snap.setChecked(pedestal.snap_to_lowest)
+            self._pedestal_level.set_range(-radius * 1.5, radius * 1.5)
+            self._pedestal_level.set_value(pedestal.level)
+            self._pedestal_diameter.set_value(pedestal.diameter)
+            self._pedestal_thickness.set_value(pedestal.thickness)
+            self._pedestal_color.set_color(pedestal.color)
+
             self._mode.setCurrentIndex(self._mode.findData(render.shading_mode.value))
             self._flat.setChecked(render.flat_shading)
             self._wireframe.setChecked(render.show_wireframe)
