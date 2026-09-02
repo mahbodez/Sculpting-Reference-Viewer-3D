@@ -19,9 +19,6 @@ jobs:
           - os: windows-latest
             label: Windows
             archive: ReferenceViewer-windows.zip
-          - os: macos-13
-            label: macOS Intel
-            archive: ReferenceViewer-macos-intel.zip
           - os: macos-14
             label: macOS Apple Silicon
             archive: ReferenceViewer-macos-arm64.zip
