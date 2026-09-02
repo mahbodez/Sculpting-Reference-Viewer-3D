@@ -117,6 +117,12 @@ refview resources/models/Pose_02.obj --matcap resources/matcaps/clay_terracotta.
 
 `refview --help` lists the startup options (`model`, `--matcap`, `--session`).
 
+### Desktop releases
+
+Push a tag such as `v1.0.0` to build self-contained archives for Windows,
+Intel macOS and Apple Silicon macOS. The GitHub Actions release workflow
+publishes the three archives to a GitHub release automatically.
+
 ### Requirements
 
 - Python 3.10+, a GPU with OpenGL 3.3 core profile.
