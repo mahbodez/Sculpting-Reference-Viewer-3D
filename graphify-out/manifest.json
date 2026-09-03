@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1788452378.6063185,
-    "ast_hash": "438c183d281712b28830bb84f946a221",
+    "mtime": 1788454670.3387065,
+    "ast_hash": "c70f805e927b399d121c932ece220027",
     "semantic_hash": ""
   },
   "run.py": {
@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1788452378.6398013,
-    "ast_hash": "55e3cf88554ed0b6d199305c14d62838",
+    "mtime": 1788454670.3662982,
+    "ast_hash": "0fb7481afef0124dc0fce2ce015956f0",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -185,8 +185,8 @@
     "semantic_hash": "76876bbfec238179e57fa9969b391535"
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1788451542.4041276,
-    "ast_hash": "bf480e9d279a304872e0efd910cb59c2",
+    "mtime": 1788455534.7408,
+    "ast_hash": "30f85b4eaa40daf3930d45f6e827fdc7",
     "semantic_hash": ""
   },
   "src/refview/ui/measure_tool.py": {
@@ -340,9 +340,9 @@
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
-    "mtime": 1788389973.8627298,
-    "ast_hash": "10caa64cbae892a3661da1d7345bcfb4",
-    "semantic_hash": "10caa64cbae892a3661da1d7345bcfb4"
+    "mtime": 1788454683.1742852,
+    "ast_hash": "645e7d193f6bd1f0a05613efd952aedb",
+    "semantic_hash": ""
   },
   "README.md": {
     "mtime": 1788453324.3202465,
@@ -397,6 +397,21 @@
   "resources/matcaps/clay_grey.png": {
     "mtime": 1788450166.0663753,
     "ast_hash": "6ac79899042140209e1b39d5a1002fc4",
+    "semantic_hash": ""
+  },
+  "src/refview/core/update_check.py": {
+    "mtime": 1788455423.2926717,
+    "ast_hash": "a25b9443488456f7e9441c34a3f74d1f",
+    "semantic_hash": ""
+  },
+  "src/refview/ui/update_notice.py": {
+    "mtime": 1788455477.6771798,
+    "ast_hash": "4d035e4d23ef6af26d3a30a2231808f4",
+    "semantic_hash": ""
+  },
+  "tests/test_update_check.py": {
+    "mtime": 1788455548.5246832,
+    "ast_hash": "d42a14954c5ab176446b0e53c628abfd",
     "semantic_hash": ""
   }
 }

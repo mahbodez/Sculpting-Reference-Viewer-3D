@@ -22,6 +22,7 @@ from ..core.history import MEASUREMENTS
 from ..core.mesh import MeshLoadError
 from ..core.mesh_io import MESH_FILTER, MESH_SUFFIXES
 from ..core.session import SESSION_SUFFIX
+from ..core.update_check import Release
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
 from .panels.annotate_panel import AnnotatePanel
@@ -32,6 +33,13 @@ from .panels.model_panel import ModelPanel
 from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
 from .state import ViewerState
+from .update_notice import (
+    UpdateChecker,
+    is_skipped,
+    show_failure_dialog,
+    show_up_to_date_dialog,
+    show_update_dialog,
+)
 from .viewport import Viewport
 from .widgets import scrollable
 
@@ -126,6 +134,8 @@ class MainWindow(QMainWindow):
         self._update_history_actions()
 
         self.statusBar().showMessage("Open a model with Ctrl+O, then press M to measure.")
+
+        self._start_update_check(manual=False)
 
     # ------------------------------------------------------------------
     # Construction
@@ -236,6 +246,7 @@ class MainWindow(QMainWindow):
 
         help_menu = self.menuBar().addMenu("&Help")
         self._menu_action(help_menu, "&Controls", self._show_controls, "F1")
+        self._menu_action(help_menu, "Check for &Updates...", self._check_for_updates)
 
     def _menu_action(self, menu, text, slot, shortcut=None, checkable: bool = False) -> QAction:
         """Add a menu entry, optionally with a window-wide shortcut."""
@@ -405,6 +416,45 @@ class MainWindow(QMainWindow):
 
     def _show_controls(self) -> None:
         QMessageBox.information(self, "Controls", CONTROLS_TEXT)
+
+    # ------------------------------------------------------------------
+    # Updates
+    # ------------------------------------------------------------------
+
+    def _start_update_check(self, manual: bool) -> None:
+        """Ask GitHub for the newest release in the background.
+
+        The startup check is quiet: it only speaks up for a version the artist
+        has not already skipped, and says nothing at all when the machine is
+        offline.  Asking from the Help menu always reports what happened.
+        """
+        checker = UpdateChecker(self)
+        checker.update_available.connect(
+            lambda release: self._on_update_available(release, manual)
+        )
+        checker.up_to_date.connect(lambda: self._on_up_to_date(manual))
+        checker.check_failed.connect(lambda error: self._on_update_check_failed(error, manual))
+        self._update_checker = checker
+        if manual:
+            self.statusBar().showMessage("Checking for updates...", 4000)
+        checker.start()
+
+    def _check_for_updates(self) -> None:
+        self._start_update_check(manual=True)
+
+    def _on_update_available(self, release: Release, manual: bool) -> None:
+        if not manual and is_skipped(release):
+            return
+        self.statusBar().showMessage(f"Version {release.version} is available", 8000)
+        show_update_dialog(self, release)
+
+    def _on_up_to_date(self, manual: bool) -> None:
+        if manual:
+            show_up_to_date_dialog(self)
+
+    def _on_update_check_failed(self, error: str, manual: bool) -> None:
+        if manual:
+            show_failure_dialog(self, error)
 
     # ------------------------------------------------------------------
     # File handling

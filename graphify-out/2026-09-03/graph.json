@@ -61,11 +61,11 @@
       "ecosystem": "python",
       "source_file": "pyproject.toml",
       "source_location": "L1",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "_origin": "ast",
       "id": "pkg_refview",
-      "community": 15,
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community": 44,
+      "community_name": "environment.yml",
       "norm_label": "refview"
     },
     {
@@ -339,8 +339,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_annotation",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "annotation.py"
     },
     {
@@ -350,8 +350,8 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "src_refview_core_annotation_annotatemode",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "annotatemode"
     },
     {
@@ -361,8 +361,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_annotation_py_str",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "str"
     },
     {
@@ -372,8 +372,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_annotation_py_enum",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "enum"
     },
     {
@@ -383,8 +383,8 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "src_refview_core_annotation_annotatemode_label",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".label()"
     },
     {
@@ -394,8 +394,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_refview_core_annotation_annotatemode_is_eraser",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".is_eraser()"
     },
     {
@@ -416,8 +416,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "src_refview_core_annotation_stroke_point_array",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".point_array()"
     },
     {
@@ -427,8 +427,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_annotation_py_ndarray",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "ndarray"
     },
     {
@@ -438,8 +438,8 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "src_refview_core_annotation_stroke_normal_array",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".normal_array()"
     },
     {
@@ -460,8 +460,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "src_refview_core_annotation_stroke_split",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".split()"
     },
     {
@@ -471,8 +471,8 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "src_refview_core_annotation_runs",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "_runs()"
     },
     {
@@ -493,8 +493,8 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "src_refview_core_annotation_annotationsettings_new_stroke",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".new_stroke()"
     },
     {
@@ -603,8 +603,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_1",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "freehand annotations painted onto the model surface. a stroke is a polyline of..."
     },
     {
@@ -614,8 +614,8 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_25",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "what the annotate tool does with a drag. the first three describe the shape a..."
     },
     {
@@ -636,8 +636,8 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_68",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "normals padded to match the points, so callers can zip them freely."
     },
     {
@@ -647,8 +647,8 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_83",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "break the stroke into the runs of points ``keep`` marks as surviving."
     },
     {
@@ -658,8 +658,8 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_113",
-      "community": 60,
-      "community_name": ".split",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "half-open index ranges of the contiguous ``true`` regions of ``mask``."
     },
     {
@@ -680,8 +680,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "src_refview_core_annotation_rationale_133",
-      "community": 54,
-      "community_name": "annotation.py",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "an empty stroke carrying the current brush."
     },
     {
@@ -724,8 +724,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_bookmark",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": "bookmark.py"
     },
     {
@@ -758,7 +758,7 @@
       "_origin": "ast",
       "id": "src_refview_core_bookmark_camerabookmark_to_camera",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": ".to_camera()"
     },
     {
@@ -890,7 +890,7 @@
       "_origin": "ast",
       "id": "src_refview_core_bookmark_bookmarkstore_recall",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": ".recall()"
     },
     {
@@ -901,7 +901,7 @@
       "_origin": "ast",
       "id": "src_refview_core_bookmark_bookmarkstore_cycle",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": ".cycle()"
     },
     {
@@ -911,8 +911,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_bookmark_rationale_1",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": "named camera positions the artist can jump between while sculpting."
     },
     {
@@ -967,7 +967,7 @@
       "_origin": "ast",
       "id": "src_refview_core_bookmark_rationale_68",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": "return the pose at ``index`` and remember it as the current one."
     },
     {
@@ -978,7 +978,7 @@
       "_origin": "ast",
       "id": "src_refview_core_bookmark_rationale_75",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": "step forwards or backwards through the list, wrapping around."
     },
     {
@@ -1000,7 +1000,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_projection",
       "community": 31,
-      "community_name": "main_window.py",
+      "community_name": "Projection",
       "norm_label": "projection"
     },
     {
@@ -1011,7 +1011,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_py_str",
       "community": 31,
-      "community_name": "main_window.py",
+      "community_name": "Projection",
       "norm_label": "str"
     },
     {
@@ -1022,7 +1022,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_py_enum",
       "community": 31,
-      "community_name": "main_window.py",
+      "community_name": "Projection",
       "norm_label": "enum"
     },
     {
@@ -1033,7 +1033,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_projection_label",
       "community": 31,
-      "community_name": "main_window.py",
+      "community_name": "Projection",
       "norm_label": ".label()"
     },
     {
@@ -1087,8 +1087,8 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "src_refview_core_camera_camera_right",
-      "community": 12,
-      "community_name": "mesh_renderer.py",
+      "community": 14,
+      "community_name": "Camera",
       "norm_label": ".right()"
     },
     {
@@ -1308,7 +1308,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_camera_from_dict",
       "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community_name": ".from_dict",
       "norm_label": ".from_dict()"
     },
     {
@@ -1352,7 +1352,7 @@
       "_origin": "ast",
       "id": "src_refview_core_camera_rationale_16",
       "community": 31,
-      "community_name": "main_window.py",
+      "community_name": "Projection",
       "norm_label": "projection used by :class:`camera`."
     },
     {
@@ -1527,8 +1527,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_refview_core_commands_setattributes",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": "setattributes"
     },
     {
@@ -1538,8 +1538,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "src_refview_core_commands_setattributes_init",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".__init__()"
     },
     {
@@ -1549,8 +1549,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_commands_py_any",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": "any"
     },
     {
@@ -1560,8 +1560,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_refview_core_commands_setattributes_apply",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".apply()"
     },
     {
@@ -1571,8 +1571,8 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "src_refview_core_commands_setattributes_revert",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".revert()"
     },
     {
@@ -1582,8 +1582,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_refview_core_commands_setattributes_assign",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": "._assign()"
     },
     {
@@ -1604,8 +1604,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "src_refview_core_commands_additem_init",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".__init__()"
     },
     {
@@ -1648,8 +1648,8 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "src_refview_core_commands_removeitem_init",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".__init__()"
     },
     {
@@ -1692,8 +1692,8 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "src_refview_core_commands_replaceitems_init",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": ".__init__()"
     },
     {
@@ -1736,8 +1736,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_refview_core_commands_rationale_16",
-      "community": 27,
-      "community_name": "History",
+      "community": 7,
+      "community_name": "MeasurePanel",
       "norm_label": "assign one or more attributes on an object, remembering the old values...."
     },
     {
@@ -1846,8 +1846,8 @@
       "source_location": "L135",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_accessor",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "_accessor()"
     },
     {
@@ -1857,8 +1857,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_py_ndarray",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "ndarray"
     },
     {
@@ -1879,8 +1879,8 @@
       "source_location": "L186",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_local_transform",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "_local_transform()"
     },
     {
@@ -1890,8 +1890,8 @@
       "source_location": "L199",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_quaternion_matrix",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "_quaternion_matrix()"
     },
     {
@@ -1912,8 +1912,8 @@
       "source_location": "L219",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_primitive_geometry",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "_primitive_geometry()"
     },
     {
@@ -1923,8 +1923,8 @@
       "source_location": "L249",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_triangulate",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "_triangulate()"
     },
     {
@@ -1989,8 +1989,8 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_rationale_136",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "read one accessor into an ``(n, components)`` array."
     },
     {
@@ -2011,8 +2011,8 @@
       "source_location": "L187",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_rationale_187",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "a node's own transform, from either a matrix or a trs triple."
     },
     {
@@ -2022,8 +2022,8 @@
       "source_location": "L200",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_rationale_200",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "rotation matrix for a gltf ``(x, y, z, w)`` quaternion."
     },
     {
@@ -2033,8 +2033,8 @@
       "source_location": "L222",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_rationale_222",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "positions, normals and triangle indices for one primitive, in world space."
     },
     {
@@ -2044,8 +2044,8 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "src_refview_core_gltf_loader_rationale_250",
-      "community": 16,
-      "community_name": "gltf_loader.py",
+      "community": 38,
+      "community_name": "_primitive_geometry",
       "norm_label": "turn a triangle list, strip or fan into an ``(t, 3)`` index array."
     },
     {
@@ -2451,8 +2451,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_measurement",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "measurement.py"
     },
     {
@@ -2529,7 +2529,7 @@
       "_origin": "ast",
       "id": "src_refview_core_measurement_measurementsettings",
       "community": 17,
-      "community_name": "MeasurementSettings",
+      "community_name": "viewport.py",
       "norm_label": "measurementsettings"
     },
     {
@@ -2540,7 +2540,7 @@
       "_origin": "ast",
       "id": "src_refview_core_measurement_measurementsettings_format_length",
       "community": 17,
-      "community_name": "MeasurementSettings",
+      "community_name": "viewport.py",
       "norm_label": ".format_length()"
     },
     {
@@ -2660,8 +2660,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_measurement_rationale_1",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "named point-to-point measurements and their presentation options."
     },
     {
@@ -2716,7 +2716,7 @@
       "_origin": "ast",
       "id": "src_refview_core_measurement_rationale_52",
       "community": 17,
-      "community_name": "MeasurementSettings",
+      "community_name": "viewport.py",
       "norm_label": "how measurements are drawn and how their lengths are written out."
     },
     {
@@ -2727,7 +2727,7 @@
       "_origin": "ast",
       "id": "src_refview_core_measurement_rationale_75",
       "community": 17,
-      "community_name": "MeasurementSettings",
+      "community_name": "viewport.py",
       "norm_label": "render a scene-unit length as a labelled display string."
     },
     {
@@ -2826,7 +2826,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_bounds_from_points",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".from_points()"
     },
     {
@@ -2837,7 +2837,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_py_ndarray",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": "ndarray"
     },
     {
@@ -2848,7 +2848,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_bounds_center",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".center()"
     },
     {
@@ -2859,7 +2859,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_bounds_size",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".size()"
     },
     {
@@ -2891,7 +2891,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": "mesh"
     },
@@ -2902,7 +2902,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_init",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": ".__init__()"
     },
@@ -2913,7 +2913,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_vertex_count",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": ".vertex_count()"
     },
@@ -2924,7 +2924,7 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_triangle_count",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": ".triangle_count()"
     },
@@ -2936,7 +2936,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_bounds",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".bounds()"
     },
     {
@@ -2947,7 +2947,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_triangles",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".triangles()"
     },
     {
@@ -2957,8 +2957,8 @@
       "source_location": "L129",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_spatial_index",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": ".spatial_index()"
     },
     {
@@ -2969,7 +2969,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_transformed",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": ".transformed()"
     },
     {
@@ -2979,7 +2979,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_recentered",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": ".recentered()"
     },
@@ -2990,7 +2990,7 @@
       "source_location": "L167",
       "_origin": "ast",
       "id": "src_refview_core_mesh_mesh_repr",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": ".__repr__()"
     },
@@ -3067,7 +3067,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "src_refview_core_mesh_rationale_64",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": "an indexed triangle mesh with per-vertex positions and normals. the viewer..."
     },
@@ -3079,7 +3079,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_rationale_125",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": "expanded triangle corners, shape ``(t, 3, 3)``."
     },
     {
@@ -3089,8 +3089,8 @@
       "source_location": "L130",
       "_origin": "ast",
       "id": "src_refview_core_mesh_rationale_130",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "picking accelerator, built on first use and kept for the mesh's life."
     },
     {
@@ -3101,7 +3101,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_rationale_136",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": "return a copy turned by a 3x3 rotation, e.g. to fix the up axis. rotations..."
     },
     {
@@ -3111,7 +3111,7 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "src_refview_core_mesh_rationale_154",
-      "community": 50,
+      "community": 28,
       "community_name": "Mesh",
       "norm_label": "return a copy whose bounding-box centre sits at the origin."
     },
@@ -3133,8 +3133,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_mesh_io",
-      "community": 35,
-      "community_name": "mesh_io.py",
+      "community": 29,
+      "community_name": "core/__init__.py",
       "norm_label": "mesh_io.py"
     },
     {
@@ -3145,7 +3145,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_io_load_mesh",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "load_mesh()"
     },
     {
@@ -3156,7 +3156,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_io_py_path",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "path"
     },
     {
@@ -3166,8 +3166,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_mesh_io_rationale_1",
-      "community": 35,
-      "community_name": "mesh_io.py",
+      "community": 29,
+      "community_name": "core/__init__.py",
       "norm_label": "one entry point for every mesh format the viewer reads. callers ask for a path..."
     },
     {
@@ -3178,7 +3178,7 @@
       "_origin": "ast",
       "id": "src_refview_core_mesh_io_rationale_36",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "load any supported mesh file, raising :class:`meshloaderror` otherwise."
     },
     {
@@ -3309,8 +3309,8 @@
       "source_location": "L180",
       "_origin": "ast",
       "id": "src_refview_core_obj_loader_load_generic",
-      "community": 50,
-      "community_name": "Mesh",
+      "community": 40,
+      "community_name": "load_obj",
       "norm_label": "_load_generic()"
     },
     {
@@ -3419,8 +3419,8 @@
       "source_location": "L181",
       "_origin": "ast",
       "id": "src_refview_core_obj_loader_rationale_181",
-      "community": 50,
-      "community_name": "Mesh",
+      "community": 40,
+      "community_name": "load_obj",
       "norm_label": "line-by-line reader for files the fast path declines."
     },
     {
@@ -3826,8 +3826,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_section",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "section.py"
     },
     {
@@ -3837,8 +3837,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionaxis",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "sectionaxis"
     },
     {
@@ -3848,8 +3848,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_section_py_str",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "str"
     },
     {
@@ -3859,8 +3859,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_section_py_enum",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "enum"
     },
     {
@@ -3870,8 +3870,8 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionaxis_label",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": ".label()"
     },
     {
@@ -3881,8 +3881,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionaxis_direction",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": ".direction()"
     },
     {
@@ -3892,8 +3892,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_section_py_ndarray",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "ndarray"
     },
     {
@@ -3903,8 +3903,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionmode",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "sectionmode"
     },
     {
@@ -3914,8 +3914,8 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionmode_label",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": ".label()"
     },
     {
@@ -3925,8 +3925,8 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionplane",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "sectionplane"
     },
     {
@@ -3936,8 +3936,8 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionplane_distances",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": ".distances()"
     },
     {
@@ -3958,8 +3958,8 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionsettings_normal",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": ".normal()"
     },
     {
@@ -3969,8 +3969,8 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "src_refview_core_section_sectionsettings_planes",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": ".planes()"
     },
     {
@@ -3980,8 +3980,8 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "src_refview_core_section_section_segments",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "section_segments()"
     },
     {
@@ -3991,8 +3991,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_1",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "cutting the model open with planes. a section is described by one plane -- an..."
     },
     {
@@ -4002,8 +4002,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_28",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "the direction the section plane faces."
     },
     {
@@ -4013,8 +4013,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_46",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "unit axis, or ``none`` for a custom direction."
     },
     {
@@ -4024,8 +4024,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_57",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 39,
+      "community_name": "SectionAxis",
       "norm_label": "which side of the plane survives the cut."
     },
     {
@@ -4035,8 +4035,8 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_74",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "a half-space: everything past ``offset`` along ``normal`` is cut away."
     },
     {
@@ -4046,8 +4046,8 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_80",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "signed distance of each point; positive means cut away."
     },
     {
@@ -4068,8 +4068,8 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_107",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "unit plane normal, honouring the flip toggle."
     },
     {
@@ -4079,8 +4079,8 @@
       "source_location": "L117",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_117",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "the half-spaces the current mode cuts with; empty when disabled."
     },
     {
@@ -4090,8 +4090,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "src_refview_core_section_rationale_133",
-      "community": 53,
-      "community_name": "section_segments",
+      "community": 19,
+      "community_name": "SectionSettings",
       "norm_label": "line segments where ``plane`` cuts ``mesh``, shape ``(n, 2, 3)``. every..."
     },
     {
@@ -4102,7 +4102,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "serialization.py"
     },
     {
@@ -4113,7 +4113,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_encode",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "encode()"
     },
     {
@@ -4124,7 +4124,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_py_any",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "any"
     },
     {
@@ -4135,7 +4135,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_decode",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "decode()"
     },
     {
@@ -4146,7 +4146,7 @@
       "_origin": "ast",
       "id": "t",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "t"
     },
     {
@@ -4157,7 +4157,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_coerce",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "_coerce()"
     },
     {
@@ -4168,7 +4168,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_rationale_1",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "tolerant conversion between dataclasses and plain json structures. sessions..."
     },
     {
@@ -4179,7 +4179,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_rationale_21",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "convert dataclasses, enums, tuples and numpy arrays to json types."
     },
     {
@@ -4190,7 +4190,7 @@
       "_origin": "ast",
       "id": "src_refview_core_serialization_rationale_38",
       "community": 55,
-      "community_name": "decode",
+      "community_name": "session.py",
       "norm_label": "build an instance of the dataclass ``cls`` from ``data``."
     },
     {
@@ -4200,8 +4200,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_session",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 55,
+      "community_name": "session.py",
       "norm_label": "session.py"
     },
     {
@@ -4222,8 +4222,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_refview_core_session_session_to_dict",
-      "community": 55,
-      "community_name": "decode",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": ".to_dict()"
     },
     {
@@ -4277,8 +4277,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_refview_core_session_sidecar_path",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": "sidecar_path()"
     },
     {
@@ -4288,8 +4288,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_session_rationale_1",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 55,
+      "community_name": "session.py",
       "norm_label": "persisted viewer state: camera, shading, measurements and bookmarks."
     },
     {
@@ -4310,8 +4310,8 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "src_refview_core_session_rationale_60",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": "session file that sits beside a model, e.g. ``bust.refview.json``."
     },
     {
@@ -4332,8 +4332,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "shadingmode"
     },
     {
@@ -4343,8 +4343,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_settings_py_str",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "str"
     },
     {
@@ -4365,8 +4365,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode_label",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": ".label()"
     },
     {
@@ -4376,8 +4376,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode_shader_id",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": ".shader_id()"
     },
     {
@@ -4387,8 +4387,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode_uses_matcap",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": ".uses_matcap()"
     },
     {
@@ -4398,8 +4398,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode_uses_lighting",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": ".uses_lighting()"
     },
     {
@@ -4409,8 +4409,8 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "src_refview_core_settings_shadingmode_uses_quality",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": ".uses_quality()"
     },
     {
@@ -4453,8 +4453,8 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "src_refview_core_settings_qualitysettings",
-      "community": 49,
-      "community_name": "CHANGELOG.md",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "qualitysettings"
     },
     {
@@ -4476,7 +4476,7 @@
       "_origin": "ast",
       "id": "src_refview_core_settings_navigationsettings",
       "community": 42,
-      "community_name": "state.py",
+      "community_name": ".__init__",
       "norm_label": "navigationsettings"
     },
     {
@@ -4497,8 +4497,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_refview_core_settings_rationale_19",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "shading model applied to the mesh. ``shader_id`` must stay in sync with the..."
     },
     {
@@ -4508,8 +4508,8 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "src_refview_core_settings_rationale_65",
-      "community": 44,
-      "community_name": "ShadingMode",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "whether the shadow and occlusion pre-passes need to run."
     },
     {
@@ -4552,8 +4552,8 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "src_refview_core_settings_rationale_112",
-      "community": 49,
-      "community_name": "CHANGELOG.md",
+      "community": 56,
+      "community_name": "settings.py",
       "norm_label": "soft shadows and ambient occlusion for the high-quality mode. both are screen-..."
     },
     {
@@ -4575,7 +4575,7 @@
       "_origin": "ast",
       "id": "src_refview_core_settings_rationale_153",
       "community": 42,
-      "community_name": "state.py",
+      "community_name": ".__init__",
       "norm_label": "how mouse gestures drive the camera."
     },
     {
@@ -4585,8 +4585,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_spatial",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "spatial.py"
     },
     {
@@ -4596,8 +4596,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_refview_core_spatial_triangleindex",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "triangleindex"
     },
     {
@@ -4607,8 +4607,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "src_refview_core_spatial_triangleindex_init",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": ".__init__()"
     },
     {
@@ -4618,8 +4618,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_core_spatial_py_ndarray",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "ndarray"
     },
     {
@@ -4629,8 +4629,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_refview_core_spatial_triangleindex_leaf_count",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": ".leaf_count()"
     },
     {
@@ -4640,8 +4640,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_refview_core_spatial_triangleindex_candidates",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": ".candidates()"
     },
     {
@@ -4651,8 +4651,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "src_refview_core_spatial_morton_order",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "_morton_order()"
     },
     {
@@ -4662,8 +4662,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "src_refview_core_spatial_spread_bits",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "_spread_bits()"
     },
     {
@@ -4673,8 +4673,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_1",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "spatial index that keeps picking fast on large meshes. every click, every hover..."
     },
     {
@@ -4684,8 +4684,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_28",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "leaf bounding boxes over a morton-sorted triangle list."
     },
     {
@@ -4695,8 +4695,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_33",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "build the index from expanded triangle corners, shape ``(t, 3, 3)``."
     },
     {
@@ -4706,8 +4706,8 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_60",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "triangle indices worth intersecting for this ray, possibly empty."
     },
     {
@@ -4717,8 +4717,8 @@
       "source_location": "L76",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_76",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "indices that sort ``points`` along a morton (z-order) curve. neighbours on the..."
     },
     {
@@ -4728,8 +4728,8 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "src_refview_core_spatial_rationale_92",
-      "community": 39,
-      "community_name": "TriangleIndex",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "interleave each 10-bit value with two zero bits, ready to be shifted."
     },
     {
@@ -6312,8 +6312,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_shaders",
-      "community": 15,
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community": 50,
+      "community_name": "shaders.py",
       "norm_label": "shaders.py"
     },
     {
@@ -6323,8 +6323,8 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "src_refview_render_shaders_with_section",
-      "community": 15,
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community": 50,
+      "community_name": "shaders.py",
       "norm_label": "_with_section()"
     },
     {
@@ -6334,8 +6334,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_shaders_rationale_1",
-      "community": 15,
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community": 50,
+      "community_name": "shaders.py",
       "norm_label": "glsl sources for the viewport. six small programs cover everything the viewer..."
     },
     {
@@ -6345,8 +6345,8 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "src_refview_render_shaders_rationale_38",
-      "community": 15,
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community": 50,
+      "community_name": "shaders.py",
       "norm_label": "splice the shared cross-section test into a fragment shader."
     },
     {
@@ -6356,8 +6356,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "stroke_renderer.py"
     },
     {
@@ -6367,8 +6367,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_build_vertices",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "build_vertices()"
     },
     {
@@ -6378,8 +6378,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_py_ndarray",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "ndarray"
     },
     {
@@ -6389,8 +6389,8 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_build_segment_vertices",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "build_segment_vertices()"
     },
     {
@@ -6400,8 +6400,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_segment_block",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "_segment_block()"
     },
     {
@@ -6411,8 +6411,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_expand",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "_expand()"
     },
     {
@@ -6422,8 +6422,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "strokebuffers"
     },
     {
@@ -6433,8 +6433,8 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_init",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".__init__()"
     },
     {
@@ -6444,8 +6444,8 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_is_empty",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".is_empty()"
     },
     {
@@ -6455,8 +6455,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_upload",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".upload()"
     },
     {
@@ -6466,8 +6466,8 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_upload_vertices",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".upload_vertices()"
     },
     {
@@ -6477,8 +6477,8 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_draw",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".draw()"
     },
     {
@@ -6488,8 +6488,8 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_strokebuffers_dispose",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": ".dispose()"
     },
     {
@@ -6499,8 +6499,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_1",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "geometry for the surface annotations and the cross-section contour. strokes are..."
     },
     {
@@ -6510,8 +6510,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_27",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "expand strokes into the triangle soup the stroke shader expects. every segment..."
     },
     {
@@ -6521,8 +6521,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_46",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "expand loose ``(n, 2, 3)`` segments -- the section contour -- the same way. the..."
     },
     {
@@ -6532,8 +6532,8 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_78",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "six vertices per segment, in the layout the stroke shader expects."
     },
     {
@@ -6543,8 +6543,8 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_102",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "a single vertex buffer holding every visible stroke."
     },
     {
@@ -6554,8 +6554,8 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_refview_render_stroke_renderer_rationale_127",
-      "community": 38,
-      "community_name": "StrokeBuffers",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "replace the buffer contents with a prepared vertex block."
     },
     {
@@ -6565,7 +6565,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_texture",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "texture.py"
     },
@@ -6576,7 +6576,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_refview_render_texture_matcaploaderror",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "matcaploaderror"
     },
@@ -6587,7 +6587,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_render_texture_py_runtimeerror",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "runtimeerror"
     },
@@ -6598,8 +6598,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_refview_render_texture_load_matcap_pixels",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "load_matcap_pixels()"
     },
     {
@@ -6609,8 +6609,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_render_texture_py_path",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "path"
     },
     {
@@ -6708,7 +6708,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_render_texture_rationale_1",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "matcap texture loading and upload."
     },
@@ -6719,7 +6719,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_refview_render_texture_rationale_17",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "raised when an image cannot be used as a matcap."
     },
@@ -6730,8 +6730,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_refview_render_texture_rationale_21",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "read an image file into an ``(h, w, 4)`` uint8 array ready for gl. the image is..."
     },
     {
@@ -6763,8 +6763,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_init",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "ui/__init__.py"
     },
     {
@@ -6774,8 +6774,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_init_rationale_1",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "qt user interface: the viewport widget, the panels and the main window."
     },
     {
@@ -6851,8 +6851,8 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "src_refview_ui_annotate_tool_annotatetool_current_strokes",
-      "community": 0,
-      "community_name": "Stroke",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".current_strokes()"
     },
     {
@@ -7016,8 +7016,8 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "src_refview_ui_annotate_tool_rationale_66",
-      "community": 0,
-      "community_name": "Stroke",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "the strokes being laid down; the overlay previews them in 2d."
     },
     {
@@ -7104,8 +7104,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_icons",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "icons.py"
     },
     {
@@ -7115,8 +7115,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_refview_ui_icons_lock_icon",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "lock_icon()"
     },
     {
@@ -7126,8 +7126,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qicon",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "qicon"
     },
     {
@@ -7137,8 +7137,8 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "src_refview_ui_icons_render",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "_render()"
     },
     {
@@ -7148,8 +7148,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qpixmap",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "qpixmap"
     },
     {
@@ -7159,8 +7159,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_icons_rationale_1",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "small painted icons. drawing the padlock rather than shipping an image file..."
     },
     {
@@ -7170,8 +7170,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_refview_ui_icons_rationale_19",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "a padlock, shut or hanging open. open reads as \"this measurement will move if..."
     },
     {
@@ -7181,7 +7181,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_main_window",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "main_window.py"
     },
@@ -7225,8 +7225,8 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "src_refview_ui_main_window_mainwindow_build_dock",
-      "community": 31,
-      "community_name": "main_window.py",
+      "community": 6,
+      "community_name": "MainWindow",
       "norm_label": "._build_dock()"
     },
     {
@@ -7555,7 +7555,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_main_window_rationale_1",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "application window: viewport, docked panels, menus and shortcuts."
     },
@@ -7665,8 +7665,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "measure_tool.py"
     },
     {
@@ -7677,7 +7677,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "measuretool"
     },
     {
@@ -7688,7 +7688,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_init",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".__init__()"
     },
     {
@@ -7699,7 +7699,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_set_active",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".set_active()"
     },
     {
@@ -7710,7 +7710,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_cancel",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".cancel()"
     },
     {
@@ -7721,7 +7721,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_has_pending",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".has_pending()"
     },
     {
@@ -7731,8 +7731,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_pick",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": ".pick()"
     },
     {
@@ -7742,8 +7742,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_py_ndarray",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": "ndarray"
     },
     {
@@ -7753,8 +7753,8 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_drag_target",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": ".drag_target()"
     },
     {
@@ -7764,8 +7764,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_handle_at",
-      "community": 63,
-      "community_name": ".handle_at",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".handle_at()"
     },
     {
@@ -7775,8 +7775,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "handle",
-      "community": 63,
-      "community_name": ".handle_at",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "handle"
     },
     {
@@ -7786,8 +7786,8 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_click",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": ".click()"
     },
     {
@@ -7798,7 +7798,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_measuretool_pending_length",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".pending_length()"
     },
     {
@@ -7808,8 +7808,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_1",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "two-click measuring, plus dragging the endpoints of an unlocked measurement."
     },
     {
@@ -7820,7 +7820,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_15",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "picks points and turns pairs of them into measurements. the tool stays armed..."
     },
     {
@@ -7831,7 +7831,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_40",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "drop the half-finished measurement and the hover preview."
     },
     {
@@ -7841,8 +7841,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_57",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": "where a click at ``(x, y)`` would put a point. with free placement the point..."
     },
     {
@@ -7852,8 +7852,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_75",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": "where a grabbed endpoint should move to. free placement -- and a drag that..."
     },
     {
@@ -7863,8 +7863,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_99",
-      "community": 63,
-      "community_name": ".handle_at",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "the nearest grabbable endpoint under the cursor, if any. only unlocked, visible..."
     },
     {
@@ -7874,8 +7874,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_121",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 5,
+      "community_name": "ViewportOverlay",
       "norm_label": "consume a picked point; returns a measurement on the second click."
     },
     {
@@ -7886,7 +7886,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_measure_tool_rationale_133",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "length of the rubber band currently being dragged out, if any."
     },
     {
@@ -8105,8 +8105,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_overlay",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "overlay.py"
     },
     {
@@ -8117,7 +8117,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_to_qcolor",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "to_qcolor()"
     },
     {
@@ -8128,7 +8128,7 @@
       "_origin": "ast",
       "id": "qcolor",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "qcolor"
     },
     {
@@ -8139,7 +8139,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_project_visible",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "project_visible()"
     },
     {
@@ -8150,7 +8150,7 @@
       "_origin": "ast",
       "id": "qpointf",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "qpointf"
     },
     {
@@ -8161,7 +8161,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "viewportoverlay"
     },
     {
@@ -8172,7 +8172,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".draw()"
     },
     {
@@ -8183,7 +8183,7 @@
       "_origin": "ast",
       "id": "qpainter",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "qpainter"
     },
     {
@@ -8194,7 +8194,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_measurement",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_measurement()"
     },
     {
@@ -8205,7 +8205,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_pending",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_pending()"
     },
     {
@@ -8216,7 +8216,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_stroke_segment",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._stroke_segment()"
     },
     {
@@ -8227,7 +8227,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_point",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_point()"
     },
     {
@@ -8238,7 +8238,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_handle",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_handle()"
     },
     {
@@ -8249,7 +8249,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_crosshair",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_crosshair()"
     },
     {
@@ -8260,7 +8260,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_annotation",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_annotation()"
     },
     {
@@ -8271,7 +8271,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_stroke_preview",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_stroke_preview()"
     },
     {
@@ -8282,7 +8282,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_brush",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_brush()"
     },
     {
@@ -8293,7 +8293,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_text",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_text()"
     },
     {
@@ -8304,7 +8304,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_py_qfont",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "qfont"
     },
     {
@@ -8315,7 +8315,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_label",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_label()"
     },
     {
@@ -8326,7 +8326,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_gizmo",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_gizmo()"
     },
     {
@@ -8337,7 +8337,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_viewportoverlay_draw_hud",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "._draw_hud()"
     },
     {
@@ -8347,8 +8347,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_1",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "2d overlay drawn on top of the gl scene with qpainter. measurements are..."
     },
     {
@@ -8359,7 +8359,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_37",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "convert a 0-1 rgb tuple to a qcolor."
     },
     {
@@ -8370,7 +8370,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_43",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "project a world point, returning ``none`` when it is behind the camera."
     },
     {
@@ -8381,7 +8381,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_54",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "draws measurements, tool previews, the orientation gizmo and the readout."
     },
     {
@@ -8392,7 +8392,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_188",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "a square grip, so an editable end reads differently from a fixed one."
     },
     {
@@ -8403,7 +8403,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_216",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "preview the gesture under way; finished strokes are drawn in 3d."
     },
     {
@@ -8414,7 +8414,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_273",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "the cursor ring: the eraser's reach, or the width of the brush."
     },
     {
@@ -8425,7 +8425,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_overlay_rationale_296",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": "draw text as a filled outline rather than as glyphs. qt's opengl paint engine..."
     },
     {
@@ -8436,7 +8436,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_init",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "panels/__init__.py"
     },
     {
@@ -8447,7 +8447,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_init_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "dockable control panels."
     },
     {
@@ -8479,8 +8479,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_refview_ui_panels_annotate_panel_annotatepanel_build",
-      "community": 46,
-      "community_name": "AnnotatePanel",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -8601,7 +8601,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_base",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "base.py"
     },
     {
@@ -8666,8 +8666,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_refview_ui_panels_base_panel_state",
-      "community": 34,
-      "community_name": "Panel",
+      "community": 37,
+      "community_name": "ViewerState",
       "norm_label": ".state()"
     },
     {
@@ -8722,7 +8722,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_base_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "shared plumbing for the dockable side panels."
     },
     {
@@ -8787,8 +8787,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "src_refview_ui_panels_camera_panel_camerapanel_build",
-      "community": 24,
-      "community_name": "CameraPanel",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -8798,8 +8798,8 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "src_refview_ui_panels_camera_panel_camerapanel_on_projection",
-      "community": 24,
-      "community_name": "CameraPanel",
+      "community": 31,
+      "community_name": "Projection",
       "norm_label": "._on_projection()"
     },
     {
@@ -8908,8 +8908,8 @@
       "source_location": "L199",
       "_origin": "ast",
       "id": "src_refview_ui_panels_camera_panel_camerapanel_delete",
-      "community": 24,
-      "community_name": "CameraPanel",
+      "community": 30,
+      "community_name": "camera_panel.py",
       "norm_label": "._delete()"
     },
     {
@@ -9073,7 +9073,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "matcap_panel.py"
     },
@@ -9084,8 +9084,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "matcappanel"
     },
     {
@@ -9096,7 +9096,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_build",
       "community": 52,
-      "community_name": "ColorButton",
+      "community_name": "MatcapPanel",
       "norm_label": "._build()"
     },
     {
@@ -9106,8 +9106,8 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_reload_gallery",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": ".reload_gallery()"
     },
     {
@@ -9117,8 +9117,8 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_select_current",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "._select_current()"
     },
     {
@@ -9128,8 +9128,8 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_on_selected",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "._on_selected()"
     },
     {
@@ -9139,8 +9139,8 @@
       "source_location": "L162",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_browse",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": ".browse()"
     },
     {
@@ -9150,8 +9150,8 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_load",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "._load()"
     },
     {
@@ -9162,7 +9162,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_apply",
       "community": 52,
-      "community_name": "ColorButton",
+      "community_name": "MatcapPanel",
       "norm_label": "._apply()"
     },
     {
@@ -9172,8 +9172,8 @@
       "source_location": "L190",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_reset",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "._reset()"
     },
     {
@@ -9183,8 +9183,8 @@
       "source_location": "L195",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_matcappanel_refresh",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": ".refresh()"
     },
     {
@@ -9194,7 +9194,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_rationale_1",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "matcap selection and colour grading."
     },
@@ -9205,8 +9205,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_rationale_35",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "picks the matcap image and tunes how it is sampled."
     },
     {
@@ -9217,7 +9217,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_rationale_38",
       "community": 52,
-      "community_name": "ColorButton",
+      "community_name": "MatcapPanel",
       "norm_label": "a draggable split: thumbnails above, adjustments below. the gallery is the one..."
     },
     {
@@ -9227,8 +9227,8 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "src_refview_ui_panels_matcap_panel_rationale_116",
-      "community": 1,
-      "community_name": "application.py",
+      "community": 52,
+      "community_name": "MatcapPanel",
       "norm_label": "rebuild the thumbnail list from the resources folder."
     },
     {
@@ -9249,8 +9249,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_nameonlydelegate",
-      "community": 7,
-      "community_name": "MeasurePanel",
+      "community": 34,
+      "community_name": "Panel",
       "norm_label": "_nameonlydelegate"
     },
     {
@@ -9260,8 +9260,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qstyleditemdelegate",
-      "community": 7,
-      "community_name": "MeasurePanel",
+      "community": 34,
+      "community_name": "Panel",
       "norm_label": "qstyleditemdelegate"
     },
     {
@@ -9271,8 +9271,8 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_nameonlydelegate_createeditor",
-      "community": 7,
-      "community_name": "MeasurePanel",
+      "community": 34,
+      "community_name": "Panel",
       "norm_label": ".createeditor()"
     },
     {
@@ -9293,8 +9293,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_build",
-      "community": 7,
-      "community_name": "MeasurePanel",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -9397,10 +9397,21 @@
       "norm_label": "._on_item_changed()"
     },
     {
+      "label": "._commit_later()",
+      "file_type": "code",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L246",
+      "_origin": "ast",
+      "id": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "community": 7,
+      "community_name": "MeasurePanel",
+      "norm_label": "._commit_later()"
+    },
+    {
       "label": "._on_item_clicked()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L245",
+      "source_location": "L260",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_on_item_clicked",
       "community": 7,
@@ -9411,7 +9422,7 @@
       "label": ".toggle_lock()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L254",
+      "source_location": "L269",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_toggle_lock",
       "community": 7,
@@ -9422,7 +9433,7 @@
       "label": "._on_double_clicked()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L266",
+      "source_location": "L282",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_on_double_clicked",
       "community": 7,
@@ -9433,7 +9444,7 @@
       "label": "._selected_measurement()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L270",
+      "source_location": "L286",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_selected_measurement",
       "community": 7,
@@ -9444,7 +9455,7 @@
       "label": "._delete_selected()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L276",
+      "source_location": "L292",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_delete_selected",
       "community": 7,
@@ -9455,7 +9466,7 @@
       "label": ".clear_all()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_clear_all",
       "community": 30,
@@ -9466,7 +9477,7 @@
       "label": "._center_selected()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L296",
+      "source_location": "L312",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_center_selected",
       "community": 7,
@@ -9477,7 +9488,7 @@
       "label": "._apply()",
       "file_type": "code",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L303",
+      "source_location": "L319",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_measurepanel_apply",
       "community": 7,
@@ -9502,8 +9513,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_refview_ui_panels_measure_panel_rationale_34",
-      "community": 7,
-      "community_name": "MeasurePanel",
+      "community": 34,
+      "community_name": "Panel",
       "norm_label": "allows in-place editing of the name column only."
     },
     {
@@ -9551,12 +9562,23 @@
       "norm_label": "commit a renamed or re-checked row, if anything actually changed."
     },
     {
+      "label": "Run a row's edit once Qt has finished delivering the current signal. Committing\u2026",
+      "file_type": "rationale",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L247",
+      "_origin": "ast",
+      "id": "src_refview_ui_panels_measure_panel_rationale_247",
+      "community": 7,
+      "community_name": "MeasurePanel",
+      "norm_label": "run a row's edit once qt has finished delivering the current signal. committing..."
+    },
+    {
       "label": "Lock or unlock one measurement, making its endpoints draggable.",
       "file_type": "rationale",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L255",
+      "source_location": "L270",
       "_origin": "ast",
-      "id": "src_refview_ui_panels_measure_panel_rationale_255",
+      "id": "src_refview_ui_panels_measure_panel_rationale_270",
       "community": 7,
       "community_name": "MeasurePanel",
       "norm_label": "lock or unlock one measurement, making its endpoints draggable."
@@ -9569,7 +9591,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_model_panel",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "model_panel.py"
     },
     {
@@ -9590,8 +9612,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_refview_ui_panels_model_panel_modelpanel_build",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -9646,7 +9668,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_model_panel_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "what was imported and which way up it should stand."
     },
     {
@@ -9668,7 +9690,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_section_panel",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "section_panel.py"
     },
     {
@@ -9689,8 +9711,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_refview_ui_panels_section_panel_sectionpanel_build",
-      "community": 2,
-      "community_name": "SectionPanel",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -9811,7 +9833,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_section_panel_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "cross-section controls: the cutting plane, what it keeps and how it reads."
     },
     {
@@ -9866,7 +9888,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_shading_panel",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "shading_panel.py"
     },
     {
@@ -9887,8 +9909,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_refview_ui_panels_shading_panel_shadingpanel_build",
-      "community": 20,
-      "community_name": "ShadingPanel",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._build()"
     },
     {
@@ -10009,7 +10031,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_panels_shading_panel_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "shading mode, lighting, surface material and scene furniture controls."
     },
     {
@@ -10107,8 +10129,8 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_refview_ui_picking_surfacepicker_point",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".point()"
     },
     {
@@ -10118,8 +10140,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_ui_picking_py_ndarray",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "ndarray"
     },
     {
@@ -10129,8 +10151,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "src_refview_ui_picking_surfacepicker_plane_point",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".plane_point()"
     },
     {
@@ -10140,8 +10162,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_refview_ui_picking_surfacepicker_world_per_pixel",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": ".world_per_pixel()"
     },
     {
@@ -10195,8 +10217,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "src_refview_ui_picking_rationale_39",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "surface point under the cursor, optionally snapped to a vertex."
     },
     {
@@ -10206,8 +10228,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "src_refview_ui_picking_rationale_49",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "point on the camera-facing plane through ``anchor``. this is where free-..."
     },
     {
@@ -10217,8 +10239,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "src_refview_ui_picking_rationale_57",
-      "community": 47,
-      "community_name": "GL Texture Wrapper",
+      "community": 4,
+      "community_name": "AnnotateTool",
       "norm_label": "screen-to-world scale at a given depth along the view direction."
     },
     {
@@ -10239,8 +10261,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_state",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "state.py"
     },
     {
@@ -10250,7 +10272,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "viewerstate"
     },
@@ -10261,8 +10283,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qobject",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 37,
+      "community_name": "ViewerState",
       "norm_label": "qobject"
     },
     {
@@ -10272,8 +10294,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_init",
-      "community": 17,
-      "community_name": "MeasurementSettings",
+      "community": 42,
+      "community_name": ".__init__",
       "norm_label": ".__init__()"
     },
     {
@@ -10283,7 +10305,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_render",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_render()"
     },
@@ -10294,7 +10316,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_camera",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_camera()"
     },
@@ -10305,7 +10327,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_measurements",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_measurements()"
     },
@@ -10316,7 +10338,7 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_annotations",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_annotations()"
     },
@@ -10327,7 +10349,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_bookmarks",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_bookmarks()"
     },
@@ -10338,7 +10360,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_notify_channel",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".notify_channel()"
     },
@@ -10349,7 +10371,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_do",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".do()"
     },
@@ -10360,7 +10382,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_undo",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".undo()"
     },
@@ -10371,7 +10393,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_redo",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".redo()"
     },
@@ -10382,7 +10404,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_step",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "._step()"
     },
@@ -10393,7 +10415,7 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_load_mesh",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".load_mesh()"
     },
@@ -10404,7 +10426,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_ui_state_py_path",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "path"
     },
@@ -10415,7 +10437,7 @@
       "source_location": "L158",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_oriented",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "._oriented()"
     },
@@ -10426,7 +10448,7 @@
       "source_location": "L162",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_set_orientation",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".set_orientation()"
     },
@@ -10437,7 +10459,7 @@
       "source_location": "L190",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_move_marks",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "._move_marks()"
     },
@@ -10448,7 +10470,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "src_refview_ui_state_py_ndarray",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "ndarray"
     },
@@ -10459,7 +10481,7 @@
       "source_location": "L216",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_adopt_units",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".adopt_units()"
     },
@@ -10470,7 +10492,7 @@
       "source_location": "L228",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_load_matcap",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".load_matcap()"
     },
@@ -10481,7 +10503,7 @@
       "source_location": "L239",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_frame_object",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".frame_object()"
     },
@@ -10492,7 +10514,7 @@
       "source_location": "L249",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_to_session",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".to_session()"
     },
@@ -10503,7 +10525,7 @@
       "source_location": "L263",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_apply_session",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".apply_session()"
     },
@@ -10514,7 +10536,7 @@
       "source_location": "L292",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_save_session",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".save_session()"
     },
@@ -10525,7 +10547,7 @@
       "source_location": "L297",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_load_session",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".load_session()"
     },
@@ -10536,7 +10558,7 @@
       "source_location": "L304",
       "_origin": "ast",
       "id": "src_refview_ui_state_viewerstate_default_session_path",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": ".default_session_path()"
     },
@@ -10547,8 +10569,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_1",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "the observable document shared by the viewport and the side panels. panels..."
     },
     {
@@ -10558,7 +10580,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_30",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "everything the viewer displays, plus change notifications."
     },
@@ -10569,7 +10591,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_82",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "emit the change signal a command's channel maps onto."
     },
@@ -10580,7 +10602,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_96",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "run an edit through the history so it can be undone. ``apply=false`` records a..."
     },
@@ -10591,7 +10613,7 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_126",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "load a model, centre it on the origin and frame it in the view. the current..."
     },
@@ -10602,7 +10624,7 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_159",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "turn a freshly read mesh the right way up and centre it."
     },
@@ -10613,7 +10635,7 @@
       "source_location": "L163",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_163",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "turn the model, bringing the marks made on it along. measurements and..."
     },
@@ -10624,7 +10646,7 @@
       "source_location": "L191",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_191",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "rotate the measurements and annotations onto the turned model. a point sits at..."
     },
@@ -10635,7 +10657,7 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_217",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "take the display unit from the file when the format declares one. only gltf..."
     },
@@ -10646,7 +10668,7 @@
       "source_location": "L229",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_229",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "set the active matcap, or fall back to the built-in one."
     },
@@ -10657,7 +10679,7 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_240",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "fit the current mesh in the view without changing the direction."
     },
@@ -10668,7 +10690,7 @@
       "source_location": "L264",
       "_origin": "ast",
       "id": "src_refview_ui_state_rationale_264",
-      "community": 5,
+      "community": 37,
       "community_name": "ViewerState",
       "norm_label": "adopt a session's settings, leaving the loaded mesh alone."
     },
@@ -10734,8 +10756,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_viewport",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "viewport.py"
     },
     {
@@ -10745,8 +10767,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_refview_ui_viewport_configure_surface_format",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "configure_surface_format()"
     },
     {
@@ -10779,7 +10801,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_viewport_viewport_init",
       "community": 5,
-      "community_name": "ViewerState",
+      "community_name": "ViewportOverlay",
       "norm_label": ".__init__()"
     },
     {
@@ -11152,8 +11174,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_refview_ui_viewport_rationale_1",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 17,
+      "community_name": "viewport.py",
       "norm_label": "the interactive 3d view. navigation is: left-drag orbits about the point under..."
     },
     {
@@ -11163,8 +11185,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_refview_ui_viewport_rationale_41",
-      "community": 5,
-      "community_name": "ViewerState",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "request a core-profile context; must run before the qapplication."
     },
     {
@@ -11307,7 +11329,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_widgets",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "widgets.py"
     },
     {
@@ -11405,8 +11427,8 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_colorbutton",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "colorbutton"
     },
     {
@@ -11416,8 +11438,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qpushbutton",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "qpushbutton"
     },
     {
@@ -11438,8 +11460,8 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_colorbutton_color",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": ".color()"
     },
     {
@@ -11449,8 +11471,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_colorbutton_set_color",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": ".set_color()"
     },
     {
@@ -11460,8 +11482,8 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_colorbutton_refresh",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._refresh()"
     },
     {
@@ -11471,8 +11493,8 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_colorbutton_choose",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "._choose()"
     },
     {
@@ -11482,7 +11504,7 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_scrollable",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "scrollable()"
     },
@@ -11493,7 +11515,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qscrollarea",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "qscrollarea"
     },
@@ -11504,8 +11526,8 @@
       "source_location": "L156",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_form_group",
-      "community": 11,
-      "community_name": "form_group",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "form_group()"
     },
     {
@@ -11515,8 +11537,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qgroupbox",
-      "community": 11,
-      "community_name": "form_group",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "qgroupbox"
     },
     {
@@ -11526,8 +11548,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "qformlayout",
-      "community": 11,
-      "community_name": "form_group",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "qformlayout"
     },
     {
@@ -11538,7 +11560,7 @@
       "_origin": "ast",
       "id": "src_refview_ui_widgets_rationale_1",
       "community": 11,
-      "community_name": "form_group",
+      "community_name": "main_window.py",
       "norm_label": "small reusable controls shared by the side panels."
     },
     {
@@ -11570,8 +11592,8 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_rationale_105",
-      "community": 52,
-      "community_name": "ColorButton",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "a swatch button that opens a colour picker. colours are exchanged as 0-1 rgb..."
     },
     {
@@ -11581,7 +11603,7 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_rationale_143",
-      "community": 31,
+      "community": 11,
       "community_name": "main_window.py",
       "norm_label": "wrap a panel so it scrolls when it is taller than the dock. the controls keep..."
     },
@@ -11592,8 +11614,8 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "src_refview_ui_widgets_rationale_157",
-      "community": 11,
-      "community_name": "form_group",
+      "community": 57,
+      "community_name": "SliderSpin",
       "norm_label": "a titled group box with a form layout, ready to be filled."
     },
     {
@@ -11603,8 +11625,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_annotation",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_annotation.py"
     },
     {
@@ -11614,8 +11636,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "tests_test_annotation_line_stroke",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "line_stroke()"
     },
     {
@@ -11636,8 +11658,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tests_test_annotation_test_erasing_the_middle_splits_a_stroke_in_two",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_erasing_the_middle_splits_a_stroke_in_two()"
     },
     {
@@ -11647,8 +11669,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_test_annotation_test_erasing_keeps_the_brush_and_drops_stubs",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_erasing_keeps_the_brush_and_drops_stubs()"
     },
     {
@@ -11658,8 +11680,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_test_annotation_test_erasing_nothing_reports_no_change",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_erasing_nothing_reports_no_change()"
     },
     {
@@ -11680,8 +11702,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "tests_test_annotation_test_settings_stamp_the_brush_onto_new_strokes",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_settings_stamp_the_brush_onto_new_strokes()"
     },
     {
@@ -11691,8 +11713,8 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "tests_test_annotation_test_each_segment_becomes_six_vertices",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_each_segment_becomes_six_vertices()"
     },
     {
@@ -11702,8 +11724,8 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "tests_test_annotation_test_a_closed_stroke_gains_the_wrapping_segment",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "test_a_closed_stroke_gains_the_wrapping_segment()"
     },
     {
@@ -11724,8 +11746,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_annotation_rationale_1",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "surface annotations: erasing, splitting and the geometry handed to gl."
     },
     {
@@ -11735,8 +11757,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "tests_test_annotation_rationale_13",
-      "community": 58,
-      "community_name": "test_annotation.py",
+      "community": 0,
+      "community_name": "Stroke",
       "norm_label": "a stroke running along +x, one unit apart, with +y normals."
     },
     {
@@ -11758,7 +11780,7 @@
       "_origin": "ast",
       "id": "tests_test_camera",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_camera.py"
     },
     {
@@ -11769,7 +11791,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_py_fixture",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "fixture"
     },
     {
@@ -11780,7 +11802,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_camera",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "camera()"
     },
     {
@@ -11791,7 +11813,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_framing_fits_the_bounds",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_framing_fits_the_bounds()"
     },
     {
@@ -11802,7 +11824,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_projecting_the_target_lands_in_the_centre",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_projecting_the_target_lands_in_the_centre()"
     },
     {
@@ -11813,7 +11835,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_ray_through_the_centre_points_along_the_view",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_ray_through_the_centre_points_along_the_view()"
     },
     {
@@ -11824,7 +11846,7 @@
       "_origin": "ast",
       "id": "parametrize",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "parametrize"
     },
     {
@@ -11835,7 +11857,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_zoom_keeps_the_anchor_under_the_cursor",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_zoom_keeps_the_anchor_under_the_cursor()"
     },
     {
@@ -11846,7 +11868,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_orbit_preserves_the_distance_to_the_pivot",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_orbit_preserves_the_distance_to_the_pivot()"
     },
     {
@@ -11857,7 +11879,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_orbit_keeps_the_pivot_under_the_cursor",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_orbit_keeps_the_pivot_under_the_cursor()"
     },
     {
@@ -11868,7 +11890,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_orbit_never_flips_over_the_pole",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_orbit_never_flips_over_the_pole()"
     },
     {
@@ -11879,7 +11901,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_pan_moves_eye_and_target_together",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_pan_moves_eye_and_target_together()"
     },
     {
@@ -11890,7 +11912,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_zoom_is_clamped_to_the_scene_radius",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_zoom_is_clamped_to_the_scene_radius()"
     },
     {
@@ -11901,7 +11923,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_test_orthographic_matches_perspective_framing",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "test_orthographic_matches_perspective_framing()"
     },
     {
@@ -11911,8 +11933,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "tests_test_camera_test_serialisation_round_trip",
-      "community": 45,
-      "community_name": "Morton Curve Spatial Index",
+      "community": 33,
+      "community_name": "test_camera.py",
       "norm_label": "test_serialisation_round_trip()"
     },
     {
@@ -11923,7 +11945,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_rationale_1",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "camera behaviour: framing, projection round trips and the navigation gestures."
     },
     {
@@ -11934,7 +11956,7 @@
       "_origin": "ast",
       "id": "tests_test_camera_rationale_59",
       "community": 33,
-      "community_name": "Camera Tests",
+      "community_name": "test_camera.py",
       "norm_label": "a drag applies many small steps, and the pivot barely moves on screen. it is..."
     },
     {
@@ -12099,7 +12121,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_mesh_io.py"
     },
     {
@@ -12110,7 +12132,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_write_binary_stl",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "_write_binary_stl()"
     },
     {
@@ -12121,7 +12143,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_write_ascii_stl",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "_write_ascii_stl()"
     },
     {
@@ -12132,7 +12154,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_write_glb",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "_write_glb()"
     },
     {
@@ -12143,7 +12165,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_binary_stl_welds_shared_corners",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_binary_stl_welds_shared_corners()"
     },
     {
@@ -12154,7 +12176,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_ascii_stl_matches_the_binary_one",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_ascii_stl_matches_the_binary_one()"
     },
     {
@@ -12165,7 +12187,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_glb_applies_node_transforms_and_reports_metres",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_glb_applies_node_transforms_and_reports_metres()"
     },
     {
@@ -12176,7 +12198,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_glb_computes_normals_when_the_file_has_none",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_glb_computes_normals_when_the_file_has_none()"
     },
     {
@@ -12187,7 +12209,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_an_unsupported_suffix_is_reported",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_an_unsupported_suffix_is_reported()"
     },
     {
@@ -12197,8 +12219,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_obj_quads_are_triangulated",
-      "community": 40,
-      "community_name": "load_obj",
+      "community": 35,
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_obj_quads_are_triangulated()"
     },
     {
@@ -12208,8 +12230,8 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "tests_test_mesh_io_test_obj_relative_indices_still_load",
-      "community": 40,
-      "community_name": "load_obj",
+      "community": 35,
+      "community_name": "test_mesh_io.py",
       "norm_label": "test_obj_relative_indices_still_load()"
     },
     {
@@ -12220,7 +12242,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_rationale_1",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "reading the mesh formats the viewer imports."
     },
     {
@@ -12231,7 +12253,7 @@
       "_origin": "ast",
       "id": "tests_test_mesh_io_rationale_50",
       "community": 35,
-      "community_name": "mesh_io.py",
+      "community_name": "test_mesh_io.py",
       "norm_label": "a minimal glb holding the tetrahedron under a scaled node."
     },
     {
@@ -12241,8 +12263,8 @@
       "source_location": "L145",
       "_origin": "ast",
       "id": "tests_test_mesh_io_rationale_145",
-      "community": 40,
-      "community_name": "load_obj",
+      "community": 35,
+      "community_name": "test_mesh_io.py",
       "norm_label": "negative face indices count back from the most recent vertex."
     },
     {
@@ -12462,7 +12484,7 @@
       "_origin": "ast",
       "id": "tests_test_obj_loader_test_bounds_of_an_empty_point_set",
       "community": 28,
-      "community_name": "ndarray",
+      "community_name": "Mesh",
       "norm_label": "test_bounds_of_an_empty_point_set()"
     },
     {
@@ -12659,8 +12681,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_raycast_py_fixture",
-      "community": 50,
-      "community_name": "Mesh",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "fixture"
     },
     {
@@ -12670,8 +12692,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "tests_test_raycast_quad",
-      "community": 50,
-      "community_name": "Mesh",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "quad()"
     },
     {
@@ -12769,8 +12791,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_test_raycast_rationale_14",
-      "community": 50,
-      "community_name": "Mesh",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "two triangles covering the unit square on the z = 0 plane."
     },
     {
@@ -12968,7 +12990,7 @@
       "_origin": "ast",
       "id": "tests_test_session_test_length_formatting_uses_the_display_unit",
       "community": 17,
-      "community_name": "MeasurementSettings",
+      "community_name": "viewport.py",
       "norm_label": "test_length_formatting_uses_the_display_unit()"
     },
     {
@@ -13044,8 +13066,8 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "tests_test_session_test_sidecar_path_sits_next_to_the_model",
-      "community": 42,
-      "community_name": "state.py",
+      "community": 43,
+      "community_name": "Session",
       "norm_label": "test_sidecar_path_sits_next_to_the_model()"
     },
     {
@@ -13088,8 +13110,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_spatial",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_spatial.py"
     },
     {
@@ -13099,8 +13121,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "tests_test_spatial_grid",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "_grid()"
     },
     {
@@ -13110,8 +13132,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "tests_test_spatial_test_an_empty_index_returns_no_candidates",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_an_empty_index_returns_no_candidates()"
     },
     {
@@ -13121,8 +13143,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "tests_test_spatial_test_every_triangle_lands_in_exactly_one_leaf",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_every_triangle_lands_in_exactly_one_leaf()"
     },
     {
@@ -13132,8 +13154,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "tests_test_spatial_test_the_index_finds_the_triangle_a_ray_actually_hits",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_the_index_finds_the_triangle_a_ray_actually_hits()"
     },
     {
@@ -13143,8 +13165,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "tests_test_spatial_test_a_ray_that_misses_the_model_is_pruned_away",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_a_ray_that_misses_the_model_is_pruned_away()"
     },
     {
@@ -13154,8 +13176,8 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "tests_test_spatial_test_the_index_is_built_once_and_kept",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "test_the_index_is_built_once_and_kept()"
     },
     {
@@ -13165,8 +13187,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_spatial_rationale_1",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "the picking accelerator: it must be fast without changing any answer."
     },
     {
@@ -13176,8 +13198,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "tests_test_spatial_rationale_13",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "a bumpy height field, so rays hit different triangles at different depths."
     },
     {
@@ -13187,8 +13209,8 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "tests_test_spatial_rationale_43",
-      "community": 59,
-      "community_name": "test_spatial.py",
+      "community": 8,
+      "community_name": "raycast_mesh",
       "norm_label": "the pruned candidate set must never miss the true intersection."
     },
     {
@@ -13198,8 +13220,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tools_generate_matcaps",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "generate_matcaps.py"
     },
     {
@@ -13209,8 +13231,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "tools_generate_matcaps_matcappreset",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "matcappreset"
     },
     {
@@ -13220,8 +13242,8 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "tools_generate_matcaps_normalize",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "_normalize()"
     },
     {
@@ -13231,8 +13253,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "color",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "color"
     },
     {
@@ -13242,8 +13264,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tools_generate_matcaps_py_ndarray",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "ndarray"
     },
     {
@@ -13253,8 +13275,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "tools_generate_matcaps_render",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "render()"
     },
     {
@@ -13264,8 +13286,8 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "tools_generate_matcaps_save",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "save()"
     },
     {
@@ -13275,8 +13297,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tools_generate_matcaps_py_path",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "path"
     },
     {
@@ -13286,8 +13308,8 @@
       "source_location": "L167",
       "_origin": "ast",
       "id": "tools_generate_matcaps_main",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "main()"
     },
     {
@@ -13297,8 +13319,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tools_generate_matcaps_rationale_1",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "render the bundled matcap set. each preset is evaluated analytically over the..."
     },
     {
@@ -13308,8 +13330,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "tools_generate_matcaps_rationale_34",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "parameters of one analytic sphere render."
     },
     {
@@ -13319,8 +13341,8 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "tools_generate_matcaps_rationale_124",
-      "community": 37,
-      "community_name": "load_matcap_pixels",
+      "community": 1,
+      "community_name": "application.py",
       "norm_label": "return an ``(size, size, 4)`` uint8 image for one preset."
     },
     {
@@ -13334,7 +13356,7 @@
       "contributor": null,
       "community": 15,
       "norm_label": "readme.md",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme"
     },
     {
@@ -13388,9 +13410,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 15,
+      "community": 44,
       "norm_label": "environment.yml",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "environment.yml",
       "id": "environment"
     },
     {
@@ -13402,9 +13424,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 15,
+      "community": 47,
       "norm_label": "release.yml",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "github_workflows_release"
     },
     {
@@ -13419,7 +13441,7 @@
       "rationale": "The package is split so geometry and document logic can be tested without a display, every GL call lives in one place, and Qt panels never reach into widgets they do not own.",
       "community": 15,
       "norm_label": "three-layer separation: core, render, ui",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_layer_separation"
     },
     {
@@ -13434,7 +13456,7 @@
       "rationale": "All geometry and document logic stays testable without a display, which is exactly what the pytest suite exercises.",
       "community": 15,
       "norm_label": "core never imports qt",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_core_never_imports_qt"
     },
     {
@@ -13449,7 +13471,7 @@
       "rationale": "The viewport hands the renderer a camera and a settings object and gets a frame back. The renderer also restores neutral GL state, because the 2D overlay is painted with QPainter on the same context.",
       "community": 15,
       "norm_label": "render owns every gl call",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_render_owns_every_gl_call"
     },
     {
@@ -13464,7 +13486,7 @@
       "rationale": "Panels mutate the settings held by ViewerState and emit a change signal; the viewport listens and repaints. No panel reaches into another panel's widgets.",
       "community": 15,
       "norm_label": "panels edit dataclasses, never foreign widgets",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_panels_edit_dataclasses"
     },
     {
@@ -13479,7 +13501,7 @@
       "rationale": "Four generic commands -- set attributes, add, remove, replace -- cover measurements, annotations and bookmarks alike, so undo needs no new code when a new kind of object turns up.",
       "community": 15,
       "norm_label": "every document edit is a command",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_every_edit_is_a_command"
     },
     {
@@ -13494,7 +13516,7 @@
       "rationale": "Screen-space drawing gives reliable line thickness and antialiasing on every driver, keeps the numbers legible in front of the model, and makes the text labels free.",
       "community": 15,
       "norm_label": "measurements drawn in screen space with qpainter",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_measurements_drawn_in_screen_space"
     },
     {
@@ -13509,7 +13531,7 @@
       "rationale": "Paint on the back of the model has to be hidden by it, so strokes are real geometry. Each segment is a quad the vertex shader widens in screen space, keeping the brush a constant pixel width at any zoom -- something glLineWidth cannot promise on a core profile.",
       "community": 15,
       "norm_label": "annotations drawn as widened geometry",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_annotations_drawn_as_geometry"
     },
     {
@@ -13522,9 +13544,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Every click, hover and painted sample casts a ray, so picking speed decides whether a large scan still feels direct. Triangles are sorted along a Morton curve into leaf boxes; a ray tests every box in one vectorised sweep and intersects only the triangles in the leaves it entered -- about 0.5 ms per ray against 90 ms brute force on a half-million-triangle mesh.",
-      "community": 39,
+      "community": 8,
       "norm_label": "morton-curve leaf boxes for picking",
-      "community_name": "TriangleIndex",
+      "community_name": "raycast_mesh",
       "id": "readme_morton_curve_picking"
     },
     {
@@ -13569,7 +13591,7 @@
       "rationale": "Deriving the extent from the field of view and distance keeps the object the same size on screen when the projection is switched.",
       "community": 15,
       "norm_label": "orthographic extent derived from fov and distance",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_orthographic_from_fov"
     },
     {
@@ -13582,9 +13604,9 @@
       "author": null,
       "contributor": null,
       "rationale": "A shadow map, a depth-and-normal pre-pass and one occlusion pass cost a few milliseconds between them, so the view stays live while it is orbited. Neither effect traces a ray.",
-      "community": 49,
+      "community": 56,
       "norm_label": "high quality without ray tracing",
-      "community_name": "CHANGELOG.md",
+      "community_name": "settings.py",
       "id": "readme_high_quality_no_ray_tracing"
     },
     {
@@ -13597,9 +13619,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Because the disc is real geometry rather than a drawn guide it receives the cast shadow -- which is what makes contact and height readable.",
-      "community": 49,
+      "community": 56,
       "norm_label": "the pedestal is ordinary geometry so it catches the shadow",
-      "community_name": "CHANGELOG.md",
+      "community_name": "settings.py",
       "id": "readme_pedestal_reads_contact"
     },
     {
@@ -13614,7 +13636,7 @@
       "rationale": "Flooding the exposed interior with a flat colour makes the cut read as solid material rather than as a hollow shell, and the profile at the cut is traced as a bright contour.",
       "community": 15,
       "norm_label": "the cut interior is flooded flat",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_cross_section_flat_flood"
     },
     {
@@ -13629,7 +13651,7 @@
       "rationale": "Pointing REFVIEW_RESOURCES at another directory lets an artist use their own matcap and model library without touching the package.",
       "community": 15,
       "norm_label": "refview_resources resource override",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "README.md",
       "id": "readme_resource_env_override"
     },
     {
@@ -13642,9 +13664,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Newer Qt builds need a more recent MSVC runtime than many Windows machines have installed, and fail with 'DLL load failed while importing QtCore'.",
-      "community": 15,
+      "community": 44,
       "norm_label": "pyside6 pinned below 6.8",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "environment.yml",
       "id": "readme_pyside6_pinned_below_68"
     },
     {
@@ -13657,9 +13679,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Pushing a tag such as v1.1.0 builds self-contained archives for Windows, Intel macOS and Apple Silicon macOS, which the release workflow publishes automatically.",
-      "community": 15,
+      "community": 47,
       "norm_label": "tag-driven desktop releases",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "readme_desktop_release_tags"
     },
     {
@@ -13730,9 +13752,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Soft shadows and screen-space ambient occlusion are approximations rather than traced rays, so a full frame costs a few milliseconds and the view stays live.",
-      "community": 49,
+      "community": 56,
       "norm_label": "high quality shading mode (1.1.0)",
-      "community_name": "CHANGELOG.md",
+      "community_name": "settings.py",
       "id": "changelog_high_quality_shading"
     },
     {
@@ -13789,9 +13811,9 @@
       "author": null,
       "contributor": null,
       "rationale": "On a half-million-triangle scan a pick went from about 90 ms to 0.5 ms, which is what keeps hovering, measuring and painting responsive.",
-      "community": 39,
+      "community": 8,
       "norm_label": "picking about a hundred times faster",
-      "community_name": "TriangleIndex",
+      "community_name": "raycast_mesh",
       "id": "changelog_morton_picking_speedup"
     },
     {
@@ -13878,9 +13900,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 15,
+      "community": 44,
       "norm_label": "refview conda environment",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "environment.yml",
       "id": "environment_refview_conda_env"
     },
     {
@@ -13892,9 +13914,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 15,
+      "community": 44,
       "norm_label": "python 3.11 from conda-forge",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "environment.yml",
       "id": "environment_python_311"
     },
     {
@@ -13907,9 +13929,9 @@
       "author": null,
       "contributor": null,
       "rationale": "The pip wheels bundle their own OpenBLAS and Qt runtimes, which avoids the mismatched-DLL problems a mixed conda/pip stack runs into on Windows.",
-      "community": 15,
+      "community": 44,
       "norm_label": "numpy, pyside6 and pyopengl installed with pip",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "environment.yml",
       "id": "environment_pip_installed_binaries"
     },
     {
@@ -13921,9 +13943,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 15,
+      "community": 47,
       "norm_label": "release triggered by a v* tag",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "github_workflows_release_tag_triggered_release"
     },
     {
@@ -13936,9 +13958,9 @@
       "author": null,
       "contributor": null,
       "rationale": "fail-fast is off, so one platform failing still produces the other two archives.",
-      "community": 15,
+      "community": 47,
       "norm_label": "windows, intel macos and apple silicon matrix",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "github_workflows_release_three_platform_matrix"
     },
     {
@@ -13951,9 +13973,9 @@
       "author": null,
       "contributor": null,
       "rationale": "Windows is archived with Compress-Archive on the single exe; macOS uses ditto so the .app bundle keeps its resource forks.",
-      "community": 15,
+      "community": 47,
       "norm_label": "pyinstaller build from packaging/refview.spec",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "github_workflows_release_pyinstaller_build"
     },
     {
@@ -13966,9 +13988,9 @@
       "author": null,
       "contributor": null,
       "rationale": "The three archives are downloaded as artifacts and attached with gh release create --verify-tag.",
-      "community": 15,
+      "community": 47,
       "norm_label": "publish job creates the github release",
-      "community_name": "Build, Packaging and Architecture Rules",
+      "community_name": "release.yml",
       "id": "github_workflows_release_publish_job"
     },
     {
@@ -13981,9 +14003,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render on a matching flat backdrop. Matte terracotta base with an almost invisible specular lobe, key light from the upper left and a cool dim fill from the lower right; the silhouette darkens to a soft rim. This is the sculpting default: no highlight to compete with the form, so surface transitions read as clay.",
-      "community": 37,
+      "community": 1,
       "norm_label": "terracotta clay matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_clay_terracotta_matcap"
     },
     {
@@ -13996,9 +14018,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render, very dark low-key base against a blue-grey backdrop. Two distinct broad highlights are visible -- the warm key at the upper left and the cool fill at the lower right -- which is what keeps a near-black surface readable.",
-      "community": 37,
+      "community": 1,
       "norm_label": "charcoal matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_charcoal_matcap"
     },
     {
@@ -14011,9 +14033,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render in saturated green with a soft, wide specular lobe and noticeable fill bounce, giving a translucent stone look rather than a plastic one.",
-      "community": 37,
+      "community": 1,
       "norm_label": "jade matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_jade_matcap"
     },
     {
@@ -14026,9 +14048,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render, neutral grey with a small, intensely bright specular hotspot and a strong cool rim -- the low-roughness end of the bundled set. The tight highlight makes high-frequency surface noise obvious, which is how it reads dents and tool marks.",
-      "community": 37,
+      "community": 1,
       "norm_label": "steel matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_steel_matcap"
     },
     {
@@ -14041,9 +14063,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render, bright near-neutral base with a broad soft highlight and a long gradient into shadow. The high key level flattens fine detail and shows large-form volume, the opposite trade to the steel matcap.",
-      "community": 37,
+      "community": 1,
       "norm_label": "studio white matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_studio_white_matcap"
     },
     {
@@ -14056,9 +14078,9 @@
       "author": null,
       "contributor": null,
       "rationale": "512x512 analytic sphere render, warm pink base with a warm red fill instead of the cool default, and a very soft falloff -- a waxy, subsurface-like look for figure work.",
-      "community": 37,
+      "community": 1,
       "norm_label": "wax skin matcap",
-      "community_name": "load_matcap_pixels",
+      "community_name": "application.py",
       "id": "resources_matcaps_wax_skin_matcap"
     }
   ],
@@ -19240,28 +19262,40 @@
       "confidence_score": 1.0
     },
     {
-      "relation": "calls",
-      "context": "call",
+      "relation": "references",
+      "context": "parameter_type",
       "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L240",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_changed",
-      "target": "src_refview_core_commands_setattributes"
+      "source": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "target": "src_refview_core_commands_setattributes",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L258",
+      "source_location": "L241",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_changed",
+      "target": "src_refview_core_commands_setattributes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L274",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_toggle_lock",
-      "target": "src_refview_core_commands_setattributes"
+      "target": "src_refview_core_commands_setattributes",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -19687,7 +19721,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L282",
+      "source_location": "L298",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_delete_selected",
@@ -19836,7 +19870,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L291",
+      "source_location": "L307",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_clear_all",
@@ -21942,6 +21976,18 @@
     },
     {
       "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L246",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "target": "src_refview_core_measurement_measurement",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
@@ -21957,7 +22003,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L270",
+      "source_location": "L286",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_selected_measurement",
@@ -21969,7 +22015,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L254",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_toggle_lock",
@@ -38700,7 +38746,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L303",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38722,7 +38768,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L296",
+      "source_location": "L312",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38733,7 +38779,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38744,7 +38790,18 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L276",
+      "source_location": "L246",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_measurepanel",
+      "target": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38766,7 +38823,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L266",
+      "source_location": "L282",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38788,7 +38845,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L245",
+      "source_location": "L260",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38843,7 +38900,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L270",
+      "source_location": "L286",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -38876,7 +38933,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L254",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel",
@@ -39041,7 +39098,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L266",
+      "source_location": "L282",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_on_double_clicked",
@@ -39065,7 +39122,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L245",
+      "source_location": "L260",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_clicked",
@@ -39077,7 +39134,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L277",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_delete_selected",
@@ -39089,7 +39146,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L271",
+      "source_location": "L287",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_selected_measurement",
@@ -39113,11 +39170,23 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L248",
+      "source_location": "L263",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_clicked",
       "target": "src_refview_ui_panels_measure_panel_measurepanel_measurement_at",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L239",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_changed",
+      "target": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
       "confidence_score": 1.0
     },
     {
@@ -39136,7 +39205,30 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L252",
+      "source_location": "L272",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_measurepanel_toggle_lock",
+      "target": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L247",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_refview_ui_panels_measure_panel_rationale_247",
+      "target": "src_refview_ui_panels_measure_panel_measurepanel_commit_later",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/refview/ui/panels/measure_panel.py",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_on_item_clicked",
@@ -39147,10 +39239,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L255",
+      "source_location": "L270",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_refview_ui_panels_measure_panel_rationale_255",
+      "source": "src_refview_ui_panels_measure_panel_rationale_270",
       "target": "src_refview_ui_panels_measure_panel_measurepanel_toggle_lock",
       "confidence_score": 1.0
     },
@@ -39159,7 +39251,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L268",
+      "source_location": "L284",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_on_double_clicked",
@@ -39171,7 +39263,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src/refview/ui/panels/measure_panel.py",
-      "source_location": "L297",
+      "source_location": "L313",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_refview_ui_panels_measure_panel_measurepanel_center_selected",
@@ -45769,5 +45861,5 @@
       "source_file": "environment.yml"
     }
   ],
-  "built_at_commit": "91c6d22a03d7d5399a70069a9e755328de752cf7"
+  "built_at_commit": "05a8832ea1d7bedbdbcc269ba732522240deb805"
 }

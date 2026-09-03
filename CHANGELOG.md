@@ -4,6 +4,18 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.2.0]
+
+### Added
+
+- **Update check on startup.** The viewer asks GitHub for the newest release
+  when it opens and, if a later version exists, says so and offers the release
+  page. The lookup runs off the UI thread, so a slow or unreachable network
+  never delays the window, and the startup check stays quiet: nothing is shown
+  when you are up to date, when you are offline, or for a version you told it
+  to skip. **Help → Check for Updates...** asks on demand and always reports
+  what it found.
+
 ## [1.1.2]
 
 ### Fixed
