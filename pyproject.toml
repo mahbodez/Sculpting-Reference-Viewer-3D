@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "1.1.0"
+version = "1.1.1"
 description = "A 3D reference viewer for clay sculpting: matcaps, shading modes and on-model measurements."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
 license = { text = "MIT" }
 dependencies = [
     "numpy>=1.24",
@@ -18,7 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4", "ruff>=0.4"]
-release = ["pyinstaller>=6.10,<7"]
+# Pillow lets PyInstaller convert the PNG icon into .ico/.icns at build time.
+release = ["pyinstaller>=6.10,<7", "pillow>=10.0"]
 
 [project.scripts]
 refview = "refview.application:main"

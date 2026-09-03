@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
+from .. import APP_NAME
 from ..core.annotation import AnnotateMode
 from ..core.camera import Projection
 from ..core.commands import AddItem
@@ -100,7 +101,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, state: ViewerState | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("Reference Viewer")
+        self.setWindowTitle(APP_NAME)
         self.resize(1440, 900)
         self.setAcceptDrops(True)
 
@@ -417,7 +418,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open Model", str(error))
             return
         self._session_path = self._state.default_session_path()
-        self.setWindowTitle(f"Reference Viewer - {Path(path).name}")
+        self.setWindowTitle(f"{APP_NAME} - {Path(path).name}")
         self._refresh_panels()
 
     def _open_model(self) -> None:

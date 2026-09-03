@@ -22,6 +22,7 @@ def _bundled_root() -> Path | None:
         return None
     return Path(getattr(sys, "_MEIPASS", PACKAGE_ROOT))
 
+
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
 
 
@@ -41,6 +42,10 @@ def matcap_dir() -> Path:
 
 def model_dir() -> Path:
     return resources_dir() / "models"
+
+
+def image_path(name: str) -> Path:
+    return resources_dir() / "images" / name
 
 
 def available_matcaps() -> list[Path]:
