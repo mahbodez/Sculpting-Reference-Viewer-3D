@@ -30,3 +30,16 @@ _out.txt
 !/resources/matcaps/steel.png
 !/resources/matcaps/studio_white.png
 !/resources/matcaps/wax_skin.png
+!/resources/matcaps/clay_grey.png
+!/resources/images/*
+
+# graphify cache
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+
+
+# Agent instructions
+.claude
+.github/copilot*
+CLAUDE.md
