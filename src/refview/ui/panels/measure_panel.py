@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -236,11 +236,26 @@ class MeasurePanel(Panel):
         if not changes:
             return
         verb = "Rename" if "name" in changes else ("Show" if visible else "Hide")
-        self.state.do(
+        self._commit_later(
+            measurement,
             SetAttributes(
                 measurement, changes, text=f"{verb} {measurement.name}", channel=MEASUREMENTS
-            )
+            ),
         )
+
+    def _commit_later(self, measurement: Measurement, command: SetAttributes) -> None:
+        """Run a row's edit once Qt has finished delivering the current signal.
+
+        Committing rebuilds the tree, and destroying the very item whose signal
+        is still being delivered takes the application down with it, so the
+        edit is queued rather than applied in the slot.
+        """
+
+        def commit() -> None:
+            if any(existing is measurement for existing in self.state.measurements):
+                self.state.do(command)
+
+        QTimer.singleShot(0, commit)
 
     def _on_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         if column != _LOCK_COLUMN:
@@ -254,13 +269,14 @@ class MeasurePanel(Panel):
     def toggle_lock(self, measurement: Measurement) -> None:
         """Lock or unlock one measurement, making its endpoints draggable."""
         locked = not measurement.locked
-        self.state.do(
+        self._commit_later(
+            measurement,
             SetAttributes(
                 measurement,
                 {"locked": locked},
                 text=f"{'Lock' if locked else 'Unlock'} {measurement.name}",
                 channel=MEASUREMENTS,
-            )
+            ),
         )
 
     def _on_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:

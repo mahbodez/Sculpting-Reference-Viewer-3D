@@ -1,8 +1,8 @@
 {
   "pyproject.toml": {
-    "mtime": 1788383961.138391,
-    "ast_hash": "9e200566f2c9426d653820e8afbc0136",
-    "semantic_hash": "9e200566f2c9426d653820e8afbc0136"
+    "mtime": 1788451550.9113934,
+    "ast_hash": "51fd4b27858b480331842deaa54d50fa",
+    "semantic_hash": ""
   },
   "run.py": {
     "mtime": 1788350726.9724245,
@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1788451116.1376257,
-    "ast_hash": "fcf143136948b9ae29c09413d5651d10",
+    "mtime": 1788451542.4041276,
+    "ast_hash": "e2239188006baa5323387cfda6e773b8",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -20,8 +20,8 @@
     "semantic_hash": "f8be223113d8ccf8fe0404ab86464c18"
   },
   "src/refview/application.py": {
-    "mtime": 1788450905.691186,
-    "ast_hash": "fb98b30bb922b2d17806c6dab734b7c0",
+    "mtime": 1788451716.6712396,
+    "ast_hash": "bfce6e02593b615d176050061f59fe15",
     "semantic_hash": ""
   },
   "src/refview/core/__init__.py": {
@@ -130,8 +130,8 @@
     "semantic_hash": "cb88536cfd8610a4a3f3e4a86b2eb408"
   },
   "src/refview/paths.py": {
-    "mtime": 1788450846.5599675,
-    "ast_hash": "91589e9665d952eea1435cd97ddedd62",
+    "mtime": 1788451519.022898,
+    "ast_hash": "6136152c121e6987a3474be8acf1d821",
     "semantic_hash": ""
   },
   "src/refview/render/__init__.py": {
@@ -185,9 +185,9 @@
     "semantic_hash": "76876bbfec238179e57fa9969b391535"
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1788389957.6553538,
-    "ast_hash": "f7f38629c40a12e07533b7f43ede859a",
-    "semantic_hash": "f7f38629c40a12e07533b7f43ede859a"
+    "mtime": 1788451542.4041276,
+    "ast_hash": "bf480e9d279a304872e0efd910cb59c2",
+    "semantic_hash": ""
   },
   "src/refview/ui/measure_tool.py": {
     "mtime": 1788354400.1372283,

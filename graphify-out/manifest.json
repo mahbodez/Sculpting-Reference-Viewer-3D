@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1788451550.9113934,
-    "ast_hash": "51fd4b27858b480331842deaa54d50fa",
+    "mtime": 1788452378.6063185,
+    "ast_hash": "438c183d281712b28830bb84f946a221",
     "semantic_hash": ""
   },
   "run.py": {
@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1788451542.4041276,
-    "ast_hash": "e2239188006baa5323387cfda6e773b8",
+    "mtime": 1788452378.6398013,
+    "ast_hash": "55e3cf88554ed0b6d199305c14d62838",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -230,9 +230,9 @@
     "semantic_hash": "5c6209aadc5c9d8c1fea02d6b4b47b5f"
   },
   "src/refview/ui/panels/measure_panel.py": {
-    "mtime": 1788354400.16191,
-    "ast_hash": "20a2988405c356c3681b700957d44c5f",
-    "semantic_hash": "20a2988405c356c3681b700957d44c5f"
+    "mtime": 1788454396.7628913,
+    "ast_hash": "050d4510d6423fb3bf1e04e9e703cd17",
+    "semantic_hash": ""
   },
   "src/refview/ui/panels/model_panel.py": {
     "mtime": 1788389760.0250154,
@@ -335,8 +335,8 @@
     "semantic_hash": "d683157dae89b26c914a13ea4674f920"
   },
   ".github/workflows/release.yml": {
-    "mtime": 1788450166.0455222,
-    "ast_hash": "61f720fcb55236eb700a947ef0a3cfde",
+    "mtime": 1788452757.6105282,
+    "ast_hash": "423b59bcbd1664a0cf15921de3a5ceef",
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
@@ -345,9 +345,9 @@
     "semantic_hash": "10caa64cbae892a3661da1d7345bcfb4"
   },
   "README.md": {
-    "mtime": 1788389973.8627298,
-    "ast_hash": "fc9554ebe47a9c18e5af48dd7f784c58",
-    "semantic_hash": "fc9554ebe47a9c18e5af48dd7f784c58"
+    "mtime": 1788453324.3202465,
+    "ast_hash": "a71487de312ae87b0f44274f932a10a0",
+    "semantic_hash": ""
   },
   "environment.yml": {
     "mtime": 1788351152.232194,

@@ -4,6 +4,16 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.1.2]
+
+### Fixed
+
+- **Hiding a measurement no longer closes the application.** Ticking a row's
+  checkbox committed the change while Qt was still delivering the signal, so the
+  list rebuilt itself and destroyed the row mid-flight; with more than one
+  measurement on the list that took the process down. Visibility, renames and
+  the padlock now commit once the click has been delivered.
+
 ## [1.1.0]
 
 ### Added
