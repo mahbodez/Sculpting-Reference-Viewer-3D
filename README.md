@@ -1,4 +1,8 @@
-# Reference Viewer
+# Reference Viewer 3D
+
+<p align="center">
+  <img src="resources/images/splashscreen.png" alt="Reference Viewer 3D" width="900">
+</p>
 
 A small, fast 3D reference viewer for clay sculpting. Load an OBJ, STL or
 glTF, drop a matcap on it, orbit around it, and take the measurements you need
