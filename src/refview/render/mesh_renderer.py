@@ -19,7 +19,8 @@ from ..core.annotation import Stroke
 from ..core.camera import Camera, Projection
 from ..core.linalg import look_at, orthographic, spherical_direction, vec3
 from ..core.mesh import Mesh
-from ..core.settings import RenderSettings
+from ..core.plane_axes import PlaneAxes, plane_axes
+from ..core.settings import PlaneMode, RenderSettings
 from . import shaders
 from .framebuffer import (
     ColorTarget,
@@ -121,6 +122,10 @@ class SceneRenderer:
         self._occlusion_blur = ColorTarget()
         self._empty_vao = 0
         self._matcap: Texture2D | None = None
+        self._mesh: Mesh | None = None
+        #: Worked out the first frame PCA mode actually asks for it, so loading
+        #: a model costs nothing until the artist turns the mode on.
+        self._plane_axes: PlaneAxes | None = None
 
     # -- lifetime -------------------------------------------------------
 
@@ -174,10 +179,20 @@ class SceneRenderer:
 
     def set_mesh(self, mesh: Mesh | None) -> None:
         self._set_geometry(self._buffers, mesh)
+        self._mesh = mesh
+        self._plane_axes = None
 
     def set_pedestal(self, mesh: Mesh | None) -> None:
         """Replace the ground disc; pass ``None`` to hide it."""
         self._set_geometry(self._pedestal, mesh)
+
+    def _axes_for(self, count: int) -> np.ndarray:
+        """The model's own plane directions, fitted once and kept."""
+        if self._plane_axes is None:
+            self._plane_axes = (
+                PlaneAxes([]) if self._mesh is None else plane_axes(self._mesh)
+            )
+        return self._plane_axes.for_count(count)
 
     @staticmethod
     def _set_geometry(buffers: MeshBuffers | None, mesh: Mesh | None) -> None:
@@ -311,13 +326,21 @@ class SceneRenderer:
             program.set_matrix3("uNormalMatrix", normal_matrix(view))
             program.set_int("uMode", settings.shading_mode.shader_id)
             program.set_bool("uFlatShading", settings.flat_shading)
-            program.set_bool("uPlaneShading", settings.planes.enabled)
-            program.set_float("uPlaneCellSize", settings.planes.cell_size)
-            program.set_bool("uPlaneContour", settings.planes.show_contour)
-            program.set_vec3("uPlaneContourColor", settings.planes.contour_color)
+            plane_settings = settings.planes
+            program.set_bool("uPlaneShading", plane_settings.enabled)
+            program.set_int("uPlaneMode", plane_settings.mode.shader_id)
+            program.set_float("uPlaneCellSize", plane_settings.cell_size)
+            program.set_bool("uPlaneContour", plane_settings.show_contour)
+            program.set_vec3("uPlaneContourColor", plane_settings.contour_color)
             program.set_float(
-                "uPlaneContourWidth", settings.planes.contour_width * max(pixel_ratio, 0.1)
+                "uPlaneContourWidth", plane_settings.contour_width * max(pixel_ratio, 0.1)
             )
+            axes = np.zeros((0, 3), dtype=np.float32)
+            if plane_settings.enabled and plane_settings.mode is PlaneMode.PCA:
+                axes = self._axes_for(plane_settings.axis_count)
+                program.set_vec3_array("uPlaneAxes", axes)
+            program.set_int("uPlaneAxisCount", len(axes))
+            program.set_float("uPlaneSpan", math.radians(plane_settings.axis_span_deg))
             program.set_bool("uOrthographic", camera.projection is Projection.ORTHOGRAPHIC)
             _set_section(program, planes)
 
@@ -356,7 +379,14 @@ class SceneRenderer:
             self._buffers.draw()
             if not self._pedestal.is_empty:
                 program.set_vec3("uDiffuseColor", settings.pedestal.color)
+                # The PCA directions describe the model, not the ground it
+                # stands on, so the disc would snap to whichever of them
+                # happened to lie nearest its own up.  Leaving it out keeps it
+                # reading as the flat plate the grid mode also makes of it.
+                if len(axes):
+                    program.set_bool("uPlaneShading", False)
                 self._pedestal.draw()
+                program.set_bool("uPlaneShading", plane_settings.enabled)
 
         if planes and settings.section.fill_cut:
             self._draw_cap(settings, view, projection)

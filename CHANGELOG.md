@@ -4,6 +4,46 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.3.2]
+
+### Added
+
+- **Planes can now be read out of the model itself, by PCA.** The *Planes
+  from* box in the Planes tab chooses between the existing fixed grid and the
+  new fit. Every vertex normal is taken as a point on the sphere, weighted by
+  the surface it stands for, and the cloud is split along its principal axes:
+  the first principal component of a group of normals is the direction they
+  spread along most, and the group is cut in half across it, always cutting
+  whichever group has the most spread left in it. What comes out are the
+  planes the form actually has -- the flat of a cheek, the underside of a brow
+  -- rather than a box the model happens to sit inside. A cube gives back its
+  six faces exactly.
+
+  In this mode the *Detail* slider is the fraction of those principal
+  directions to keep, from 2 up to 64, so the number it names is the number of
+  planes. Each step splits one plane in two and leaves the others where they
+  were, so the slider refines the break rather than rebuilding it. The fit
+  runs once, the first time the mode is turned on, from a thinned but fixed
+  sample of the normals: loading a model you never look at this way costs
+  nothing, and the same model always breaks the same way.
+
+  *Draw the plane boundaries* works here too. There is no grid to measure
+  against, so a boundary is found where the two nearest directions are equally
+  near -- a quantity that is zero exactly on a seam, and that divided by how
+  fast it changes in one pixel gives a line of an even width at any zoom, as
+  in the grid mode.
+
+### Fixed
+
+- **The planes filter no longer mirrors the planes around the silhouette.**
+  Whether a surface is being seen from behind was settled after the normal had
+  been rounded onto a plane, so a plane that tipped a degree past the horizon
+  turned end for end -- a hard 180-degree seam ringing the model that no plane
+  of the form had put there. It is now settled from the unrounded normal,
+  which is where the fact actually lives. Both modes are affected; the change
+  is most visible at the coarse end of the grid, where the side planes now
+  take the light by where they face instead of all turning to face the camera.
+
 ## [1.3.1]
 
 ### Added

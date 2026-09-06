@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .pedestal import PedestalSettings
+from .plane_axes import MAX_PLANE_AXES
 from .section import SectionSettings
 
 Color = tuple[float, float, float]
@@ -130,6 +131,28 @@ class QualitySettings:
     show_occlusion: bool = True
 
 
+class PlaneMode(str, Enum):
+    """How the plane directions are arrived at.
+
+    ``shader_id`` must stay in sync with the branch constants in
+    :mod:`refview.render.shaders`.
+    """
+
+    GRID = "grid"
+    PCA = "pca"
+
+    @property
+    def label(self) -> str:
+        return {
+            PlaneMode.GRID: "Grid",
+            PlaneMode.PCA: "PCA (from the model)",
+        }[self]
+
+    @property
+    def shader_id(self) -> int:
+        return list(PlaneMode).index(self)
+
+
 #: Ends of the Planes detail slider.
 DETAIL_MIN, DETAIL_MAX = 0.0, 100.0
 #: How much of a turn one plane covers at either end of that slider.  The
@@ -150,6 +173,8 @@ class PlaneSettings:
     """
 
     enabled: bool = False
+    #: Whether the directions come off a fixed grid or out of the model.
+    mode: PlaneMode = PlaneMode.GRID
     #: Where the slider sits between the coarsest planes and the finest.  It
     #: reads through to :attr:`span_deg` rather than to a count of planes,
     #: because the size of a plane is what the eye judges, and a slider that
@@ -181,6 +206,36 @@ class PlaneSettings:
         seen from the centre, which is what the shader quantises against.
         """
         return 2.0 * math.tan(math.radians(self.span_deg) / 2.0)
+
+    @property
+    def axis_count(self) -> int:
+        """How many of the model's principal directions PCA mode keeps.
+
+        The slider reads straight through as the fraction of them to include,
+        so the number it names is the number of planes.  Two is the floor: one
+        direction would shade the whole model as a single plane.
+        """
+        along = (self.detail - DETAIL_MIN) / (DETAIL_MAX - DETAIL_MIN)
+        along = min(max(along, 0.0), 1.0)
+        return max(2, round(along * MAX_PLANE_AXES))
+
+    @property
+    def axis_span_deg(self) -> float:
+        """Roughly how much of a turn one of those planes covers, in degrees.
+
+        The directions share the sphere out between them, so a plane holds
+        about ``4 pi / count`` of solid angle; this is the width of a round
+        patch that size.  It is what lets the boundary lines fade where the
+        planes themselves have shrunk to a pixel or two, and it gives the
+        panel a number in the same units as the grid mode's.
+        """
+        share = 2.0 / self.axis_count
+        return math.degrees(2.0 * math.acos(min(max(1.0 - share, -1.0), 1.0)))
+
+    @property
+    def plane_span_deg(self) -> float:
+        """The plane size of whichever mode is running."""
+        return self.axis_span_deg if self.mode is PlaneMode.PCA else self.span_deg
 
 
 @dataclass

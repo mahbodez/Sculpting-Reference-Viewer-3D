@@ -5,7 +5,8 @@ gradient, the shaded mesh, a constant-colour pass reused for the wireframe and
 the cut cap, the widened surface strokes, a depth-only pass that feeds both the
 shadow map and the occlusion pre-pass, and the two fullscreen passes that turn
 that depth into ambient occlusion.  The mesh shader branches on ``uMode``,
-whose values mirror :attr:`refview.core.settings.ShadingMode.shader_id`.
+whose values mirror :attr:`refview.core.settings.ShadingMode.shader_id`, and on
+``uPlaneMode``, which mirrors :attr:`refview.core.settings.PlaneMode.shader_id`.
 
 Cross-section clipping is shared rather than duplicated: any fragment shader
 that writes ``#pragma section`` gets the half-space test spliced in, so the
@@ -18,6 +19,8 @@ behaviour artists expect from a reference viewer.
 """
 
 from __future__ import annotations
+
+from ..core.plane_axes import MAX_PLANE_AXES
 
 #: Up to two half-spaces; material past a plane's offset is cut away.
 _SECTION_CLIP = """
@@ -37,6 +40,11 @@ void clipSection(vec3 worldPosition) {
 def _with_section(source: str) -> str:
     """Splice the shared cross-section test into a fragment shader."""
     return source.replace("#pragma section", _SECTION_CLIP)
+
+
+def _with_limits(source: str) -> str:
+    """Substitute the array sizes GLSL needs as compile-time constants."""
+    return source.replace("MAX_PLANE_AXES", str(MAX_PLANE_AXES))
 
 
 FULLSCREEN_VERTEX = """
@@ -93,7 +101,7 @@ void main() {
 }
 """
 
-MESH_FRAGMENT = _with_section("""
+MESH_FRAGMENT = _with_limits(_with_section("""
 #version 330 core
 #pragma section
 
@@ -104,6 +112,9 @@ const int MODE_BLINN_PHONG  = 3;
 const int MODE_PBR          = 4;
 const int MODE_NORMALS      = 5;
 const int MODE_HIGH_QUALITY = 6;
+
+const int PLANE_GRID = 0;
+const int PLANE_PCA  = 1;
 
 const float PI = 3.14159265359;
 
@@ -120,7 +131,11 @@ uniform bool uOrthographic;
 uniform mat3 uNormalMatrix;
 
 uniform bool  uPlaneShading;
+uniform int   uPlaneMode;
 uniform float uPlaneCellSize;
+uniform vec3  uPlaneAxes[MAX_PLANE_AXES];  // world space, unit length
+uniform int   uPlaneAxisCount;
+uniform float uPlaneSpan;           // radians of turn per plane
 uniform bool  uPlaneContour;
 uniform vec3  uPlaneContourColor;
 uniform float uPlaneContourWidth;   // device pixels
@@ -199,6 +214,65 @@ vec3 planeNormal(vec3 n) {
     return normalize(mix(cell, sign(face), dominant));
 }
 
+vec3 planeAxisNormal(vec3 n) {
+    // The directions were read off this model's own normals, so there is no
+    // grid to round against: the plane a fragment belongs to is simply the
+    // direction it points most nearly along.
+    if (uPlaneAxisCount < 2) {
+        return n;   // No model to fit, or a model with only one direction in it.
+    }
+    int nearest = 0;
+    float best = -2.0;
+    for (int i = 0; i < MAX_PLANE_AXES; ++i) {
+        if (i >= uPlaneAxisCount) {
+            break;
+        }
+        float towards = dot(n, uPlaneAxes[i]);
+        if (towards > best) {
+            best = towards;
+            nearest = i;
+        }
+    }
+    return normalize(uPlaneAxes[nearest]);
+}
+
+float planeAxisContour(vec3 n) {
+    // A fragment sits on a boundary exactly where the two nearest directions
+    // are equally near, so the gap between the best and the second best is a
+    // signed distance to the seam.  Dividing it by how fast it changes in one
+    // pixel turns it into a distance in pixels, which is what gives a line of
+    // an even width at any zoom -- the same reasoning as the grid mode's, on a
+    // quantity that does not need a grid to exist.
+    if (uPlaneAxisCount < 2) {
+        return 0.0;
+    }
+    float best = -2.0;
+    float second = -2.0;
+    for (int i = 0; i < MAX_PLANE_AXES; ++i) {
+        if (i >= uPlaneAxisCount) {
+            break;
+        }
+        float towards = dot(n, uPlaneAxes[i]);
+        if (towards > best) {
+            second = best;
+            best = towards;
+        } else if (towards > second) {
+            second = towards;
+        }
+    }
+    float gap = best - second;
+    float travel = max(fwidth(gap), 1e-6);
+    float halfWidth = max(uPlaneContourWidth, 0.0) * 0.5;
+    float ink = 1.0 - smoothstep(halfWidth - 0.5, halfWidth + 0.5, gap / travel);
+    // Where a plane is down to a pixel or two -- around the silhouette, or with
+    // the slider far to the right -- the lines would crowd into a solid mass,
+    // so they fade instead.  The normal turning by more than a plane's worth
+    // inside one pixel is what says that has happened.
+    float turn = length(fwidth(n)) / max(uPlaneSpan, 1e-4);
+    ink *= 1.0 - smoothstep(0.25, 0.75, turn);
+    return clamp(ink, 0.0, 1.0);
+}
+
 float planeContour(vec3 n) {
     // A plane boundary is a line of the quantisation grid, so it can be drawn
     // from the grid itself rather than found by comparing pixels: the distance
@@ -246,22 +320,31 @@ float planeContour(vec3 n) {
 }
 
 vec3 shadingNormal(vec3 viewDir) {
+    // Whether a surface is being seen from its back has to be settled before
+    // the normal is quantised.  Which side of a form you are looking at is a
+    // fact about the form, not about the plane its normal was rounded onto, and
+    // a plane that tips a degree past the horizon would otherwise turn end for
+    // end -- a hard 180-degree seam around the silhouette that no plane of the
+    // model put there.
     vec3 n;
+    vec3 unrounded;
     if (uPlaneShading) {
         // Quantised in object space and rotated into view space afterwards,
         // so the planes stay locked to the form while the camera orbits it.
         vec3 world = uFlatShading
             ? normalize(cross(dFdx(vWorldPosition), dFdy(vWorldPosition)))
             : normalize(vWorldNormal);
-        gWorldNormal = planeNormal(world);
+        unrounded = normalize(uNormalMatrix * world);
+        gWorldNormal = uPlaneMode == PLANE_PCA ? planeAxisNormal(world) : planeNormal(world);
         n = normalize(uNormalMatrix * gWorldNormal);
     } else {
         gWorldNormal = normalize(vWorldNormal);
         n = uFlatShading
             ? normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)))
             : normalize(vViewNormal);
+        unrounded = n;
     }
-    return dot(n, viewDir) < 0.0 ? -n : n;
+    return dot(unrounded, viewDir) < 0.0 ? -n : n;
 }
 
 vec3 gradeMatcap(vec3 color) {
@@ -427,12 +510,15 @@ void main() {
         color = analyticShade(n, v, uMode, false, 1.0);
     }
     if (uPlaneShading && uPlaneContour) {
-        // Both flags are uniform, so the derivatives inside stay well defined.
-        color = mix(color, uPlaneContourColor, planeContour(normalize(vWorldNormal)));
+        // Every flag branched on here is uniform, so the derivatives inside
+        // stay well defined.
+        vec3 turning = normalize(vWorldNormal);
+        float ink = uPlaneMode == PLANE_PCA ? planeAxisContour(turning) : planeContour(turning);
+        color = mix(color, uPlaneContourColor, ink);
     }
     fragColor = vec4(max(color, vec3(0.0)), 1.0);
 }
-""")
+"""))
 
 FLAT_VERTEX = """
 #version 330 core

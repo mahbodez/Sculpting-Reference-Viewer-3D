@@ -29,8 +29,9 @@ Built with PySide6 and OpenGL 3.3.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
 - A **Planes** filter that breaks the surface into the flat planes a
   sculptor blocks a form in with, from a six-sided box down to a barely
-  faceted surface. It acts on the normals rather than on the shading, so
-  it works under whichever shading mode you are in.
+  faceted surface -- either on a fixed grid or on directions read out of the
+  model's own normals by PCA. It acts on the normals rather than on the
+  shading, so it works under whichever shading mode you are in.
 - Adjustable background gradient.
 - The screen stays awake while the window is in front, so a pose holds
   while your hands are in the clay.
@@ -81,9 +82,16 @@ going back to the previous setting puts everything exactly where it was.
 Drawing and sculpting both start by reducing a form to flat planes: the front
 of the forehead, the side of the nose, the top of the cheekbone. The Planes
 tab does that to the model. Every shading normal is snapped to the nearest of
-a fixed set of directions, so the surface reads as a small number of flats
-with hard edges between them, and the light on each flat is even -- which is
+a small set of directions, so the surface reads as a handful of flats with
+hard edges between them, and the light on each flat is even -- which is
 exactly what makes the turn of a form easy to see and to copy.
+
+*Planes from* chooses where that set of directions comes from.
+
+**Grid** uses the same directions for every model: a cube, bevelled as far as
+you ask. It is how a sculptor blocks a form in before they have looked at it,
+and it is the mode to reach for when you want the planes measured against the
+world rather than against the model.
 
 The *Detail* slider sets how much of a turn one plane covers: 90 degrees at
 the coarse end, which is exactly the six planes of a blocked-in box, down to
@@ -94,10 +102,30 @@ first, and only then do the planes themselves subdivide. Every setting keeps a
 plane square on each axis, so the front, side and top planes stay where an
 artist expects them.
 
+**PCA** reads the directions off the model instead. Every vertex normal is a
+point on the sphere, weighted by how much surface it stands for, and that
+cloud is split along its principal axes: the direction of greatest spread in a
+group of normals is its first principal component, and the group is cut in
+half across it. The group with the most spread left in it is always cut next,
+so the first directions to appear are the big planes of the form and the later
+ones refine them. The planes are the model's own -- the flat of a cheek, the
+underside of a brow -- rather than a box the model happens to sit inside.
+
+Here the *Detail* slider is the fraction of those principal directions to
+keep, from 2 up to 64, so the number it names is the number of planes. Adding
+one splits a single plane in two and leaves the rest alone, which means the
+slider refines the break rather than rebuilding it each step. The fit runs
+once, the first time the mode is turned on, off a thinned but fixed sample of
+the normals -- so it costs nothing to load a model you never look at this way,
+and a model always breaks the same way twice. A cube gives back its six faces
+exactly.
+
 *Draw the plane boundaries* lines every seam between two planes, in a colour
 and width you set, the way a construction drawing marks where the form turns.
-The lines are worked out from the quantisation grid rather than found by
-comparing pixels, so they hold the width you asked for at any zoom, and they
+The lines are worked out from the quantisation itself rather than found by
+comparing pixels -- from the grid in one mode, and in the other from where the
+two nearest directions are equally near -- so they hold the width you asked
+for at any zoom, and they
 fade out where the planes themselves shrink to a pixel or two -- around the
 silhouette, or at the fine end of the slider -- instead of flooding the
 surface.

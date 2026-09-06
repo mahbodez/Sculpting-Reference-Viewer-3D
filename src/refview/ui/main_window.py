@@ -99,8 +99,10 @@ Measurements and annotations turn with the model.</p>
 <p>The Planes tab breaks the surface into the flat planes a form is blocked
 in with, from a six-sided box down to a barely faceted surface.  Its detail
 slider moves the size of a plane evenly, so it bites as hard at the coarse end
-as at the fine end, and it can line every seam between two planes.  It works
-on the normals
+as at the fine end, and it can line every seam between two planes.  The
+directions can come off a fixed grid, or be read out of the model's own
+normals by PCA, in which case the slider is the fraction of those principal
+directions to keep.  It works on the normals
 rather than on the shading, so it applies whichever shading mode is set, and
 the planes are worked out on the model, so they stay put as you orbit.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never

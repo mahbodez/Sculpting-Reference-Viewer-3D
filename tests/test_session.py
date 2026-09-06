@@ -14,8 +14,9 @@ from refview.core.camera import Camera, Projection
 from refview.core.commands import RemoveItem
 from refview.core.history import BOOKMARKS, History
 from refview.core.measurement import Measurement, MeasurementSettings, MeasurementStore
+from refview.core.plane_axes import MAX_PLANE_AXES
 from refview.core.session import Session, sidecar_path
-from refview.core.settings import PlaneSettings, RenderSettings, ShadingMode
+from refview.core.settings import PlaneMode, PlaneSettings, RenderSettings, ShadingMode
 
 
 def test_measurement_length_and_midpoint():
@@ -82,7 +83,7 @@ def test_session_round_trip(tmp_path):
     )
     session.render.matcap.contrast = 1.4
     session.render.planes = PlaneSettings(
-        enabled=True, detail=42.5, show_contour=True, contour_width=3.5
+        enabled=True, mode=PlaneMode.PCA, detail=42.5, show_contour=True, contour_width=3.5
     )
     path = session.save(tmp_path / "bust.refview.json")
 
@@ -90,6 +91,7 @@ def test_session_round_trip(tmp_path):
     assert restored.render.shading_mode is ShadingMode.PBR
     assert restored.render.matcap.contrast == pytest.approx(1.4)
     assert restored.render.planes.enabled is True
+    assert restored.render.planes.mode is PlaneMode.PCA
     assert restored.render.planes.detail == pytest.approx(42.5)
     assert restored.render.planes.show_contour is True
     assert restored.render.planes.contour_width == pytest.approx(3.5)
@@ -120,6 +122,35 @@ def test_plane_detail_moves_the_plane_size_evenly():
     # A detail outside the slider is held at its end rather than extrapolated.
     assert PlaneSettings(detail=-20.0).span_deg == pytest.approx(90.0)
     assert PlaneSettings(detail=140.0).span_deg == pytest.approx(8.0)
+
+
+def test_the_slider_reads_as_the_fraction_of_principal_directions_kept():
+    """In PCA mode the number the slider names is the number of planes."""
+    assert PlaneSettings(detail=100.0).axis_count == MAX_PLANE_AXES
+    assert PlaneSettings(detail=50.0).axis_count == MAX_PLANE_AXES // 2
+    # Every step of the slider is worth the same number of planes, once past
+    # the floor the coarse end sits on.
+    counts = [PlaneSettings(detail=d).axis_count for d in range(10, 101, 10)]
+    changes = [after - before for before, after in pairwise(counts)]
+    assert max(changes) - min(changes) <= 1
+
+    # One plane would shade the whole model flat, so the coarse end holds at two.
+    assert PlaneSettings(detail=0.0).axis_count == 2
+    assert PlaneSettings(detail=-20.0).axis_count == 2
+    assert PlaneSettings(detail=140.0).axis_count == MAX_PLANE_AXES
+
+
+def test_the_plane_size_reported_is_the_one_the_running_mode_makes():
+    """Both modes answer in degrees of turn, so the panel can just ask."""
+    grid = PlaneSettings(detail=0.0)
+    assert grid.plane_span_deg == pytest.approx(grid.span_deg)
+
+    pca = PlaneSettings(mode=PlaneMode.PCA, detail=0.0)
+    assert pca.plane_span_deg == pytest.approx(pca.axis_span_deg)
+    # Two planes are two hemispheres; more planes are smaller ones.
+    assert pca.axis_span_deg == pytest.approx(180.0)
+    spans = [PlaneSettings(mode=PlaneMode.PCA, detail=d).axis_span_deg for d in range(10, 101, 10)]
+    assert all(after < before for before, after in pairwise(spans))
 
 
 def test_a_session_from_before_annotations_still_loads(tmp_path):
