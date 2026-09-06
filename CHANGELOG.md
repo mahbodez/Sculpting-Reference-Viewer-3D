@@ -4,6 +4,38 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.3.0]
+
+### Added
+
+- **Planes.** A new tab that discretises the shading normals into the flat
+  planes a form is blocked in with. Every normal is snapped to the nearest of
+  a set of directions, and a *Detail* slider sets how much of a turn one of
+  those planes covers: 90 degrees, exactly the six planes of a blocked-in box,
+  down to 8, where only the sheen still facets. The slider is linear in that
+  angle rather than in a count of planes, so it moves the form by as much at
+  the coarse end as at the fine end: the box grows bevels off its corners
+  before the planes themselves subdivide. Every setting keeps a plane square
+  on each axis, so the front, side and top planes stay put. The quantisation
+  happens on the model rather than on the screen, so the planes stay locked to
+  the form while you orbit.
+
+  *Draw the plane boundaries* puts a line along every seam between two planes,
+  with the colour and width to hand. The lines come from the quantisation grid
+  itself rather than from comparing neighbouring pixels, so they keep the
+  width you set at any zoom, and they fade where the planes shrink to a pixel
+  or two rather than flooding the silhouette.
+
+  It filters the normals rather than the shading, so it is independent of the
+  shading mode and applies to a matcap, an analytic light rig and the normals
+  view alike.
+
+### Changed
+
+- **Flat (faceted) shading moved to the Planes tab**, next to the new filter:
+  both decide which direction a fragment is shaded from rather than how it is
+  lit. Sessions written by an earlier version still restore it.
+
 ## [1.2.0]
 
 ### Added

@@ -27,6 +27,10 @@ Built with PySide6 and OpenGL 3.3.
   (diffuse, specular colour and level, shininess, metalness, roughness,
   reflection colour).
 - Flat (faceted) shading and a wireframe overlay for reading topology.
+- A **Planes** filter that breaks the surface into the flat planes a
+  sculptor blocks a form in with, from a six-sided box down to a barely
+  faceted surface. It acts on the normals rather than on the shading, so
+  it works under whichever shading mode you are in.
 - Adjustable background gradient.
 
 **Navigation**
@@ -69,6 +73,38 @@ going back to the previous setting puts everything exactly where it was.
 - The profile at the cut is traced as a bright contour, and the exposed
   interior is flooded flat so the cut reads as solid material rather than as a
   hollow shell.
+
+**Planes**
+
+Drawing and sculpting both start by reducing a form to flat planes: the front
+of the forehead, the side of the nose, the top of the cheekbone. The Planes
+tab does that to the model. Every shading normal is snapped to the nearest of
+a fixed set of directions, so the surface reads as a small number of flats
+with hard edges between them, and the light on each flat is even -- which is
+exactly what makes the turn of a form easy to see and to copy.
+
+The *Detail* slider sets how much of a turn one plane covers: 90 degrees at
+the coarse end, which is exactly the six planes of a blocked-in box, down to
+8 degrees, by which point only the sheen still facets. The slider is linear in
+that angle, so a step at the coarse end changes the form by as much as a step
+at the fine end -- move it slowly and the box grows bevels off its corners
+first, and only then do the planes themselves subdivide. Every setting keeps a
+plane square on each axis, so the front, side and top planes stay where an
+artist expects them.
+
+*Draw the plane boundaries* lines every seam between two planes, in a colour
+and width you set, the way a construction drawing marks where the form turns.
+The lines are worked out from the quantisation grid rather than found by
+comparing pixels, so they hold the width you asked for at any zoom, and they
+fade out where the planes themselves shrink to a pixel or two -- around the
+silhouette, or at the fine end of the slider -- instead of flooding the
+surface.
+
+The planes are worked out on the model rather than on the screen, so they stay
+put on the form as you orbit around it. And because the filter changes the
+normals and not the shading, it applies to a matcap, to any of the analytic
+modes and to the normals view alike. Flat (faceted) shading, which quantises
+per triangle instead of per direction, sits on the same tab.
 
 **High Quality**
 

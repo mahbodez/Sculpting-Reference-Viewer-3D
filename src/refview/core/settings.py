@@ -6,6 +6,7 @@ panels edit these dataclasses and nothing else.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -129,6 +130,59 @@ class QualitySettings:
     show_occlusion: bool = True
 
 
+#: Ends of the Planes detail slider.
+DETAIL_MIN, DETAIL_MAX = 0.0, 100.0
+#: How much of a turn one plane covers at either end of that slider.  The
+#: coarse end is 90 degrees, which is exactly the six planes of a blocked-in
+#: box; the fine end is small enough that only the sheen still facets.
+COARSEST_SPAN_DEG, FINEST_SPAN_DEG = 90.0, 8.0
+
+
+@dataclass
+class PlaneSettings:
+    """Discretisation of the shading normals into the planes of the form.
+
+    A sculptor blocks a head in as flats before rounding anything off, and a
+    draughtsman reads those same planes to place a shadow.  This snaps every
+    shading normal onto a small set of directions so the model is seen that
+    way.  It filters the normals only, so it applies whichever shading model
+    is running: matcap, an analytic light rig or the normals view.
+    """
+
+    enabled: bool = False
+    #: Where the slider sits between the coarsest planes and the finest.  It
+    #: reads through to :attr:`span_deg` rather than to a count of planes,
+    #: because the size of a plane is what the eye judges, and a slider that
+    #: moves it evenly is one that behaves the same at both ends.
+    detail: float = 60.0
+    #: Draw the seams between the planes, the way a construction drawing puts
+    #: a line where the form turns.
+    show_contour: bool = False
+    contour_color: Color = (0.08, 0.09, 0.11)
+    #: Line thickness, in logical pixels, held at that width at any zoom.
+    contour_width: float = 1.5
+
+    @property
+    def span_deg(self) -> float:
+        """How much of a turn in the surface one plane covers, in degrees.
+
+        Linear in :attr:`detail`, so every step of the slider changes the
+        planes by the same amount whether they are large or small.
+        """
+        along = (self.detail - DETAIL_MIN) / (DETAIL_MAX - DETAIL_MIN)
+        along = min(max(along, 0.0), 1.0)
+        return COARSEST_SPAN_DEG + along * (FINEST_SPAN_DEG - COARSEST_SPAN_DEG)
+
+    @property
+    def cell_size(self) -> float:
+        """The grid step, in cube-face coordinates, that gives that span.
+
+        A cell of this size on the face of the cube subtends :attr:`span_deg`
+        seen from the centre, which is what the shader quantises against.
+        """
+        return 2.0 * math.tan(math.radians(self.span_deg) / 2.0)
+
+
 @dataclass
 class RenderSettings:
     """Everything the viewport needs in order to draw a frame."""
@@ -138,9 +192,13 @@ class RenderSettings:
     light: LightSettings = field(default_factory=LightSettings)
     surface: SurfaceSettings = field(default_factory=SurfaceSettings)
     quality: QualitySettings = field(default_factory=QualitySettings)
+    planes: PlaneSettings = field(default_factory=PlaneSettings)
     section: SectionSettings = field(default_factory=SectionSettings)
     pedestal: PedestalSettings = field(default_factory=PedestalSettings)
     matcap_path: str | None = None
+    #: Shade each triangle from its own face normal.  The Planes panel edits
+    #: this, but it stays on the render settings so that sessions written
+    #: before that panel existed still restore it.
     flat_shading: bool = False
     show_wireframe: bool = False
     wireframe_color: Color = (0.08, 0.09, 0.11)

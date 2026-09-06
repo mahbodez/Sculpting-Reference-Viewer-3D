@@ -30,6 +30,7 @@ from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.matcap_panel import MatcapPanel
 from .panels.measure_panel import MeasurePanel
 from .panels.model_panel import ModelPanel
+from .panels.planes_panel import PlanesPanel
 from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
 from .state import ViewerState
@@ -94,6 +95,13 @@ that automatically; OBJ and STL declare nothing and are left alone.</p>
 on its side.  The Model tab turns it upright: pick the up axis the file used,
 flip it if it came in upside down, and spin it a quarter turn to face forwards.
 Measurements and annotations turn with the model.</p>
+<p>The Planes tab breaks the surface into the flat planes a form is blocked
+in with, from a six-sided box down to a barely faceted surface.  Its detail
+slider moves the size of a plane evenly, so it bites as hard at the coarse end
+as at the fine end, and it can line every seam between two planes.  It works
+on the normals
+rather than on the shading, so it applies whichever shading mode is set, and
+the planes are worked out on the model, so they stay put as you orbit.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never
 interfere with typing names into the panels.</p>
 """
@@ -122,6 +130,7 @@ class MainWindow(QMainWindow):
         self._model_panel = ModelPanel(self._state)
         self._matcap_panel = MatcapPanel(self._state)
         self._shading_panel = ShadingPanel(self._state)
+        self._planes_panel = PlanesPanel(self._state)
         self._measure_panel = MeasurePanel(self._state)
         self._section_panel = SectionPanel(self._state)
         self._annotate_panel = AnnotatePanel(self._state)
@@ -151,6 +160,7 @@ class MainWindow(QMainWindow):
         for panel, title in (
             (self._model_panel, "Model"),
             (self._shading_panel, "Shading"),
+            (self._planes_panel, "Planes"),
             (self._section_panel, "Section"),
             (self._measure_panel, "Measure"),
             (self._annotate_panel, "Annotate"),
@@ -290,6 +300,7 @@ class MainWindow(QMainWindow):
         self._state.annotations_changed.connect(self._annotate_panel.refresh_list)
         self._state.bookmarks_changed.connect(self._camera_panel.refresh_bookmarks)
         self._state.render_changed.connect(self._shading_panel.update_enabled)
+        self._state.render_changed.connect(self._planes_panel.update_enabled)
         self._state.camera_changed.connect(self._camera_panel.refresh_camera)
         self._state.history_changed.connect(self._update_history_actions)
         self._state.render_changed.connect(self._sync_section_action)
@@ -527,6 +538,7 @@ class MainWindow(QMainWindow):
             self._model_panel,
             self._matcap_panel,
             self._shading_panel,
+            self._planes_panel,
             self._measure_panel,
             self._annotate_panel,
             self._section_panel,

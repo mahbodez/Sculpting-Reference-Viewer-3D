@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -14,7 +15,7 @@ from refview.core.commands import RemoveItem
 from refview.core.history import BOOKMARKS, History
 from refview.core.measurement import Measurement, MeasurementSettings, MeasurementStore
 from refview.core.session import Session, sidecar_path
-from refview.core.settings import RenderSettings, ShadingMode
+from refview.core.settings import PlaneSettings, RenderSettings, ShadingMode
 
 
 def test_measurement_length_and_midpoint():
@@ -80,11 +81,18 @@ def test_session_round_trip(tmp_path):
         ],
     )
     session.render.matcap.contrast = 1.4
+    session.render.planes = PlaneSettings(
+        enabled=True, detail=42.5, show_contour=True, contour_width=3.5
+    )
     path = session.save(tmp_path / "bust.refview.json")
 
     restored = Session.load(path)
     assert restored.render.shading_mode is ShadingMode.PBR
     assert restored.render.matcap.contrast == pytest.approx(1.4)
+    assert restored.render.planes.enabled is True
+    assert restored.render.planes.detail == pytest.approx(42.5)
+    assert restored.render.planes.show_contour is True
+    assert restored.render.planes.contour_width == pytest.approx(3.5)
     assert restored.measurement_settings.unit_name == "in"
     assert restored.measurements[0].name == "Height"
     assert restored.measurements[0].length == pytest.approx(2.0)
@@ -95,6 +103,23 @@ def test_session_round_trip(tmp_path):
     assert stroke.kind is AnnotateMode.LINE
     assert stroke.width == pytest.approx(4.5)
     assert stroke.point_array.shape == (2, 3)
+
+
+def test_plane_detail_moves_the_plane_size_evenly():
+    """The slider is linear in how much of a turn one plane covers."""
+    coarsest, finest = PlaneSettings(detail=0.0), PlaneSettings(detail=100.0)
+    assert coarsest.span_deg == pytest.approx(90.0)
+    assert finest.span_deg == pytest.approx(8.0)
+    # A full-width cell on the cube face is what leaves the six axis planes.
+    assert coarsest.cell_size == pytest.approx(2.0)
+
+    steps = [PlaneSettings(detail=d).span_deg for d in range(0, 101, 10)]
+    changes = [before - after for before, after in pairwise(steps)]
+    assert max(changes) == pytest.approx(min(changes))
+
+    # A detail outside the slider is held at its end rather than extrapolated.
+    assert PlaneSettings(detail=-20.0).span_deg == pytest.approx(90.0)
+    assert PlaneSettings(detail=140.0).span_deg == pytest.approx(8.0)
 
 
 def test_a_session_from_before_annotations_still_loads(tmp_path):

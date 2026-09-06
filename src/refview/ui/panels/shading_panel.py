@@ -17,11 +17,9 @@ class ShadingPanel(Panel):
         self._mode = QComboBox()
         for mode in ShadingMode:
             self._mode.addItem(mode.label, mode.value)
-        self._flat = QCheckBox("Flat (faceted) shading")
         self._wireframe = QCheckBox("Show wireframe")
         self._wireframe_color = ColorButton((0.08, 0.09, 0.11))
         form.addRow("Shading", self._mode)
-        form.addRow("", self._flat)
         form.addRow("", self._wireframe)
         form.addRow("Wire colour", self._wireframe_color)
         self._add(box)
@@ -115,7 +113,6 @@ class ShadingPanel(Panel):
 
     def _connect(self) -> None:
         self._mode.currentIndexChanged.connect(self._on_mode_changed)
-        self._flat.toggled.connect(lambda v: self._apply(self.state.render, "flat_shading", v))
         self._wireframe.toggled.connect(
             lambda v: self._apply(self.state.render, "show_wireframe", v)
         )
@@ -228,7 +225,6 @@ class ShadingPanel(Panel):
             self._pedestal_color.set_color(pedestal.color)
 
             self._mode.setCurrentIndex(self._mode.findData(render.shading_mode.value))
-            self._flat.setChecked(render.flat_shading)
             self._wireframe.setChecked(render.show_wireframe)
             self._wireframe_color.set_color(render.wireframe_color)
             self._background_top.set_color(render.background_top)

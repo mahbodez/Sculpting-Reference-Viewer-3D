@@ -246,7 +246,8 @@ class SceneRenderer:
                 return
 
             self._draw_scene(
-                camera, settings, view, projection, planes, light_matrix, width, height
+                camera, settings, view, projection, planes, light_matrix, width, height,
+                pixel_ratio,
             )
             if settings.show_wireframe:
                 self._draw_wireframe(settings, view, projection, planes)
@@ -298,6 +299,7 @@ class SceneRenderer:
         light_matrix: np.ndarray | None,
         width: int,
         height: int,
+        pixel_ratio: float = 1.0,
     ) -> None:
         """The model, the pedestal under it and the flat cap over the cut."""
         assert self._buffers is not None and self._pedestal is not None
@@ -309,6 +311,13 @@ class SceneRenderer:
             program.set_matrix3("uNormalMatrix", normal_matrix(view))
             program.set_int("uMode", settings.shading_mode.shader_id)
             program.set_bool("uFlatShading", settings.flat_shading)
+            program.set_bool("uPlaneShading", settings.planes.enabled)
+            program.set_float("uPlaneCellSize", settings.planes.cell_size)
+            program.set_bool("uPlaneContour", settings.planes.show_contour)
+            program.set_vec3("uPlaneContourColor", settings.planes.contour_color)
+            program.set_float(
+                "uPlaneContourWidth", settings.planes.contour_width * max(pixel_ratio, 0.1)
+            )
             program.set_bool("uOrthographic", camera.projection is Projection.ORTHOGRAPHIC)
             _set_section(program, planes)
 

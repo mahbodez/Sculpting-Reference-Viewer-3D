@@ -117,6 +117,13 @@ out vec4 fragColor;
 uniform int  uMode;
 uniform bool uFlatShading;
 uniform bool uOrthographic;
+uniform mat3 uNormalMatrix;
+
+uniform bool  uPlaneShading;
+uniform float uPlaneCellSize;
+uniform bool  uPlaneContour;
+uniform vec3  uPlaneContourColor;
+uniform float uPlaneContourWidth;   // device pixels
 
 uniform sampler2D uMatcap;
 uniform float uMatcapRotation;
@@ -153,14 +160,107 @@ uniform float uShadowBias;
 uniform bool  uUseShadow;
 uniform bool  uUseOcclusion;
 
+//: World-space shading normal, written by shadingNormal() and read by the
+//: ambient term so that the sky gradient breaks into planes along with the
+//: rest of the shading.
+vec3 gWorldNormal;
+
 float luminance(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+vec3 planeNormal(vec3 n) {
+    // The direction is pushed out onto the cube around the origin and its two
+    // sideways components are rounded to a grid, so the centre of the cell it
+    // lands in becomes the plane's direction.
+    //
+    // The grid is anchored on zero rather than divided into a whole number of
+    // cells.  That keeps a plane square on each axis -- the front, the side
+    // and the top an artist blocks a form in with -- and keeps the cells
+    // symmetric, so a back face quantises to the negation of what its front
+    // does and the two stay parallel.  It also lets the cell size vary
+    // continuously: a full-width cell leaves the six axis planes, and
+    // shrinking it grows bevels off their corners rather than jumping
+    // straight to the next whole count of planes.
+    float cellSize = max(uPlaneCellSize, 1e-3);
+    vec3 magnitude = abs(n);
+    float widest = max(magnitude.x, max(magnitude.y, magnitude.z));
+    vec3 face = n / max(widest, 1e-6);
+    // Exactly one axis owns the face even where two components tie, so a
+    // direction sitting on the seam between two faces falls into one of them
+    // instead of into a bevel of its own.
+    vec3 dominant = magnitude.x >= widest ? vec3(1.0, 0.0, 0.0)
+                  : (magnitude.y >= widest ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0));
+    // Clamped, so a cell overhanging the edge of the face becomes the bevel
+    // along that edge instead of a direction off the cube altogether.
+    vec3 cell = clamp(round(face / cellSize) * cellSize, -1.0, 1.0);
+    // The component that chose the face stays out at the face itself,
+    // otherwise every direction would pull in towards the cube's centre.
+    return normalize(mix(cell, sign(face), dominant));
+}
+
+float planeContour(vec3 n) {
+    // A plane boundary is a line of the quantisation grid, so it can be drawn
+    // from the grid itself rather than found by comparing pixels: the distance
+    // to the nearest cell edge, divided by how far the cell coordinate travels
+    // in one pixel, is a distance in pixels, and that gives a line of an even
+    // width at any zoom.
+    //
+    // The smooth normal is used even when flat shading is on, so that the
+    // lines follow the turn of the form rather than the triangulation.
+    float cellSize = max(uPlaneCellSize, 1e-3);
+    vec3 magnitude = abs(n);
+    float widest = max(magnitude.x, max(magnitude.y, magnitude.z));
+    vec3 face = n / max(widest, 1e-6);
+    vec3 coordinate = face / cellSize;
+    vec3 travel = max(fwidth(coordinate), vec3(1e-6));         // cells per pixel
+    // Cell centres sit on the whole numbers, so the edges are the halves.
+    vec3 toEdge = abs(fract(coordinate) - 0.5) / travel;       // pixels
+
+    // The axis that owns the face carries no grid of its own: its component is
+    // pinned at the face.
+    vec3 dominant = magnitude.x >= widest ? vec3(1.0, 0.0, 0.0)
+                  : (magnitude.y >= widest ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0));
+    toEdge = mix(toEdge, vec3(1e6), dominant);
+
+    // The seam where the owning axis changes -- an edge of the cube -- is a
+    // boundary as well, but only when the outermost cell falls short of the
+    // edge of the face.  When it reaches the edge, the two faces meeting there
+    // quantise to the same direction and the surface runs on through.
+    float middle = magnitude.x + magnitude.y + magnitude.z - widest
+                 - min(magnitude.x, min(magnitude.y, magnitude.z));
+    float seam = (1.0 - middle / max(widest, 1e-6)) / cellSize;
+    float seamTravel = max(fwidth(seam), 1e-6);
+    float seamJumps = 1.0 - step(1.0, round((1.0 - 1e-4) / cellSize) * cellSize);
+
+    // Where the planes are themselves down to a pixel or two -- around the
+    // silhouette, or at the fine end of the slider -- the lines would crowd
+    // into a solid mass, so they fade out rather than flood the surface.
+    float halfWidth = max(uPlaneContourWidth, 0.0) * 0.5;
+    vec3 covered = 1.0 - smoothstep(vec3(halfWidth - 0.5), vec3(halfWidth + 0.5), toEdge);
+    covered *= 1.0 - smoothstep(vec3(0.25), vec3(0.75), travel);
+    float onSeam = (1.0 - smoothstep(halfWidth - 0.5, halfWidth + 0.5, seam / seamTravel))
+                 * (1.0 - smoothstep(0.25, 0.75, seamTravel)) * seamJumps;
+    float ink = max(max(covered.x, max(covered.y, covered.z)), onSeam);
+    return clamp(ink, 0.0, 1.0);
+}
+
 vec3 shadingNormal(vec3 viewDir) {
-    vec3 n = uFlatShading
-        ? normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)))
-        : normalize(vViewNormal);
+    vec3 n;
+    if (uPlaneShading) {
+        // Quantised in object space and rotated into view space afterwards,
+        // so the planes stay locked to the form while the camera orbits it.
+        vec3 world = uFlatShading
+            ? normalize(cross(dFdx(vWorldPosition), dFdy(vWorldPosition)))
+            : normalize(vWorldNormal);
+        gWorldNormal = planeNormal(world);
+        n = normalize(uNormalMatrix * gWorldNormal);
+    } else {
+        gWorldNormal = normalize(vWorldNormal);
+        n = uFlatShading
+            ? normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)))
+            : normalize(vViewNormal);
+    }
     return dot(n, viewDir) < 0.0 ? -n : n;
 }
 
@@ -188,7 +288,7 @@ vec3 sampleMatcap(vec3 n, vec3 viewDir) {
 vec3 ambientTerm() {
     // Hemispherical ambient keyed off the world normal, so the underside of
     // the model stays readable without washing out the top.
-    float sky = vWorldNormal.y * 0.5 + 0.5;
+    float sky = gWorldNormal.y * 0.5 + 0.5;
     return uAmbientColor * uAmbientIntensity * mix(0.35, 1.0, sky);
 }
 
@@ -325,6 +425,10 @@ void main() {
         color = pbrShade(n, v);
     } else {
         color = analyticShade(n, v, uMode, false, 1.0);
+    }
+    if (uPlaneShading && uPlaneContour) {
+        // Both flags are uniform, so the derivatives inside stay well defined.
+        color = mix(color, uPlaneContourColor, planeContour(normalize(vWorldNormal)));
     }
     fragColor = vec4(max(color, vec3(0.0)), 1.0);
 }
