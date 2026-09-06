@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1788455690.0397632,
-    "ast_hash": "6ea3901681cc3c1d2443bd8fa602f7de",
+    "mtime": 1788701026.0018601,
+    "ast_hash": "76c7c5b26e3d0ca6b6188c90e7de9450",
     "semantic_hash": ""
   },
   "run.py": {
@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1788455690.071994,
-    "ast_hash": "117a53cd2bf91413a189e64c79589a77",
+    "mtime": 1788701026.0018601,
+    "ast_hash": "f9356140bf9c4a59fd99c76ab56096a2",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -185,8 +185,8 @@
     "semantic_hash": "76876bbfec238179e57fa9969b391535"
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1788700564.6137471,
-    "ast_hash": "4808da6cef0c4979efeb10324ac049e1",
+    "mtime": 1788703230.949026,
+    "ast_hash": "ce55938dd081bd12df8601f565495924",
     "semantic_hash": ""
   },
   "src/refview/ui/measure_tool.py": {
@@ -340,13 +340,13 @@
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
-    "mtime": 1788700564.6094887,
-    "ast_hash": "19729cdecdcce6d5b9bfabb7a19f4cf5",
+    "mtime": 1788703230.949026,
+    "ast_hash": "301578d0599ae1769e49bd793e58964d",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1788700564.6094887,
-    "ast_hash": "052c80bbbb8936d683dda32c5f4f9ea2",
+    "mtime": 1788703230.9385698,
+    "ast_hash": "7cd5ab1daa1aa1c85a5320c94a6b6857",
     "semantic_hash": ""
   },
   "environment.yml": {
@@ -417,6 +417,16 @@
   "src/refview/ui/panels/planes_panel.py": {
     "mtime": 1788700203.2761574,
     "ast_hash": "facdf80f6d8ccf3c9ff56b2d05645e86",
+    "semantic_hash": ""
+  },
+  "src/refview/wakelock.py": {
+    "mtime": 1788703201.1158068,
+    "ast_hash": "d5ae387722e583c3b63cd093a14b4f40",
+    "semantic_hash": ""
+  },
+  "tests/test_wakelock.py": {
+    "mtime": 1788703135.420506,
+    "ast_hash": "fc01ae09b753a5c4ea314e3c8b5fa885",
     "semantic_hash": ""
   }
 }

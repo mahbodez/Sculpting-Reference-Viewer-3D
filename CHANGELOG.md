@@ -4,6 +4,19 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.3.1]
+
+### Added
+
+- **The screen no longer sleeps while the viewer is the window in front.**
+  Working from a reference means minutes at a time with both hands busy and
+  neither the keyboard nor the mouse touched, which is exactly when a machine
+  decides nobody is there. The request is dropped the moment the window goes
+  behind another, so a viewer left open in the background costs a laptop
+  nothing, and it is dropped again when the window closes. Windows, macOS and
+  the freedesktop screensaver service are each asked in their own way; a
+  machine that has no answer for any of them simply sleeps as it always did.
+
 ## [1.3.0]
 
 ### Added

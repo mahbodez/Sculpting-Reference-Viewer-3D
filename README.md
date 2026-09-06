@@ -32,6 +32,8 @@ Built with PySide6 and OpenGL 3.3.
   faceted surface. It acts on the normals rather than on the shading, so
   it works under whichever shading mode you are in.
 - Adjustable background gradient.
+- The screen stays awake while the window is in front, so a pose holds
+  while your hands are in the clay.
 
 **Navigation**
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -25,6 +25,7 @@ from ..core.session import SESSION_SUFFIX
 from ..core.update_check import Release
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
+from ..wakelock import WakeLock
 from .panels.annotate_panel import AnnotatePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.matcap_panel import MatcapPanel
@@ -104,6 +105,9 @@ rather than on the shading, so it applies whichever shading mode is set, and
 the planes are worked out on the model, so they stay put as you orbit.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never
 interfere with typing names into the panels.</p>
+<p>While this window is the one in front, the screen is kept awake: a pose you
+are working from should still be there when you look up from the clay.  Put
+another window in front and the machine sleeps as usual.</p>
 """
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
@@ -123,6 +127,9 @@ class MainWindow(QMainWindow):
 
         self._state = state or ViewerState(self)
         self._session_path: Path | None = None
+        #: Held while this window is the one in front: an artist reads a pose
+        #: for minutes at a time without touching the machine.
+        self._wake_lock = WakeLock()
 
         self._viewport = Viewport(self._state)
         self.setCentralWidget(self._viewport)
@@ -545,6 +552,20 @@ class MainWindow(QMainWindow):
             self._camera_panel,
         ):
             panel.refresh()
+
+    # ------------------------------------------------------------------
+    # Window state
+    # ------------------------------------------------------------------
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Follow the machine's sleep to whether this window is in front."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange:
+            self._wake_lock.set_held(self.isActiveWindow())
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._wake_lock.release()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------
     # Drag and drop
