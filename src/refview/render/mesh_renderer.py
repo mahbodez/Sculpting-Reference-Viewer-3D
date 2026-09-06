@@ -19,7 +19,8 @@ from ..core.annotation import Stroke
 from ..core.camera import Camera, Projection
 from ..core.linalg import look_at, orthographic, spherical_direction, vec3
 from ..core.mesh import Mesh
-from ..core.plane_axes import PlaneAxes, plane_axes
+from ..core.plane_axes import Coefficients, PlaneAxes, PlaneSet
+from ..core.plane_clusters import fit_planes
 from ..core.settings import PlaneMode, RenderSettings
 from . import shaders
 from .framebuffer import (
@@ -31,7 +32,7 @@ from .framebuffer import (
 )
 from .program import ShaderProgram
 from .stroke_renderer import StrokeBuffers
-from .texture import Texture2D, default_matcap_pixels
+from .texture import DataTexture, Texture2D, default_matcap_pixels
 
 #: How far annotations are lifted off the surface, as a share of the scene
 #: radius.  Enough to clear the depth buffer's precision at any zoom, small
@@ -45,7 +46,13 @@ _CONTOUR_DEPTH_BIAS = 8e-4
 #: measurable cost next to drawing the model itself.
 _SHADOW_SIZE = 2048
 #: Texture units, fixed so the uniforms can be set once per frame.
-_MATCAP_UNIT, _SHADOW_UNIT, _OCCLUSION_UNIT = 0, 1, 2
+_MATCAP_UNIT, _SHADOW_UNIT, _OCCLUSION_UNIT, _PLANE_UNIT = 0, 1, 2, 3
+
+#: How many fits to keep alongside the one in use.  Each is a mode and a set of
+#: coefficients, so dragging a coefficient slider leaves a trail of them; a
+#: handful is enough to make going back to a setting just tried instant without
+#: holding a fit for every number the slider passed through.
+_PLANE_CACHE_SIZE = 8
 
 
 class MeshBuffers:
@@ -123,9 +130,16 @@ class SceneRenderer:
         self._empty_vao = 0
         self._matcap: Texture2D | None = None
         self._mesh: Mesh | None = None
-        #: Worked out the first frame PCA mode actually asks for it, so loading
-        #: a model costs nothing until the artist turns the mode on.
-        self._plane_axes: PlaneAxes | None = None
+        #: Worked out the first frame a fitted mode actually asks for it, so
+        #: loading a model costs nothing until the artist turns one on, and
+        #: kept per mode and per set of coefficients so that going back to a
+        #: setting already tried is instant.
+        self._plane_axes: dict[tuple[PlaneMode, Coefficients], PlaneAxes] = {}
+        #: The table the shader reads the planes out of, and the level it was
+        #: last filled from -- uploading it again every frame would be work
+        #: done for nothing, since it only changes when the slider does.
+        self._plane_table: DataTexture | None = None
+        self._plane_table_level: PlaneSet | None = None
 
     # -- lifetime -------------------------------------------------------
 
@@ -150,6 +164,7 @@ class SceneRenderer:
         self._empty_vao = int(GL.glGenVertexArrays(1))
         self._matcap = Texture2D()
         self._matcap.upload(default_matcap_pixels())
+        self._plane_table = DataTexture()
         self._shadow_map.resize(_SHADOW_SIZE, _SHADOW_SIZE)
 
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -171,6 +186,10 @@ class SceneRenderer:
             target.dispose()
         if self._matcap is not None:
             self._matcap.dispose()
+        if self._plane_table is not None:
+            self._plane_table.dispose()
+            self._plane_table = None
+            self._plane_table_level = None
         if self._empty_vao:
             GL.glDeleteVertexArrays(1, [self._empty_vao])
             self._empty_vao = 0
@@ -180,19 +199,38 @@ class SceneRenderer:
     def set_mesh(self, mesh: Mesh | None) -> None:
         self._set_geometry(self._buffers, mesh)
         self._mesh = mesh
-        self._plane_axes = None
+        self._plane_axes.clear()
 
     def set_pedestal(self, mesh: Mesh | None) -> None:
         """Replace the ground disc; pass ``None`` to hide it."""
         self._set_geometry(self._pedestal, mesh)
 
-    def _axes_for(self, count: int) -> np.ndarray:
-        """The model's own plane directions, fitted once and kept."""
-        if self._plane_axes is None:
-            self._plane_axes = (
-                PlaneAxes([]) if self._mesh is None else plane_axes(self._mesh)
-            )
-        return self._plane_axes.for_count(count)
+    def _planes_for(self, mode: PlaneMode, coefficients: Coefficients, count: int) -> PlaneSet:
+        """The model's own planes under ``mode``, fitted once and kept."""
+        key = (mode, coefficients)
+        fitted = self._plane_axes.get(key)
+        if fitted is None:
+            if len(self._plane_axes) >= _PLANE_CACHE_SIZE:
+                # Plain insertion order: the fit dropped is the one least
+                # recently arrived at, which on a slider drag is the furthest
+                # back along it.
+                del self._plane_axes[next(iter(self._plane_axes))]
+            fitted = self._plane_axes[key] = fit_planes(self._mesh, mode, coefficients)
+        return fitted.for_count(count)
+
+    def _upload_planes(self, program: ShaderProgram, planes: PlaneSet) -> None:
+        """Fill the shader's table with a level, if it is not already in it."""
+        if self._plane_table is None:
+            return
+        program.set_int("uPlaneTable", _PLANE_UNIT)
+        if self._plane_table_level is not planes:
+            table = np.zeros((2, max(len(planes), 1), 4), dtype=np.float32)
+            table[0, : len(planes), :3] = planes.directions
+            table[0, : len(planes), 3] = planes.offsets
+            table[1, : len(planes), :3] = planes.anchors
+            self._plane_table.upload(table)
+            self._plane_table_level = planes
+        self._plane_table.bind(_PLANE_UNIT)
 
     @staticmethod
     def _set_geometry(buffers: MeshBuffers | None, mesh: Mesh | None) -> None:
@@ -335,11 +373,17 @@ class SceneRenderer:
             program.set_float(
                 "uPlaneContourWidth", plane_settings.contour_width * max(pixel_ratio, 0.1)
             )
-            axes = np.zeros((0, 3), dtype=np.float32)
-            if plane_settings.enabled and plane_settings.mode is PlaneMode.PCA:
-                axes = self._axes_for(plane_settings.axis_count)
-                program.set_vec3_array("uPlaneAxes", axes)
-            program.set_int("uPlaneAxisCount", len(axes))
+            fitted = PlaneSet.empty()
+            if plane_settings.enabled and plane_settings.mode.fitted:
+                fitted = self._planes_for(
+                    plane_settings.mode, plane_settings.coefficients, plane_settings.axis_count
+                )
+                self._upload_planes(program, fitted)
+                program.set_vec3("uPlaneOrigin", fitted.origin)
+                program.set_float("uPlaneScale", fitted.scale)
+            program.set_int("uPlaneAxisCount", len(fitted))
+            program.set_float("uPlaneLocality", fitted.locality)
+            program.set_float("uPlaneCoplanar", fitted.coplanarity)
             program.set_float("uPlaneSpan", math.radians(plane_settings.axis_span_deg))
             program.set_bool("uOrthographic", camera.projection is Projection.ORTHOGRAPHIC)
             _set_section(program, planes)
@@ -379,11 +423,11 @@ class SceneRenderer:
             self._buffers.draw()
             if not self._pedestal.is_empty:
                 program.set_vec3("uDiffuseColor", settings.pedestal.color)
-                # The PCA directions describe the model, not the ground it
-                # stands on, so the disc would snap to whichever of them
+                # A fitted set of planes describes the model, not the ground
+                # it stands on, so the disc would snap to whichever of them
                 # happened to lie nearest its own up.  Leaving it out keeps it
                 # reading as the flat plate the grid mode also makes of it.
-                if len(axes):
+                if len(fitted):
                     program.set_bool("uPlaneShading", False)
                 self._pedestal.draw()
                 program.set_bool("uPlaneShading", plane_settings.enabled)

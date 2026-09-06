@@ -100,14 +100,6 @@ class ShaderProgram:
             x, y, z, w = (float(v) for v in value)
             GL.glUniform4f(location, x, y, z, w)
 
-    def set_vec3_array(self, name: str, values: np.ndarray) -> None:
-        """Upload an ``(n, 3)`` array into a ``vec3[]`` uniform in one call."""
-        location = self.location(name)
-        if location >= 0:
-            data = np.ascontiguousarray(values, dtype=np.float32).reshape(-1, 3)
-            if len(data):
-                GL.glUniform3fv(location, len(data), data)
-
     def set_matrix4(self, name: str, matrix: np.ndarray) -> None:
         """Upload a row-major numpy 4x4, transposing for GL's column-major."""
         location = self.location(name)

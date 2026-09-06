@@ -1,4 +1,4 @@
-"""Matcap texture loading and upload."""
+"""Matcap texture loading and upload, and the small data table beside it."""
 
 from __future__ import annotations
 
@@ -57,6 +57,61 @@ def default_matcap_pixels(size: int = 256) -> np.ndarray:
     rgb = np.clip(rgb, 0.0, 1.0) * inside[..., None]
     alpha = np.ones((size, size), dtype=np.float32)
     return (np.concatenate([rgb, alpha[..., None]], axis=-1) * 255).astype(np.uint8)
+
+
+class DataTexture:
+    """A small RGBA32F table the shader reads exact values out of.
+
+    Not a picture: nothing here is filtered or mipmapped, and the shader
+    fetches whole texels by index rather than sampling between them.  It
+    carries the fitted planes, which a uniform array could also do -- but a
+    uniform array is charged against a budget the GL 3.3 spec only promises
+    1024 floats of, and a driver honouring exactly that would refuse to
+    compile the shader outright rather than degrade.  A texture has no such
+    ceiling, so how many planes the viewer offers is a question about what the
+    eye can read rather than about whose GPU it is running on.
+    """
+
+    def __init__(self) -> None:
+        self._id = int(GL.glGenTextures(1))
+        self._shape: tuple[int, int] | None = None
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
+        for name in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T):
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, name, GL.GL_CLAMP_TO_EDGE)
+        for name in (GL.GL_TEXTURE_MIN_FILTER, GL.GL_TEXTURE_MAG_FILTER):
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, name, GL.GL_NEAREST)
+        # Without this a texture with no mipmaps is incomplete, and sampling it
+        # quietly returns black on some drivers.
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_LEVEL, 0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+
+    def upload(self, rows: np.ndarray) -> None:
+        """Store an ``(h, w, 4)`` float array, reallocating only when resized."""
+        rows = np.ascontiguousarray(rows, dtype=np.float32)
+        height, width = rows.shape[:2]
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
+        GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 4)
+        if self._shape == (height, width):
+            GL.glTexSubImage2D(
+                GL.GL_TEXTURE_2D, 0, 0, 0, width, height, GL.GL_RGBA, GL.GL_FLOAT, rows
+            )
+        else:
+            GL.glTexImage2D(
+                GL.GL_TEXTURE_2D, 0, GL.GL_RGBA32F, width, height, 0,
+                GL.GL_RGBA, GL.GL_FLOAT, rows,
+            )
+            self._shape = (height, width)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+
+    def bind(self, unit: int = 0) -> None:
+        GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
+
+    def dispose(self) -> None:
+        if self._id:
+            GL.glDeleteTextures([self._id])
+            self._id = 0
+            self._shape = None
 
 
 class Texture2D:

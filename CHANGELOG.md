@@ -4,6 +4,119 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.5.0]
+
+### Added
+
+- **The design matrix is now yours to argue with.** A *Design matrix* group
+  in the Planes tab, folded away by default, exposes the three numbers the
+  clustered modes weigh their features with. *Position* says what a whole
+  radius of travel across the form counts for against a right angle of turn
+  in the surface -- at zero the fit reads facings only, like PCA, and two
+  parts of a form that face the same way come back as one plane; wound up, the
+  planes become compact patches of surface that happen to face somewhere.
+  *Coplanarity* says what the gap between two parallel planes counts for.
+  *Flat within* says how far a vertex's neighbours may turn away from it
+  before it stops counting as part of a flat, which is what decides how much
+  the rounded parts of a form get to vote on where its planes go.
+
+  The same numbers travel through to the shader, so a fragment is still given
+  to a plane under exactly the measure the fit was made with and the
+  boundaries drawn stay the boundaries between the clusters found. Each is a
+  refit, so they take effect on letting go of the slider rather than at every
+  value a drag passes over, and a handful of recent fits are kept so that
+  going back to a setting just tried is instant. *Reset to defaults* restores
+  all three.
+
+### Changed
+
+- **The Detail slider reaches 256 planes, up from 64.** The planes moved out
+  of a shader uniform array and into a texture to get there: a uniform array
+  is charged against a budget that OpenGL 3.3 only promises 1024 floats of,
+  and a driver honouring exactly that would have refused to compile the shader
+  outright rather than degrade. A texture has no such ceiling, so how many
+  planes the viewer offers is now a question about what the eye can read
+  rather than about whose GPU it is running on.
+
+  In the fitted modes the slider now climbs to that count by proportion rather
+  than by a fixed step, because that is how the eye reads it: four planes to
+  five redraws a form, two hundred to two hundred and one is invisible. A
+  side-effect worth having is that raising the ceiling did not move the slider
+  under anyone -- the default detail still gives 37 planes where it gave 38,
+  and a saved session reopens on the form it was left on. Read as a straight
+  fraction of the maximum it would have jumped to 154.
+
+- The merge and the consensus search were rewritten to hold their cost as the
+  ceiling rose: the merge keeps each cluster's own cheapest partner instead of
+  re-scanning the whole matrix at every step, and the consensus search
+  subtracts the surface it has just taken from every proposal instead of
+  re-asking all of them. A fit runs from three times as many patches as before
+  -- needed, or a plane at the fine end would be quantised to the
+  over-segmentation rather than to the form -- in about the same time.
+
+## [1.4.0]
+
+### Added
+
+- **Two more ways to read the planes off a model, both clustering the surface
+  rather than only its normals.** *Planes from* now offers Regions and Flats
+  alongside Grid and PCA.
+
+  PCA sees a model as a cloud of directions and nothing else, which means it
+  cannot tell two parts of a form apart when they happen to face the same way:
+  the plane of a cheek and the plane of a temple come back as one direction,
+  and the seam the eye expects between them is never drawn. The new modes fit
+  planes that carry a place as well as a direction. Every sampled vertex
+  becomes a row of a design matrix holding its normal, its position scaled to
+  the model's own size, and how far out its tangent plane lies -- so that
+  clusters group by facing, by whereabouts, and by genuinely lying in one
+  plane. Each row is weighted by the area it stands for and by how flat its
+  neighbourhood is, so the flats of the form decide where the planes go and
+  the rounded turns between them follow along instead of dragging a plane off
+  true.
+
+  **Regions** cuts the surface into a few hundred small patches and merges
+  them back together by Ward's criterion, always joining the two that cost the
+  least added variance. It is a hierarchy, so every count from 1 to 64 is a
+  cut of one tree and the Detail slider refines the break rather than
+  rebuilding it, exactly as in PCA mode. It is the one to try first.
+
+  **Flats** asks which single plane the most surface agrees on, takes it,
+  removes its surface and asks again -- maximum consensus, which is RANSAC's
+  idea without the guessing, because every patch can be tried. The largest
+  flat of the form arrives first and the rest in the order a sculptor would
+  block them in, and geometry that agrees with nothing is never the winner
+  rather than being averaged into a plane it does not belong to. It does not
+  nest: a step of the slider re-asks the question rather than subdividing the
+  last answer.
+
+  Both settle each plane's direction with an M-estimate rather than an average
+  -- the members disagreeing most with the first guess are down-weighted by
+  Tukey's biweight and the guess is taken again -- so a handful of bad normals
+  inside a patch cannot tilt the plane it is shaded with. Both fit once, the
+  first time the mode is picked, off a thinned but fixed sample, and a model
+  always breaks the same way twice. A cube gives back its six faces exactly.
+
+  Density methods were tried and rejected on the evidence. A closed surface is
+  a connected dense manifold, so DBSCAN and mean shift either chain the whole
+  model into one cluster or shatter it into the tessellation: measured on a
+  sphere, mean shift went from one plane straight to forty-three with no
+  bandwidth in between, which is a slider that does nothing for most of its
+  travel. Consensus does not care how the data connects up, only how much of
+  it agrees.
+
+### Changed
+
+- **The shader now assigns a fragment to a plane by where it is as well as
+  which way it faces**, under the same measure the fit was made with, so the
+  boundaries drawn are the boundaries between the clusters that were found. A
+  fit made only of directions weights position at zero, which leaves the
+  nearest direction and nothing else -- so Grid and PCA are untouched.
+- **No boundary is drawn between two planes that face the same way.** A fit
+  reading position will divide a broad flat between two planes, and the
+  shading runs straight through the join; a line there would say the form
+  turns where it does not.
+
 ## [1.3.2]
 
 ### Added

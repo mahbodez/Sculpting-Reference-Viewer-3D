@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSlider,
+    QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -25,7 +27,12 @@ class SliderSpin(QWidget):
     the spin box display and the slider resolution.
     """
 
+    #: Every change, including each pixel of a drag.  What most controls want.
     valueChanged = Signal(float)
+    #: Only where the value comes to rest: the end of a drag, or a number
+    #: typed into the box.  For settings whose change costs real work, so that
+    #: dragging one does not pay that cost at every value it passes through.
+    valueCommitted = Signal(float)
 
     def __init__(
         self,
@@ -61,6 +68,7 @@ class SliderSpin(QWidget):
         layout.addWidget(self._spin, 0)
 
         self._slider.valueChanged.connect(self._on_slider)
+        self._slider.sliderReleased.connect(self._on_release)
         self._spin.valueChanged.connect(self._on_spin)
         self.set_value(value)
 
@@ -93,12 +101,21 @@ class SliderSpin(QWidget):
         self._spin.setValue(value)
         self._spin.blockSignals(blocked)
         self.valueChanged.emit(value)
+        # A change that did not come from a drag -- an arrow key, the wheel, a
+        # click on the groove -- has already come to rest.
+        if not self._slider.isSliderDown():
+            self.valueCommitted.emit(value)
+
+    def _on_release(self) -> None:
+        self.valueCommitted.emit(self.value())
 
     def _on_spin(self, value: float) -> None:
         blocked = self._slider.blockSignals(True)
         self._slider.setValue(int(value * self._scale))
         self._slider.blockSignals(blocked)
         self.valueChanged.emit(value)
+        # The box does not track keystrokes, so this is already the final word.
+        self.valueCommitted.emit(value)
 
 
 class ColorButton(QPushButton):
@@ -153,12 +170,72 @@ def scrollable(widget: QWidget) -> QScrollArea:
     return area
 
 
-def form_group(title: str) -> tuple[QGroupBox, QFormLayout]:
-    """A titled group box with a form layout, ready to be filled."""
-    box = QGroupBox(title)
-    layout = QFormLayout(box)
+def _panel_form(parent: QWidget) -> QFormLayout:
+    """The row layout every group in the side panels is built on."""
+    layout = QFormLayout(parent)
     layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
     layout.setContentsMargins(10, 10, 10, 10)
     layout.setSpacing(6)
-    return box, layout
+    return layout
+
+
+def form_group(title: str) -> tuple[QGroupBox, QFormLayout]:
+    """A titled group box with a form layout, ready to be filled."""
+    box = QGroupBox(title)
+    return box, _panel_form(box)
+
+
+class CollapsibleGroup(QWidget):
+    """A group whose rows fold away behind its title.
+
+    For settings that are worth having but not worth reading past: they stay
+    out of the way of the controls an artist actually reaches for, and the
+    panel is no longer than it was until someone asks for them.
+    """
+
+    def __init__(self, title: str, expanded: bool = False, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._header = QToolButton()
+        self._header.setText(title)
+        self._header.setCheckable(True)
+        self._header.setAutoRaise(True)
+        self._header.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._header.setStyleSheet("QToolButton { border: none; padding: 2px; }")
+
+        self._body = QFrame()
+        self._body.setFrameShape(QFrame.Shape.StyledPanel)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(self._header)
+        layout.addWidget(self._body)
+
+        self._header.toggled.connect(self._on_toggled)
+        self.set_expanded(expanded)
+
+    def body(self) -> QFrame:
+        return self._body
+
+    def is_expanded(self) -> bool:
+        return self._header.isChecked()
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._header.setChecked(expanded)
+        self._on_toggled(expanded)
+
+    def _on_toggled(self, expanded: bool) -> None:
+        self._header.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+        self._body.setVisible(expanded)
+
+
+def collapsible_group(
+    title: str, expanded: bool = False
+) -> tuple[CollapsibleGroup, QFormLayout]:
+    """A folded-away group with a form layout, shaped like :func:`form_group`."""
+    group = CollapsibleGroup(title, expanded)
+    return group, _panel_form(group.body())

@@ -69,7 +69,7 @@ def worst_miss_deg(wanted: np.ndarray, offered: np.ndarray) -> float:
 
 def test_a_cube_breaks_into_its_own_six_faces():
     """The one form whose planes are not a matter of opinion."""
-    axes = plane_axes(cube()).for_count(6)
+    axes = plane_axes(cube()).for_count(6).directions
     assert len(axes) == 6
     assert worst_miss_deg(AXIS_DIRECTIONS, axes.astype(np.float64)) == pytest.approx(0.0, abs=1e-4)
 
@@ -80,7 +80,7 @@ def test_normals_that_cancel_exactly_still_have_spread_to_split():
 
 
 def test_every_direction_is_a_direction():
-    axes = plane_axes(sphere()).for_count(MAX_PLANE_AXES)
+    axes = plane_axes(sphere()).for_count(MAX_PLANE_AXES).directions
     assert len(axes) == MAX_PLANE_AXES
     assert np.allclose(np.linalg.norm(axes, axis=1), 1.0, atol=1e-5)
 
@@ -93,8 +93,8 @@ def test_a_step_of_the_slider_refines_the_break_rather_than_redoing_it():
     """
     fitted = plane_axes(sphere())
     for count in range(1, len(fitted)):
-        coarse = {tuple(np.round(axis, 6)) for axis in fitted.for_count(count)}
-        fine = {tuple(np.round(axis, 6)) for axis in fitted.for_count(count + 1)}
+        coarse = {tuple(np.round(axis, 6)) for axis in fitted.for_count(count).directions}
+        fine = {tuple(np.round(axis, 6)) for axis in fitted.for_count(count + 1).directions}
         assert len(coarse & fine) == count - 1
 
 
@@ -102,7 +102,9 @@ def test_the_same_model_always_breaks_the_same_way():
     """Sampling is strided, not random, so a session reopens looking the same."""
     once, twice = plane_axes(sphere()), plane_axes(sphere())
     for count in (2, 9, 33, MAX_PLANE_AXES):
-        assert np.array_equal(once.for_count(count), twice.for_count(count))
+        assert np.array_equal(
+            once.for_count(count).directions, twice.for_count(count).directions
+        )
 
 
 def test_a_model_with_one_direction_offers_one_plane():
@@ -114,7 +116,7 @@ def test_a_model_with_one_direction_offers_one_plane():
     )
     fitted = plane_axes(flat)
     assert len(fitted) == 1
-    assert fitted.for_count(8) == pytest.approx(np.array([[0.0, 1.0, 0.0]]))
+    assert fitted.for_count(8).directions == pytest.approx(np.array([[0.0, 1.0, 0.0]]))
 
 
 def test_a_model_with_no_geometry_offers_nothing():
@@ -122,7 +124,7 @@ def test_a_model_with_no_geometry_offers_nothing():
     empty = Mesh(np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3), dtype=np.uint32))
     fitted = plane_axes(empty)
     assert fitted.is_empty
-    assert fitted.for_count(8).shape == (0, 3)
+    assert fitted.for_count(8).directions.shape == (0, 3)
 
 
 def test_counts_outside_what_was_fitted_are_held_at_the_ends():
@@ -153,15 +155,17 @@ def test_a_plane_is_weighed_by_its_area_not_by_its_vertex_count():
     weights = vertex_weights(mesh)
     assert weights[:4].sum() > weights[4:].sum() * 100
     # With one plane to give, it must be the square's.
-    assert plane_axes(mesh).for_count(1)[0] == pytest.approx(np.array([0.0, 1.0, 0.0]), abs=1e-3)
+    kept = plane_axes(mesh).for_count(1).directions[0]
+    assert kept == pytest.approx(np.array([0.0, 1.0, 0.0]), abs=1e-3)
 
 
 def test_thinning_a_dense_model_does_not_change_what_it_is_made_of():
     """The sample limit is a speed measure, so it must not move the planes."""
     dense = sphere(rings=90, sectors=180)
     assert dense.vertex_count > 10_000
-    thinned = plane_axes(dense, sample_limit=8_000).for_count(8).astype(np.float64)
-    whole = plane_axes(dense, sample_limit=dense.vertex_count).for_count(8).astype(np.float64)
+    thinned = plane_axes(dense, sample_limit=8_000).for_count(8).directions.astype(np.float64)
+    whole = plane_axes(dense, sample_limit=dense.vertex_count).for_count(8).directions
+    whole = whole.astype(np.float64)
     assert worst_miss_deg(whole, thinned) < 6.0
 
 

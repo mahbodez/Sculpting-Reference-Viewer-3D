@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .pedestal import PedestalSettings
-from .plane_axes import MAX_PLANE_AXES
+from .plane_axes import DEFAULT_COEFFICIENTS, MAX_PLANE_AXES, Coefficients
 from .section import SectionSettings
 
 Color = tuple[float, float, float]
@@ -140,13 +140,31 @@ class PlaneMode(str, Enum):
 
     GRID = "grid"
     PCA = "pca"
+    REGIONS = "regions"
+    FLATS = "flats"
 
     @property
     def label(self) -> str:
         return {
             PlaneMode.GRID: "Grid",
-            PlaneMode.PCA: "PCA (from the model)",
+            PlaneMode.PCA: "PCA (directions only)",
+            PlaneMode.REGIONS: "Regions (merged patches)",
+            PlaneMode.FLATS: "Flats (largest first)",
         }[self]
+
+    @property
+    def fitted(self) -> bool:
+        """Whether the directions are read off the model rather than imposed."""
+        return self is not PlaneMode.GRID
+
+    @property
+    def clustered(self) -> bool:
+        """Whether the mode reads the design matrix, and so its coefficients.
+
+        Grid reads nothing off the model and PCA reads only the normals, so
+        neither has any use for them.
+        """
+        return self in (PlaneMode.REGIONS, PlaneMode.FLATS)
 
     @property
     def shader_id(self) -> int:
@@ -180,6 +198,13 @@ class PlaneSettings:
     #: because the size of a plane is what the eye judges, and a slider that
     #: moves it evenly is one that behaves the same at both ends.
     detail: float = 60.0
+    #: What a step across the form counts for against a turn in the surface,
+    #: when the mode is one that reads the surface.  See
+    #: :class:`~refview.core.plane_axes.Coefficients`; these three are the same
+    #: numbers, kept here so a session remembers them.
+    locality: float = DEFAULT_COEFFICIENTS.locality
+    coplanarity: float = DEFAULT_COEFFICIENTS.coplanarity
+    flat_span_deg: float = DEFAULT_COEFFICIENTS.flat_span_deg
     #: Draw the seams between the planes, the way a construction drawing puts
     #: a line where the form turns.
     show_contour: bool = False
@@ -208,16 +233,32 @@ class PlaneSettings:
         return 2.0 * math.tan(math.radians(self.span_deg) / 2.0)
 
     @property
-    def axis_count(self) -> int:
-        """How many of the model's principal directions PCA mode keeps.
+    def coefficients(self) -> Coefficients:
+        """The design-matrix settings, in the form the fitters want them."""
+        return Coefficients(
+            locality=self.locality,
+            coplanarity=self.coplanarity,
+            flat_span_deg=self.flat_span_deg,
+        )
 
-        The slider reads straight through as the fraction of them to include,
-        so the number it names is the number of planes.  Two is the floor: one
-        direction would shade the whole model as a single plane.
+    @property
+    def axis_count(self) -> int:
+        """How many planes a mode fitted to the model keeps.
+
+        The climb from two planes to :data:`MAX_PLANE_AXES` is geometric
+        rather than straight, because that is how the eye reads it: going from
+        four planes to five redraws the form, going from two hundred to two
+        hundred and one is invisible.  A step of the slider is therefore a
+        roughly constant *proportion* more planes, which keeps the coarse end
+        -- where the blocking-in happens, and where a single plane matters --
+        controllable at the same time as the fine end reaches into the
+        hundreds.  Two is the floor: one direction would shade the whole model
+        as a single plane.
         """
         along = (self.detail - DETAIL_MIN) / (DETAIL_MAX - DETAIL_MIN)
         along = min(max(along, 0.0), 1.0)
-        return max(2, round(along * MAX_PLANE_AXES))
+        count = round(2.0 * (max(MAX_PLANE_AXES, 2) / 2.0) ** along)
+        return min(max(int(count), 2), MAX_PLANE_AXES)
 
     @property
     def axis_span_deg(self) -> float:
@@ -235,7 +276,7 @@ class PlaneSettings:
     @property
     def plane_span_deg(self) -> float:
         """The plane size of whichever mode is running."""
-        return self.axis_span_deg if self.mode is PlaneMode.PCA else self.span_deg
+        return self.axis_span_deg if self.mode.fitted else self.span_deg
 
 
 @dataclass

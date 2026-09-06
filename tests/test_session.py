@@ -124,20 +124,62 @@ def test_plane_detail_moves_the_plane_size_evenly():
     assert PlaneSettings(detail=140.0).span_deg == pytest.approx(8.0)
 
 
-def test_the_slider_reads_as_the_fraction_of_principal_directions_kept():
-    """In PCA mode the number the slider names is the number of planes."""
+def test_the_slider_climbs_to_the_plane_count_by_proportion_not_by_step():
+    """A step of the slider is worth a fixed share more planes, not a fixed
+    number of them.
+
+    Going from four planes to five redraws a form and going from two hundred
+    to two hundred and one is invisible, so a slider that added a constant
+    number per step would spend most of its travel doing nothing an eye could
+    see, and would have no resolution left where the blocking-in happens.
+    """
     assert PlaneSettings(detail=100.0).axis_count == MAX_PLANE_AXES
-    assert PlaneSettings(detail=50.0).axis_count == MAX_PLANE_AXES // 2
-    # Every step of the slider is worth the same number of planes, once past
-    # the floor the coarse end sits on.
-    counts = [PlaneSettings(detail=d).axis_count for d in range(10, 101, 10)]
-    changes = [after - before for before, after in pairwise(counts)]
-    assert max(changes) - min(changes) <= 1
+    assert PlaneSettings(detail=0.0).axis_count == 2
+
+    counts = [PlaneSettings(detail=d).axis_count for d in range(0, 101, 10)]
+    assert all(after >= before for before, after in pairwise(counts))
+    # Equal steps of the slider multiply the count by roughly equal factors.
+    # Roughly, because a count is a whole number of planes and the rounding
+    # tells at the coarse end, where a step is worth a plane or two.
+    ideal = (MAX_PLANE_AXES / 2.0) ** 0.1
+    factors = [after / before for before, after in pairwise(counts)]
+    assert all(0.85 * ideal < factor < 1.15 * ideal for factor in factors)
 
     # One plane would shade the whole model flat, so the coarse end holds at two.
-    assert PlaneSettings(detail=0.0).axis_count == 2
     assert PlaneSettings(detail=-20.0).axis_count == 2
     assert PlaneSettings(detail=140.0).axis_count == MAX_PLANE_AXES
+
+
+def test_raising_the_ceiling_left_the_settings_people_already_have_alone():
+    """The ceiling went from 64 planes to 256 without moving the slider under
+    anyone: a session saved at the default detail reopens on the same form it
+    was left on, because the climb is proportional rather than a fraction of
+    the maximum.  Read straight, the default would have jumped from 38 planes
+    to 154.
+    """
+    assert PlaneSettings().axis_count == 37
+    assert PlaneSettings(detail=50.0).axis_count == 23
+
+
+def test_the_design_matrix_coefficients_reach_the_fitters():
+    """The panel edits the settings; the fit has to be told what they are."""
+    planes = PlaneSettings(locality=0.25, coplanarity=1.5, flat_span_deg=12.0)
+    assert planes.coefficients.locality == pytest.approx(0.25)
+    assert planes.coefficients.coplanarity == pytest.approx(1.5)
+    assert planes.coefficients.flat_span_deg == pytest.approx(12.0)
+    # Frozen and comparable, so the renderer can key a cached fit on them.
+    assert planes.coefficients == PlaneSettings(
+        locality=0.25, coplanarity=1.5, flat_span_deg=12.0
+    ).coefficients
+    assert planes.coefficients != PlaneSettings().coefficients
+    assert hash(planes.coefficients) == hash(planes.coefficients)
+
+
+def test_only_the_modes_that_read_the_surface_care_about_the_coefficients():
+    assert not PlaneMode.GRID.clustered
+    assert not PlaneMode.PCA.clustered
+    assert PlaneMode.REGIONS.clustered
+    assert PlaneMode.FLATS.clustered
 
 
 def test_the_plane_size_reported_is_the_one_the_running_mode_makes():

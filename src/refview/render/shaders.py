@@ -113,8 +113,9 @@ const int MODE_PBR          = 4;
 const int MODE_NORMALS      = 5;
 const int MODE_HIGH_QUALITY = 6;
 
+// Grid is the one mode that quantises against something other than a fitted
+// set of planes; the rest differ only in how that set was arrived at.
 const int PLANE_GRID = 0;
-const int PLANE_PCA  = 1;
 
 const float PI = 3.14159265359;
 
@@ -133,8 +134,15 @@ uniform mat3 uNormalMatrix;
 uniform bool  uPlaneShading;
 uniform int   uPlaneMode;
 uniform float uPlaneCellSize;
-uniform vec3  uPlaneAxes[MAX_PLANE_AXES];  // world space, unit length
+//: The fitted planes, two texels apiece: row 0 is (direction.xyz, offset) and
+//: row 1 is (anchor.xyz, unused).  A table rather than a uniform array so that
+//: how many planes there can be is not a question about the driver.
+uniform sampler2D uPlaneTable;
 uniform int   uPlaneAxisCount;
+uniform vec3  uPlaneOrigin;         // world point the normalised frame is about
+uniform float uPlaneScale;          // world units -> normalised units
+uniform float uPlaneLocality;       // weight on being in the same place
+uniform float uPlaneCoplanar;       // weight on lying in the same plane
 uniform float uPlaneSpan;           // radians of turn per plane
 uniform bool  uPlaneContour;
 uniform vec3  uPlaneContourColor;
@@ -214,52 +222,77 @@ vec3 planeNormal(vec3 n) {
     return normalize(mix(cell, sign(face), dominant));
 }
 
-vec3 planeAxisNormal(vec3 n) {
-    // The directions were read off this model's own normals, so there is no
-    // grid to round against: the plane a fragment belongs to is simply the
-    // direction it points most nearly along.
-    if (uPlaneAxisCount < 2) {
-        return n;   // No model to fit, or a model with only one direction in it.
-    }
-    int nearest = 0;
-    float best = -2.0;
+void planeScores(
+    vec3 n, vec3 world, out int nearest, out int runnerUp, out float best, out float second
+) {
+    // The planes were fitted to this model, so there is no grid to round
+    // against: a fragment belongs to whichever plane is nearest it.  Nearest
+    // is measured in the space the fit was made in -- how nearly the fragment
+    // faces the way the plane does, how far it is from where the plane sits,
+    // and how far it is from lying in the plane -- so the boundaries the
+    // shader draws are the boundaries between the clusters that were found.
+    //
+    // A fit made only of directions sets both weights to zero, which leaves
+    // the nearest direction and nothing else, exactly as before.
+    vec3 p = (world - uPlaneOrigin) * uPlaneScale;
+    float lie = dot(p, n);
+    nearest = 0;
+    runnerUp = 0;
+    best = -1e30;
+    second = -1e30;
     for (int i = 0; i < MAX_PLANE_AXES; ++i) {
         if (i >= uPlaneAxisCount) {
             break;
         }
-        float towards = dot(n, uPlaneAxes[i]);
-        if (towards > best) {
-            best = towards;
+        vec4 plane = texelFetch(uPlaneTable, ivec2(i, 0), 0);
+        vec3 anchor = texelFetch(uPlaneTable, ivec2(i, 1), 0).xyz;
+        vec3 facing = n - plane.xyz;
+        vec3 across = p - anchor;
+        float depth = lie - plane.w;
+        float score = -(dot(facing, facing)
+                      + uPlaneLocality * dot(across, across)
+                      + uPlaneCoplanar * depth * depth);
+        if (score > best) {
+            second = best;
+            runnerUp = nearest;
+            best = score;
             nearest = i;
+        } else if (score > second) {
+            second = score;
+            runnerUp = i;
         }
     }
-    return normalize(uPlaneAxes[nearest]);
 }
 
-float planeAxisContour(vec3 n) {
-    // A fragment sits on a boundary exactly where the two nearest directions
-    // are equally near, so the gap between the best and the second best is a
+vec3 planeAxisNormal(vec3 n, vec3 world) {
+    if (uPlaneAxisCount < 2) {
+        return n;   // No model to fit, or a model with only one plane in it.
+    }
+    int nearest;
+    int runnerUp;
+    float best;
+    float second;
+    planeScores(n, world, nearest, runnerUp, best, second);
+    return normalize(texelFetch(uPlaneTable, ivec2(nearest, 0), 0).xyz);
+}
+
+float planeAxisContour(vec3 n, vec3 world) {
+    // A fragment sits on a boundary exactly where the two nearest planes are
+    // equally near, so the gap between the best and the second best is a
     // signed distance to the seam.  Dividing it by how fast it changes in one
     // pixel turns it into a distance in pixels, which is what gives a line of
     // an even width at any zoom -- the same reasoning as the grid mode's, on a
-    // quantity that does not need a grid to exist.
+    // quantity that does not need a grid to exist.  Two planes that differ in
+    // where they sit and not only in which way they face still have a gap that
+    // moves across the surface, so the seam between them is found the same way.
     if (uPlaneAxisCount < 2) {
         return 0.0;
     }
-    float best = -2.0;
-    float second = -2.0;
-    for (int i = 0; i < MAX_PLANE_AXES; ++i) {
-        if (i >= uPlaneAxisCount) {
-            break;
-        }
-        float towards = dot(n, uPlaneAxes[i]);
-        if (towards > best) {
-            second = best;
-            best = towards;
-        } else if (towards > second) {
-            second = towards;
-        }
-    }
+    int nearest;
+    int runnerUp;
+    float best;
+    float second;
+    planeScores(n, world, nearest, runnerUp, best, second);
     float gap = best - second;
     float travel = max(fwidth(gap), 1e-6);
     float halfWidth = max(uPlaneContourWidth, 0.0) * 0.5;
@@ -270,6 +303,14 @@ float planeAxisContour(vec3 n) {
     // inside one pixel is what says that has happened.
     float turn = length(fwidth(n)) / max(uPlaneSpan, 1e-4);
     ink *= 1.0 - smoothstep(0.25, 0.75, turn);
+    // Two planes can meet without the form turning at all: a fit that reads
+    // where the surface is will divide a broad flat between two planes facing
+    // the same way, and the shading runs straight through the join.  A line
+    // there would say the form turns where it does not, so the line is only
+    // drawn to the extent that the two planes really do face apart.
+    float apart = 1.0 - dot(texelFetch(uPlaneTable, ivec2(nearest, 0), 0).xyz,
+                            texelFetch(uPlaneTable, ivec2(runnerUp, 0), 0).xyz);
+    ink *= smoothstep(0.0005, 0.0040, apart);   // about 2 to 5 degrees
     return clamp(ink, 0.0, 1.0);
 }
 
@@ -335,7 +376,9 @@ vec3 shadingNormal(vec3 viewDir) {
             ? normalize(cross(dFdx(vWorldPosition), dFdy(vWorldPosition)))
             : normalize(vWorldNormal);
         unrounded = normalize(uNormalMatrix * world);
-        gWorldNormal = uPlaneMode == PLANE_PCA ? planeAxisNormal(world) : planeNormal(world);
+        gWorldNormal = uPlaneMode == PLANE_GRID
+            ? planeNormal(world)
+            : planeAxisNormal(world, vWorldPosition);
         n = normalize(uNormalMatrix * gWorldNormal);
     } else {
         gWorldNormal = normalize(vWorldNormal);
@@ -513,7 +556,9 @@ void main() {
         // Every flag branched on here is uniform, so the derivatives inside
         // stay well defined.
         vec3 turning = normalize(vWorldNormal);
-        float ink = uPlaneMode == PLANE_PCA ? planeAxisContour(turning) : planeContour(turning);
+        float ink = uPlaneMode == PLANE_GRID
+            ? planeContour(turning)
+            : planeAxisContour(turning, vWorldPosition);
         color = mix(color, uPlaneContourColor, ink);
     }
     fragColor = vec4(max(color, vec3(0.0)), 1.0);

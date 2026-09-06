@@ -29,9 +29,9 @@ Built with PySide6 and OpenGL 3.3.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
 - A **Planes** filter that breaks the surface into the flat planes a
   sculptor blocks a form in with, from a six-sided box down to a barely
-  faceted surface -- either on a fixed grid or on directions read out of the
-  model's own normals by PCA. It acts on the normals rather than on the
-  shading, so it works under whichever shading mode you are in.
+  faceted surface -- on a fixed grid, or fitted to the model itself by any of
+  three clusterings of its own surface. It acts on the normals rather than on
+  the shading, so it works under whichever shading mode you are in.
 - Adjustable background gradient.
 - The screen stays awake while the window is in front, so a pose holds
   while your hands are in the clay.
@@ -111,21 +111,74 @@ so the first directions to appear are the big planes of the form and the later
 ones refine them. The planes are the model's own -- the flat of a cheek, the
 underside of a brow -- rather than a box the model happens to sit inside.
 
-Here the *Detail* slider is the fraction of those principal directions to
-keep, from 2 up to 64, so the number it names is the number of planes. Adding
-one splits a single plane in two and leaves the rest alone, which means the
-slider refines the break rather than rebuilding it each step. The fit runs
+Here the *Detail* slider is a count of planes rather than an angle, climbing
+from 2 to 256. It climbs by proportion rather than by a fixed step: going from
+four planes to five redraws a form and going from two hundred to two hundred
+and one is invisible, so each step of the slider is worth a roughly constant
+*share* more planes. That leaves real control at the coarse end, where the
+blocking-in happens, while the fine end still reaches into the hundreds.
+Adding a plane splits a single one in two and leaves the rest alone, which
+means the slider refines the break rather than rebuilding it each step. The fit runs
 once, the first time the mode is turned on, off a thinned but fixed sample of
 the normals -- so it costs nothing to load a model you never look at this way,
 and a model always breaks the same way twice. A cube gives back its six faces
 exactly.
 
+**Regions** reads where the surface is as well as which way it faces, which
+is what lets it tell two parts of a form apart when they happen to face the
+same way -- the plane of a cheek and the plane of a temple stay two planes
+with a seam between them, where PCA has only one direction to offer for both.
+Each vertex becomes a row of a design matrix holding its normal, its position,
+and how far out its own tangent plane lies; the surface is cut into a few
+hundred small patches and then merged back together, at every step joining the
+two patches that cost the least, which is Ward's criterion. Because the merge
+is a hierarchy, the *Detail* slider is a cut of one tree: adding a plane
+splits one and leaves the rest, exactly as in PCA mode. This is the one to
+try first.
+
+**Flats** asks a blunter question of the whole model at once: which single
+plane does the most surface agree on? It takes that one, removes its surface,
+and asks again -- so the largest flat of the form arrives first and the rest
+in the order a sculptor would block them in. Nothing is averaged, so a stray
+patch or a noisy scan cannot pull a plane off the flat it belongs to. The
+price is that it does not nest: each step of the slider re-asks the question
+rather than subdividing the last answer, so the planes shift about as you
+drag. Reach for it when a form has real flats in it and you want those rather
+than an even share-out of the surface.
+
+Both of these weigh a vertex by the area it stands for *and* by how flat its
+neighbourhood is, so the flats of the form decide where a plane sits and the
+rounded turns between them follow along.
+
+*Design matrix* — folded away under the boundary controls, because the
+defaults are chosen to read a figure and most work never needs to open it —
+is where those weights can be argued with. *Position* is what a whole radius
+of travel across the form counts for against a right angle of turn in the
+surface: at zero the fit reads facings only, like PCA, and two parts of the
+form that face the same way come back as one plane; raise it and the form is
+broken up as well as broken down, until at the top the planes are patches of
+surface that happen to face somewhere. *Coplanarity* is what the gap between
+two parallel planes counts for, which is what keeps two patches lying in one
+plane together however far apart they sit. *Flat within* is how far a
+vertex's neighbours may turn away from it before it stops counting as part of
+a flat: narrow it and only the flattest surface decides where the planes go,
+widen it and the turns get their say back. Each of these refits the model, so
+they take effect when you let go of the slider rather than as you drag, and
+*Reset to defaults* puts all three back. Each plane's direction is settled by
+an M-estimate rather than an average -- the members that disagree most with
+the first guess are down-weighted and the guess is taken again -- so a handful
+of bad normals inside a patch cannot tilt it. Like PCA, they fit once, the
+first time you pick the mode, and a model always breaks the same way twice.
+
 *Draw the plane boundaries* lines every seam between two planes, in a colour
 and width you set, the way a construction drawing marks where the form turns.
 The lines are worked out from the quantisation itself rather than found by
-comparing pixels -- from the grid in one mode, and in the other from where the
-two nearest directions are equally near -- so they hold the width you asked
-for at any zoom, and they
+comparing pixels -- from the grid in Grid mode, and in the fitted modes from
+where the two nearest planes are equally near -- so they hold the width you
+asked for at any zoom. Where two planes meet without the form turning at all,
+which is what happens when a fit that reads position divides a broad flat, no
+line is drawn: the shading runs straight through, so a line there would say
+the form turns where it does not. They
 fade out where the planes themselves shrink to a pixel or two -- around the
 silhouette, or at the fine end of the slider -- instead of flooding the
 surface.
