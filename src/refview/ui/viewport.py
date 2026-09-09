@@ -27,11 +27,14 @@ from ..core.commands import AddItem, ReplaceItems, SetAttributes
 from ..core.history import ANNOTATIONS, MEASUREMENTS
 from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
+from ..core.plane_film import film_key
+from ..core.plane_film import shaded as film_shaded
 from ..core.plane_solids import SculptCache
 from ..core.section import section_segments
 from ..render.mesh_renderer import SceneRenderer
 from ..render.stroke_renderer import build_segment_vertices
 from .annotate_tool import AnnotateTool
+from .film_recorder import FilmRecorder
 from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
 from .overlay import ViewportOverlay
@@ -81,6 +84,12 @@ class Viewport(QOpenGLWidget):
         #: turn of the geometry sliders and the next, so only the part that
         #: actually went stale is worked out again.
         self._sculpt = SculptCache()
+        #: Records the whole making of a form, in the background, when the
+        #: film is asked for.  Kept here rather than in the panel because it
+        #: is the viewport that draws a stage.
+        self._film = FilmRecorder(self)
+        self._film.grew.connect(self._film_grew)
+        self._film.settled.connect(self._film_settled)
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -188,6 +197,8 @@ class Viewport(QOpenGLWidget):
                 planes.sculpt_median,
                 planes.sculpt_median_reach,
                 planes.sculpt_fineness,
+                planes.sculpt_film,
+                planes.sculpt_stage,
                 planes.coefficients,
             )
             if sculpt_key != self._sculpt_key:
@@ -203,6 +214,16 @@ class Viewport(QOpenGLWidget):
         self._renderer.set_pedestal(disc)
         self.doneCurrent()
 
+    def stop_recording(self) -> None:
+        """End any film being recorded, and wait for its thread to really stop.
+
+        For shutdown only.  Everywhere else a recording is abandoned rather
+        than waited for, because waiting is the freeze the thread exists to
+        avoid -- but on the way out the alternative is a live thread meeting
+        an interpreter that is dismantling itself, which is a crash.
+        """
+        self._film.wait()
+
     def _upload_sculpt(self) -> None:
         """Rebuild the planar stand-in and hand it to the renderer.
 
@@ -210,22 +231,79 @@ class Viewport(QOpenGLWidget):
         felt, so the wait is shown for what it is rather than looking like a
         hang.  The model itself is untouched throughout: picking, measuring,
         painting and the section cut all still read the real surface.
+
+        When the film is asked for, the same work is done a stage at a time on
+        a thread instead, and what is drawn is whichever stage the scrub
+        handle is on.  The first stage arrives in a fraction of the time the
+        finished form would take, so the viewport fills rather than waiting.
         """
         planes = self._state.render.planes
-        proxy = None
-        if self._state.mesh is not None and planes.sculpts_geometry:
+        if self._state.mesh is None or not planes.sculpts_geometry:
+            self._film.abandon()
+            self._state.recording_changed.emit(False)
+            self._show_sculpt(None)
+            return
+        if not planes.sculpt_film:
+            self._film.abandon()
+            self._state.recording_changed.emit(False)
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
                 proxy = self._sculpt.mesh_for(self._state.mesh, planes)
             finally:
                 QApplication.restoreOverrideCursor()
-        if proxy is not None:
+            if proxy is not None:
+                self._state.status_message.emit(
+                    f"Form rebuilt from {planes.sculpt_count} planes, {planes.sculpt.value}"
+                )
+            self._show_sculpt(proxy)
+            return
+
+        key = film_key(planes, planes.coefficients)
+        held = self._film.matching(key)
+        if held is not None:
+            # The same film the settings already asked for: only the stage
+            # being looked at has changed, which is a lookup.
+            self._show_stage(held)
+            return
+        film = self._film.start(
+            self._state.mesh, self._sculpt.planes_for(self._state.mesh, planes), planes, key
+        )
+        self._state.recording_changed.emit(True)
+        self._state.status_message.emit(
+            f"Recording the making of the form, {planes.sculpt.value}..."
+        )
+        self._show_stage(film)
+
+    def _film_grew(self, film) -> None:
+        """A stage landed: show it if it is the one being looked at."""
+        if film is not self._film.film:
+            return
+        self._state.film_changed.emit(film)
+        self._show_stage(film)
+
+    def _film_settled(self, film, complete: bool) -> None:
+        if film is not self._film.film:
+            return
+        self._state.film_changed.emit(film)
+        self._state.recording_changed.emit(False)
+        if complete:
             self._state.status_message.emit(
-                f"Form rebuilt from {planes.sculpt_count} planes, {planes.sculpt.value}"
+                f"The making of the form, in {len(film)} stages"
             )
+
+    def _show_stage(self, film) -> None:
+        """Draw whichever stage of ``film`` the scrub handle is on."""
+        planes = self._state.render.planes
+        stage = film.at(planes.sculpt_stage)
+        if stage is None:
+            return  # nothing recorded yet; the viewport keeps what it has
+        self._show_sculpt(film_shaded(stage, planes.sculpt_smooth))
+
+    def _show_sculpt(self, proxy) -> None:
         self.makeCurrent()
         self._renderer.set_sculpt(proxy)
         self.doneCurrent()
+        self.update()
 
     def _upload_contour(self) -> None:
         """Cut the mesh with each section plane and expand the result to strokes."""

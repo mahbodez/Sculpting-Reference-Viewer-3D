@@ -318,6 +318,8 @@ class MainWindow(QMainWindow):
         self._state.bookmarks_changed.connect(self._camera_panel.refresh_bookmarks)
         self._state.render_changed.connect(self._shading_panel.update_enabled)
         self._state.render_changed.connect(self._planes_panel.update_enabled)
+        self._state.film_changed.connect(self._planes_panel.film_changed)
+        self._state.recording_changed.connect(self._planes_panel.recording_changed)
         self._state.camera_changed.connect(self._camera_panel.refresh_camera)
         self._state.history_changed.connect(self._update_history_actions)
         self._state.render_changed.connect(self._sync_section_action)
@@ -575,6 +577,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self._wake_lock.release()
+        # A recording still running when the interpreter tears its modules
+        # down is a crash on the way out, so the window does not leave
+        # without it.  It is asked to stop first, so the wait is one stage.
+        self._viewport.stop_recording()
         super().closeEvent(event)
 
     # ------------------------------------------------------------------

@@ -300,23 +300,32 @@ class SculptCache:
         self._smooth = None
         self._result = None
 
-    def mesh_for(self, mesh: Mesh | None, settings: PlaneSettings) -> Mesh | None:
-        """The stand-in these settings ask for, or ``None`` for the model itself."""
-        if mesh is None or not settings.sculpts_geometry:
-            return None
+    def planes_for(self, mesh: Mesh, settings: PlaneSettings) -> PlaneSet:
+        """The fit these settings ask for, refitting only if it has gone stale.
 
+        The fit is the expensive half of the cache and it does not depend on
+        how the form is then worked, so a film -- which works it many times
+        over -- wants the same one the single build would have used rather
+        than a fit of its own.
+        """
         coefficients = settings.coefficients
         if mesh is not self._mesh or coefficients != self._coefficients:
             self._mesh, self._coefficients = mesh, coefficients
             self._axes = plane_regions(mesh, coefficients)
             self._count, self._work, self._carved = -1, None, None
-
         count = settings.sculpt_count
         if count != self._count:
             self._count = count
             self._planes = self._axes.for_count(count)
             self._work, self._carved = None, None
+        return self._planes
 
+    def mesh_for(self, mesh: Mesh | None, settings: PlaneSettings) -> Mesh | None:
+        """The stand-in these settings ask for, or ``None`` for the model itself."""
+        if mesh is None or not settings.sculpts_geometry:
+            return None
+
+        self.planes_for(mesh, settings)
         work = (
             settings.sculpt,
             settings.sculpt_masses,

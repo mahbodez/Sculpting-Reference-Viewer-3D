@@ -37,6 +37,14 @@ class ViewerState(QObject):
     annotations_changed = Signal()
     bookmarks_changed = Signal()
     history_changed = Signal()
+    #: A film of a form's making gained a stage, or finished.  Carries the
+    #: film itself, so the panel can size its scrub slider to what has been
+    #: recorded so far rather than to what was asked for.
+    film_changed = Signal(object)
+    #: Whether a film is being recorded right now.  The settings a recording
+    #: is built from are held still while it runs, so this is what the panel
+    #: puts its controls to sleep by.
+    recording_changed = Signal(bool)
     status_message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:

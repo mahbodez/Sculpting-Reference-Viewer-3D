@@ -4,6 +4,76 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.7.0]
+
+### Added
+
+- **The making of a form, not just its end.** Both geometry modes now record
+  every stage a form passes through and let you scrub back and forth along it
+  with a slider. A block-in is a sequence before it is a shape -- which mass
+  went down first, what the second cut took off, where the thing stopped being
+  a block and started being a body -- and that sequence is the part a sculptor
+  learns from.
+
+  It is read out rather than reconstructed. Both modes already work one solid
+  at a time: stone splits the block holding the most air, over and over, so the
+  form in *k* blocks is the form in *k+1* with the last cut not yet made; clay
+  lays each lump into whatever the ones before it left bare, so the first *k*
+  lumps *are* the form at *k* lumps. In additive mode the masses go down first
+  and the detail follows, which is the order a figure is actually built in.
+
+  Every stage is the form exactly as the *Detail* slider set that far would
+  build it -- finishing passes and all -- so what you scrub past is what you
+  could stop at. The panel says which *Detail* setting would rebuild the stage
+  you are looking at, and says nothing where no setting would: clay's masses
+  arrive together, so a film shows them landing one by one but the *Masses*
+  slider cannot ask for half of them, and claiming otherwise would be a lie.
+
+  Recording runs in the background. The stages become scrubbable as they land,
+  coarsest first, and the slider grows under the handle rather than appearing
+  whole at the end -- so a film you are half way through recording is already
+  a film you can scrub. Changing anything a stage is built from abandons the
+  recording in flight rather than queueing another behind it, and *AutoSmooth*
+  deliberately does not: it re-reads normals rather than rebuilding a form, so
+  a film survives it.
+
+  Scrubbing itself is free. Every stage was built when the film was recorded,
+  and moving the handle only picks one.
+
+### Changed
+
+- The expensive half of a carving -- reading the model into a lattice and
+  finding its distance field, about a second on a figure -- is now laid once
+  and shared. A whole film of dozens of stages therefore costs a few times one
+  build rather than dozens of them.
+
+- **The settings a film is being recorded from are held still while it
+  records.** A film is a walk through one set of settings, and changing one
+  part way through does not make a film of the new settings -- it makes a
+  recording of one form wearing another form's label. *Detail*, *Method*,
+  *Masses*, the finishing passes and the design matrix all go quiet for the
+  duration, with a note saying why.
+
+  The scrub slider deliberately stays live, because being able to watch the
+  form arrive while it is still arriving is the whole point of recording in
+  the background; so does *AutoSmooth*, which only re-reads normals and cannot
+  change a stage's shape. Unticking *Record the making* cancels a recording
+  and gives everything back.
+
+### Fixed
+
+- **Changing a setting while a film was recording crashed the program.** Not
+  an error dialog -- an abort. Abandoning a recording dropped the last handle
+  to a thread that was still running, and Qt answers that by taking the
+  process down rather than trying to unwind it. Since every settings change
+  abandons the recording it no longer wants, and a slider drag makes several,
+  this was easy to meet.
+
+  An abandoned recording is now held until it reports that it has really
+  stopped, and only then let go of. The window waits for one on its way out
+  too, because a live thread meeting an interpreter that is dismantling itself
+  is the same crash wearing a different hat.
+
 ## [1.6.1]
 
 ### Fixed

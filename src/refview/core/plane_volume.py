@@ -77,6 +77,7 @@ picking, measuring, painting and the section cut go on reading.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -646,29 +647,31 @@ def _cuts(points: np.ndarray, air: np.ndarray) -> list:
     return out
 
 
-def blocks(
+def block_splits(
     within: np.ndarray, origin: np.ndarray, step: float, wanted: int
-) -> tuple[np.ndarray, int, int]:
-    """Cut the model into nearly convex blocks.  ``(coarse labels, stride, count)``.
+) -> tuple[np.ndarray, np.ndarray, list, int, tuple]:
+    """The greedy split, with every count along the way kept.
 
-    One block to start with -- the whole model, whose hull is the block of
-    stone -- and then, over and over, the block holding the most air is split
-    in two.  Each candidate cut is judged by how much air the two halves would
-    hold between them and the best is taken, so a cut runs through the middle
-    of a hollow and the hollow comes back.
+    The same walk :func:`blocks` makes, but handing back what it did rather
+    than only where it ended up: the corners it worked on, which block each
+    started in, and one record per split saying which block was cut and which
+    of its corners went to the new one.  Replaying the first ``k`` of those
+    records is the form in ``k + 1`` blocks, which is what lets the whole
+    sequence of a carving be shown without the walk being made again for each
+    stage of it.
 
-    Asked on a lattice coarse enough that a few dozen trial hulls are cheap,
-    because where the masses of a form are is not a question that needs
-    millimetres.  Corners outside the model carry ``-1``.
+    The records are kept rather than a label array per stage because a split
+    moves only the corners it moves: a couple of hundred of them against a
+    lattice of a hundred thousand, and a stage apiece would be megabytes where
+    this is kilobytes.
     """
     stride = 1
     while within.size // (stride**3) > SPLIT_CORNERS:
         stride += 1
     coarse = np.ascontiguousarray(within[::stride, ::stride, ::stride])
-    label = np.full(coarse.shape, -1, dtype=np.int32)
     at = np.stack(np.nonzero(coarse), axis=1)
     if len(at) == 0:
-        return label, stride, 0
+        return at, np.zeros(0, dtype=np.int32), [], stride, coarse.shape
 
     coarse_step = step * stride
     place = origin + at * coarse_step
@@ -676,6 +679,7 @@ def blocks(
     facing = _corner_facings()
     air = [_hull_air(place, facing, coarse_step)]
     held = [float(len(air[0]))]
+    records: list = []
 
     while len(held) < max(int(wanted), 1):
         pick = int(np.argmax(held))
@@ -697,13 +701,45 @@ def blocks(
             held[pick] = 0.0
             continue
         _, side, over, under = best
-        who[mine[side]] = len(held)
+        moved = mine[side]
+        who[moved] = len(held)
+        records.append((pick, len(held), moved))
         air[pick], held[pick] = under, float(len(under))
         air.append(over)
         held.append(float(len(over)))
 
-    label[at[:, 0], at[:, 1], at[:, 2]] = who
-    return _spread(label, _SPREAD_ROUNDS), stride, len(held)
+    return at, who, records, stride, coarse.shape
+
+
+def block_labels(
+    at: np.ndarray, who: np.ndarray, shape: tuple, rounds: int = _SPREAD_ROUNDS
+) -> np.ndarray:
+    """Which block each corner of the coarse lattice belongs to, spread outwards."""
+    label = np.full(shape, -1, dtype=np.int32)
+    if len(at):
+        label[at[:, 0], at[:, 1], at[:, 2]] = who
+    return _spread(label, rounds)
+
+
+def blocks(
+    within: np.ndarray, origin: np.ndarray, step: float, wanted: int
+) -> tuple[np.ndarray, int, int]:
+    """Cut the model into nearly convex blocks.  ``(coarse labels, stride, count)``.
+
+    One block to start with -- the whole model, whose hull is the block of
+    stone -- and then, over and over, the block holding the most air is split
+    in two.  Each candidate cut is judged by how much air the two halves would
+    hold between them and the best is taken, so a cut runs through the middle
+    of a hollow and the hollow comes back.
+
+    Asked on a lattice coarse enough that a few dozen trial hulls are cheap,
+    because where the masses of a form are is not a question that needs
+    millimetres.  Corners outside the model carry ``-1``.
+    """
+    at, who, records, stride, shape = block_splits(within, origin, step, wanted)
+    if len(at) == 0:
+        return np.full(shape, -1, dtype=np.int32), stride, 0
+    return block_labels(at, who, shape), stride, len(records) + 1
 
 
 def _spread(label: np.ndarray, rounds: int) -> np.ndarray:
@@ -1518,32 +1554,26 @@ def join_pieces(
     return out
 
 
-def clay_pieces(
+def clay_lumps(
     model: np.ndarray,
     origin: np.ndarray,
     step: float,
     bevels: np.ndarray,
     masses: int,
     wanted: int,
-) -> list:
-    """Lumps of clay pressed into the model, the biggest masses first.
+) -> tuple[list, list, np.ndarray, np.ndarray]:
+    """The lumps themselves, in the order a sculptor lays them down.
 
-    The seed of the next lump is the material that is at once deepest inside
-    the model and furthest from the clay already there, which is the one
-    question this whole mode turns on.  The first few land in the ribcage, the
-    pelvis, the thighs -- the masses a figure is blocked in as.  The ones after
-    that land in whatever is left over, which is how the arms come before the
-    hands and the hands before the fingers.  Nothing is ever told what a limb
-    is: the order falls out of asking where the most uncovered material is.
+    :func:`clay_pieces` is this plus the joins between them.  They are kept
+    apart because the lumps are laid one at a time and each is laid into what
+    the ones before it left bare -- so the first ``k`` of them are exactly the
+    form at ``k`` lumps, and a whole sequence of stages can be read off one
+    walk rather than one walk apiece.  The joins cannot be shared that way:
+    which pairs are near enough to bridge changes as lumps are added, so they
+    are worked out afresh for each stage, which is the cheap half.
 
-    The first ``masses`` lumps are plain rectangular blocks, set square to the
-    mass each sits in.  The rest are tubes, allowed the form's own planes as
-    well, so they are bevelled where the model turns.  Then the joins between
-    them are filled, which is :func:`join_pieces`.
-
-    Comes back as ``(facings, offsets, frame, half-thickness)`` for each lump,
-    the last of these being how far the lump reaches along its nearest facing,
-    which is the scale everything about it is judged on.
+    Hands back the lumps, which corners of the lattice each of them holds,
+    where those corners are, and the wall outside the material.
     """
     stride = 1
     while model.size // stride**3 > GROW_CORNERS:
@@ -1555,7 +1585,7 @@ def clay_pieces(
     if not room.any():  # a form thinner than the lattice can hold a lump in
         safety, room = 0.0, depth > 0.0
     if not room.any():  # pragma: no cover - a model the lattice never found
-        return []
+        return [], [], np.zeros((0, 3)), np.zeros((0, 3))
 
     wall = outside_points(room, origin, grow_step)
     place = origin + np.stack(np.nonzero(room), axis=1) * grow_step
@@ -1594,7 +1624,204 @@ def clay_pieces(
         mine = (spots @ facing.astype(np.float32).T - offsets).max(axis=1)
         held.append(np.flatnonzero(mine <= 0.0))
         free = np.minimum(free, mine)
+    return out, held, place, wall
+
+
+def clay_pieces(
+    model: np.ndarray,
+    origin: np.ndarray,
+    step: float,
+    bevels: np.ndarray,
+    masses: int,
+    wanted: int,
+) -> list:
+    """Lumps of clay pressed into the model, the biggest masses first.
+
+    The seed of the next lump is the material that is at once deepest inside
+    the model and furthest from the clay already there, which is the one
+    question this whole mode turns on.  The first few land in the ribcage, the
+    pelvis, the thighs -- the masses a figure is blocked in as.  The ones after
+    that land in whatever is left over, which is how the arms come before the
+    hands and the hands before the fingers.  Nothing is ever told what a limb
+    is: the order falls out of asking where the most uncovered material is.
+
+    The first ``masses`` lumps are plain rectangular blocks, set square to the
+    mass each sits in.  The rest are tubes, allowed the form's own planes as
+    well, so they are bevelled where the model turns.  Then the joins between
+    them are filled, which is :func:`join_pieces`.
+
+    Comes back as ``(facings, offsets, frame, half-thickness)`` for each lump,
+    the last of these being how far the lump reaches along its nearest facing,
+    which is the scale everything about it is judged on.
+    """
+    out, held, place, wall = clay_lumps(model, origin, step, bevels, masses, wanted)
+    if not out:
+        return []
     return out + join_pieces(out, held, place, wall, bevels, min(len(out), MAX_JOINS))
+
+
+@dataclass(frozen=True)
+class Bed:
+    """The lattice a form is worked on, and the model read onto it.
+
+    Everything here depends on the model and the resolution and on nothing
+    else -- not on how many solids are wanted, not on which way the form is
+    being worked.  It is the expensive half of a carving (reading the model
+    into a lattice and finding its distance field), and holding it apart is
+    what lets a whole sequence of stages be built for about the price of one:
+    the bed is laid once and each stage only lays its own solids on it.
+    """
+
+    origin: np.ndarray
+    step: float
+    shape: tuple
+    #: Signed distance to the model: negative inside it.
+    model: np.ndarray
+    #: Whether each corner of the lattice lies within the model.
+    within: np.ndarray
+    #: Points spread over the model's surface, and the way it faces at each.
+    seeds: np.ndarray
+    #: How far a corner may be from the model before the field stops measuring.
+    outside: float
+
+    @property
+    def slope(self) -> np.ndarray:
+        """Which way the model's own surface faces, at every corner."""
+        return np.stack(_slope(self.model, self.step), axis=-1)
+
+
+def lay_bed(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    seeds: np.ndarray,
+    seed_normals: np.ndarray,
+    resolution: int = RESOLUTION,
+) -> Bed:
+    """Read the model onto a lattice, ready for solids to be laid on it."""
+    vertices = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+    seeds = np.asarray(seeds, dtype=np.float64).reshape(-1, 3)
+    seed_normals = np.asarray(seed_normals, dtype=np.float64).reshape(-1, 3)
+    span = float(np.ptp(vertices, axis=0).max()) if len(vertices) else 1.0
+    origin, step, shape = lattice(
+        vertices.min(axis=0), vertices.max(axis=0), MARGIN_SHARE * span, resolution
+    )
+
+    within = solid(vertices, triangles, origin, step, shape)
+    band = np.float32(SDF_REACH * step)
+    gap, which = nearest_surface(seeds, origin, step, shape, SDF_REACH + 2)
+    if not encloses(within, vertices, triangles, step):
+        # A model with holes in it cannot be read by counting crossings, and
+        # plenty of them have holes -- a scan left open at the base, a garment
+        # with no inside.  Falling back on which way the nearest surface faces
+        # is worse near a thin part and fine everywhere else, which is a good
+        # deal better than a form turned inside out.
+        grid = _axes(origin, step, shape)
+        toward = seed_normals[which]
+        closest = seeds[which]
+        within = (
+            sum(
+                (grid[a] - closest[..., a].astype(np.float32))
+                * toward[..., a].astype(np.float32)
+                for a in range(3)
+            )
+            < 0.0
+        )
+    # The model's own field: a true distance where the lattice found the
+    # surface, and flat at the edge of the band beyond that.  Saturating it is
+    # harmless -- out there all it has to say is which side of the model a
+    # corner is on.
+    off = np.sqrt(np.minimum(gap, band * band)).astype(np.float32)
+    model = np.where(within, -off, off).astype(np.float32)
+    return Bed(
+        origin=origin,
+        step=step,
+        shape=shape,
+        model=model,
+        within=within,
+        seeds=seeds,
+        outside=float(band) * 8.0,
+    )
+
+
+def surface_of(
+    bed: Bed,
+    field: np.ndarray,
+    facing: np.ndarray,
+    additive: bool,
+    relax: int = 0,
+    median: int = MEDIAN_ROUNDS,
+    median_reach: int = MEDIAN_REACH,
+    name: str = "mesh",
+    source_offset: np.ndarray | None = None,
+    units: object = None,
+) -> Mesh:
+    """Hold a field of solids against the model and read its surface out.
+
+    The second half of a carving, and the half every stage of one has to do
+    for itself: the solids are held against the model, the seams filled, and
+    the surface found.  Split out of :func:`carve` so that the sequence of
+    stages a form passes through can each be finished the same way the form
+    itself is, rather than by a second copy of this that could drift from it.
+    """
+    origin, step, model = bed.origin, bed.step, bed.model
+    # The model is what the blocks are held against.  Stone may only add
+    # material to it and clay may only take material away, which is what makes
+    # one larger and the other smaller by construction rather than by luck; it
+    # is also what keeps a hollow no block reached from being carved out to
+    # nothing, because the model is in the way.
+    value = np.maximum(field, model) if additive else np.minimum(field, model)
+    theirs = (model > field) if additive else (model < field)
+
+    # Which way the surface faces at a corner: where the model is what the
+    # corner fell back on, the model's own rather than the plane that lost.
+    if theirs.any():
+        slope = bed.slope
+        length = np.linalg.norm(slope, axis=-1)
+        facing = np.where(
+            (theirs & (length > 1e-6))[..., None],
+            slope / np.maximum(length, 1e-9)[..., None],
+            facing,
+        ).astype(np.float32)
+
+    if additive:
+        # The slots the lumps leave between them, filled in the volume; then
+        # held under the model again, because the fill adds clay and some of
+        # those slots run along the surface.
+        settled = np.maximum(close_gaps(value, step, median, median_reach), model)
+        # Where it filled something, the two planes that made the slot are no
+        # longer what the surface is: the fill has a facing of its own, and
+        # leaving the old pair in place would have the vertex solver put its
+        # corner back down in the slot they cross at.
+        moved = np.abs(settled - value) > np.float32(0.25 * step)
+        value = settled
+        if moved.any():
+            slope = np.stack(_slope(value, step), axis=-1)
+            length = np.linalg.norm(slope, axis=-1)
+            facing = np.where(
+                (moved & (length > 1e-6))[..., None],
+                slope / np.maximum(length, 1e-9)[..., None],
+                facing,
+            ).astype(np.float32)
+
+    vertex, face = dual_contour(value, facing, origin, step)
+    at = np.clip(
+        np.rint((vertex - origin) / step).astype(np.int64), 0, np.array(bed.shape) - 1
+    )
+    against = np.abs(model[at[:, 0], at[:, 1], at[:, 2]]) <= PIECE_TOUCH * step
+    # Stone can shed a chip; every lump of clay was put where it is on
+    # purpose, and a small one is a finger rather than a mistake.
+    kept = whole_pieces(vertex, face, 0.0 if additive else PIECE_SHARE, against)
+    if additive:
+        # After the chips are gone, so that a piece dropped from the form
+        # cannot drag on the part of it that stayed.
+        vertex = relax_surface(vertex, kept, relax, model, origin, step, bed.shape)
+    return _flat_mesh(
+        vertex,
+        kept,
+        name,
+        source_offset=source_offset,
+        units=units,
+    )
 
 
 def carve(
@@ -1630,138 +1857,63 @@ def carve(
     lattice the whole of it is worked on, which is what the detail slider
     spends itself on once it has bought every plane there is.
     """
-    vertices = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
-    seeds = np.asarray(seeds, dtype=np.float64).reshape(-1, 3)
-    seed_normals = np.asarray(seed_normals, dtype=np.float64).reshape(-1, 3)
-    facing_set = facings(directions)
-    span = float(np.ptp(vertices, axis=0).max()) if len(vertices) else 1.0
-    origin, step, shape = lattice(
-        vertices.min(axis=0), vertices.max(axis=0), MARGIN_SHARE * span, resolution
+    bed = lay_bed(vertices, triangles, seeds, seed_normals, resolution)
+    empty = _flat_mesh(
+        np.zeros((0, 3)),
+        np.zeros((0, 3), dtype=np.int64),
+        name,
+        source_offset=source_offset,
+        units=units,
     )
-
-    within = solid(vertices, triangles, origin, step, shape)
-    band = np.float32(SDF_REACH * step)
-    gap, which = nearest_surface(seeds, origin, step, shape, SDF_REACH + 2)
-    if not encloses(within, vertices, triangles, step):
-        # A model with holes in it cannot be read by counting crossings, and
-        # plenty of them have holes -- a scan left open at the base, a garment
-        # with no inside.  Falling back on which way the nearest surface faces
-        # is worse near a thin part and fine everywhere else, which is a good
-        # deal better than a form turned inside out.
-        grid = _axes(origin, step, shape)
-        toward = seed_normals[which]
-        closest = seeds[which]
-        within = (
-            sum(
-                (grid[a] - closest[..., a].astype(np.float32))
-                * toward[..., a].astype(np.float32)
-                for a in range(3)
-            )
-            < 0.0
-        )
-    # The model's own field: a true distance where the lattice found the
-    # surface, and flat at the edge of the band beyond that.  Saturating it is
-    # harmless -- out there all it has to say is which side of the model a
-    # corner is on.
-    off = np.sqrt(np.minimum(gap, band * band)).astype(np.float32)
-    model = np.where(within, -off, off).astype(np.float32)
-
-    outside = float(band) * 8.0
     if additive:
         # Clay is fitted to the model's own thickness rather than cut out of
         # anything, so it never asks where the blocks are: a lump goes wherever
         # the most uncovered material is, and the next lump asks again.
         made = clay_pieces(
-            model, origin, step, fitted_facings(directions), masses, wanted
+            bed.model, bed.origin, bed.step, fitted_facings(directions), masses, wanted
         )
         if not made:  # pragma: no cover - a model the lattice never found
-            return _flat_mesh(
-                np.zeros((0, 3)),
-                np.zeros((0, 3), dtype=np.int64),
-                name,
-                source_offset=source_offset,
-                units=units,
-            )
-        field, facing = union_field(origin, step, shape, made, outside)
+            return empty
+        field, facing = union_field(
+            bed.origin, bed.step, bed.shape, made, bed.outside
+        )
     else:
-        label, stride, count = blocks(within, origin, step, wanted)
+        facing_set = facings(directions)
+        label, stride, count = blocks(bed.within, bed.origin, bed.step, wanted)
         if count == 0:  # pragma: no cover - a model the lattice never found
-            return _flat_mesh(
-                np.zeros((0, 3)),
-                np.zeros((0, 3), dtype=np.int64),
-                name,
-                source_offset=source_offset,
-                units=units,
-            )
-        # Which block each sample of the surface belongs to.  Stone is measured
-        # off the surface itself rather than off the lattice, so that a block
-        # provably holds every point of the model it stands for.
-        at = np.clip(
-            np.rint((seeds - origin) / (step * stride)).astype(np.int64),
-            0,
-            np.array(label.shape, dtype=np.int64) - 1,
-        )
-        who = label[at[:, 0], at[:, 1], at[:, 2]]
-        offsets = point_support(seeds, who, facing_set, count)
-        low, high = coarse_bounds(label, count, stride, shape)
-        field, won = block_field(
-            origin, step, shape, facing_set, offsets, low, high, outside
-        )
-        facing = facing_set[won].astype(np.float32)
-
-    # The model is what the blocks are held against.  Stone may only add
-    # material to it and clay may only take material away, which is what makes
-    # one larger and the other smaller by construction rather than by luck; it
-    # is also what keeps a hollow no block reached from being carved out to
-    # nothing, because the model is in the way.
-    value = np.maximum(field, model) if additive else np.minimum(field, model)
-    theirs = (model > field) if additive else (model < field)
-
-    # Which way the surface faces at a corner: where the model is what the
-    # corner fell back on, the model's own rather than the plane that lost.
-    if theirs.any():
-        slope = np.stack(_slope(model, step), axis=-1)
-        length = np.linalg.norm(slope, axis=-1)
-        facing = np.where(
-            (theirs & (length > 1e-6))[..., None],
-            slope / np.maximum(length, 1e-9)[..., None],
-            facing,
-        ).astype(np.float32)
-
-    if additive:
-        # The slots the lumps leave between them, filled in the volume; then
-        # held under the model again, because the fill adds clay and some of
-        # those slots run along the surface.
-        settled = np.maximum(close_gaps(value, step, median, median_reach), model)
-        # Where it filled something, the two planes that made the slot are no
-        # longer what the surface is: the fill has a facing of its own, and
-        # leaving the old pair in place would have the vertex solver put its
-        # corner back down in the slot they cross at.
-        moved = np.abs(settled - value) > np.float32(0.25 * step)
-        value = settled
-        if moved.any():
-            slope = np.stack(_slope(value, step), axis=-1)
-            length = np.linalg.norm(slope, axis=-1)
-            facing = np.where(
-                (moved & (length > 1e-6))[..., None],
-                slope / np.maximum(length, 1e-9)[..., None],
-                facing,
-            ).astype(np.float32)
-
-    vertex, face = dual_contour(value, facing, origin, step)
-    at = np.clip(np.rint((vertex - origin) / step).astype(np.int64), 0, np.array(shape) - 1)
-    against = np.abs(model[at[:, 0], at[:, 1], at[:, 2]]) <= PIECE_TOUCH * step
-    # Stone can shed a chip; every lump of clay was put where it is on
-    # purpose, and a small one is a finger rather than a mistake.
-    kept = whole_pieces(vertex, face, 0.0 if additive else PIECE_SHARE, against)
-    if additive:
-        # After the chips are gone, so that a piece dropped from the form
-        # cannot drag on the part of it that stayed.
-        vertex = relax_surface(vertex, kept, relax, model, origin, step, shape)
-    return _flat_mesh(
-        vertex,
-        kept,
+            return empty
+        field, facing = stone_field(bed, facing_set, label, stride, count)
+    return surface_of(
+        bed,
+        field,
+        facing,
+        additive,
+        relax,
+        median,
+        median_reach,
         name,
-        source_offset=source_offset,
-        units=units,
+        source_offset,
+        units,
     )
+
+
+def stone_field(
+    bed: Bed, facing_set: np.ndarray, label: np.ndarray, stride: int, count: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """The union of the blocks a labelling cuts the model into, and its facings.
+
+    Stone is measured off the model's own surface rather than off the lattice,
+    so that a block provably holds every point of the model it stands for.
+    """
+    at = np.clip(
+        np.rint((bed.seeds - bed.origin) / (bed.step * stride)).astype(np.int64),
+        0,
+        np.array(label.shape, dtype=np.int64) - 1,
+    )
+    who = label[at[:, 0], at[:, 1], at[:, 2]]
+    offsets = point_support(bed.seeds, who, facing_set, count)
+    low, high = coarse_bounds(label, count, stride, bed.shape)
+    field, won = block_field(
+        bed.origin, bed.step, bed.shape, facing_set, offsets, low, high, bed.outside
+    )
+    return field, facing_set[won].astype(np.float32)

@@ -373,6 +373,15 @@ class PlaneSettings:
     #: cell into a slot and lets the surface back the same distance, which is
     #: what closes the slots two crossing solids leave.
     sculpt_median_reach: int = 1
+    #: Whether the whole making of the form is recorded, so it can be scrubbed
+    #: through rather than only arrived at.  Off by default: it costs a run of
+    #: the mode per stage, which is worth paying when you want to watch the
+    #: form arrive and not when you are setting up the one you want.
+    sculpt_film: bool = False
+    #: Which stage of that recording is being shown, from zero.  Held here
+    #: rather than in the panel so that a session comes back to the stage it
+    #: was left on, and clamped when the film is shorter than it asks for.
+    sculpt_stage: int = 0
     #: What a step across the form counts for against a turn in the surface,
     #: when the mode is one that reads the surface.  See
     #: :class:`~refview.core.plane_axes.Coefficients`; these three are the same

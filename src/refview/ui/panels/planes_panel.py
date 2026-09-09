@@ -13,7 +13,8 @@ of the two is on offer is the thing worth seeing at a glance.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton, QSlider
 
 from ...core.plane_axes import (
     COPLANARITY_RANGE,
@@ -244,6 +245,31 @@ _SCULPT_HINTS = {
     ),
 }
 
+_FILM_TIP = (
+    "Record the whole making of the form rather than only its end, and scrub "
+    "back and forth through it.  A block-in is a sequence before it is a "
+    "shape: which mass went down first, what the second cut took off, where "
+    "the thing stopped being a block and started being a body.  The modes "
+    "already work that way -- stone splits the block holding the most air, "
+    "over and over, and clay lays each lump into whatever the ones before it "
+    "left bare -- so the order is really there to be read rather than "
+    "reconstructed afterwards.  Every stage is the form exactly as the Detail "
+    "slider set that far would build it, finishing passes and all, so what "
+    "you scrub past is what you could stop at.  It costs a run of the mode "
+    "per stage; recording happens in the background and the stages become "
+    "scrubbable as they land, coarsest first"
+)
+
+_STAGE_TIP = (
+    "Which stage of the making to show.  The left of the slider is the "
+    "coarsest the mode admits -- for stone the plain hull, the block before "
+    "any cut has been made; for clay a single mass -- and the right is the "
+    "form the Detail slider is set to.  The slider grows as the recording "
+    "runs, so it can be scrubbed before the film is finished.  Dragging is "
+    "free: every stage was built when the film was recorded, and moving the "
+    "handle only picks one"
+)
+
 _SCULPT_NOTE = (
     "The model itself is never touched: this is a stand-in drawn in its place, "
     "so picking, measuring, painting and the section cut all still read the "
@@ -301,6 +327,10 @@ class PlanesPanel(Panel):
     """Breaks the form into planes, in the shading or in the geometry itself."""
 
     def _build(self) -> None:
+        #: Whether a film is being recorded, which holds still every setting
+        #: that would change what is being recorded.  See
+        #: :meth:`recording_changed`.
+        self._recording = False
         box, form = form_group("Normals")
         self._flat = QCheckBox("Flat (faceted) shading")
         self._flat.setToolTip("Shade each triangle from its own face normal, showing the topology")
@@ -408,6 +438,21 @@ class PlanesPanel(Panel):
         self._median_reach.setToolTip(_MEDIAN_REACH_TIP)
         self._sculpt_count = QLabel()
         self._sculpt_count.setStyleSheet("color: #8f939b;")
+        self._film = QCheckBox("Record the making, and scrub through it")
+        self._film.setToolTip(_FILM_TIP)
+        self._stage = QSlider(Qt.Orientation.Horizontal)
+        self._stage.setToolTip(_STAGE_TIP)
+        self._stage.setRange(0, 0)
+        self._stage.setPageStep(1)
+        self._stage_label = QLabel()
+        self._stage_label.setStyleSheet("color: #8f939b;")
+        self._recording_note = QLabel(
+            "Recording. The settings the form is being built from are held "
+            "still until it finishes -- scrub, or untick to stop."
+        )
+        self._recording_note.setWordWrap(True)
+        self._recording_note.setStyleSheet("color: #c8a95a;")
+        self._recording_note.setVisible(False)
         self._sculpt_note = QLabel(_SCULPT_NOTE)
         self._sculpt_note.setWordWrap(True)
         self._sculpt_note.setStyleSheet("color: #8f939b;")
@@ -415,6 +460,10 @@ class PlanesPanel(Panel):
         sculpt_form.addRow("Detail", self._sculpt_detail)
         sculpt_form.addRow("Masses", self._masses)
         sculpt_form.addRow("", self._sculpt_count)
+        sculpt_form.addRow("", self._film)
+        sculpt_form.addRow("Stage", self._stage)
+        sculpt_form.addRow("", self._stage_label)
+        sculpt_form.addRow("", self._recording_note)
         sculpt_form.addRow("", self._sculpt_note)
         self._sculpt_form = sculpt_form
         self._sculpt_box = self._add(sculpt_box)
@@ -546,6 +595,14 @@ class PlanesPanel(Panel):
                 lambda v, field=field: self._apply(self.state.render.planes, field, int(v))
             )
             widget.valueChanged.connect(lambda _v: self.update_enabled())
+        self._film.toggled.connect(
+            lambda v: self._apply(self.state.render.planes, "sculpt_film", v)
+        )
+        # The scrub is a lookup rather than a build, so it follows the handle
+        # rather than waiting to be let go of -- that is the whole point of it.
+        self._stage.valueChanged.connect(
+            lambda v: self._apply(self.state.render.planes, "sculpt_stage", int(v))
+        )
         self._contour.toggled.connect(
             lambda v: self._apply(self.state.render.planes, "show_contour", v)
         )
@@ -585,6 +642,65 @@ class PlanesPanel(Panel):
         self.refresh()
         self.state.notify_render()
 
+    def recording_changed(self, recording: bool) -> None:
+        """Hold the settings a recording is built from still while it runs.
+
+        A film is a walk through one set of settings, and changing one of them
+        part way through does not make a film of the new settings -- it makes
+        a recording of one form wearing the label of another.  So the controls
+        a stage is built from go to sleep for the duration.
+
+        The scrub slider deliberately does not: it picks among stages already
+        recorded rather than asking for new ones, and being able to watch the
+        form arrive while it is still arriving is the point of recording in
+        the background at all.  Nor does AutoSmooth, which re-reads normals
+        and cannot change a stage's shape.
+        """
+        self._recording = bool(recording)
+        self.update_enabled()
+
+    def film_changed(self, film) -> None:
+        """Size the scrub slider to the film as it is recorded.
+
+        The stages arrive one at a time, so the slider grows under the handle
+        rather than appearing whole at the end.  Where the handle is stays put
+        unless the film has grown past it and it was sitting at the end, in
+        which case it follows -- so leaving it at the right-hand end means
+        "show me the newest stage" and it keeps up with the recording.
+        """
+        if film is None:
+            return
+        planes = self.state.render.planes
+        last = max(len(film) - 1, 0)
+        # Sitting at the end means "show me the newest stage", so the handle
+        # follows the recording rather than being left behind by it.  A slider
+        # that has not been dragged yet counts as at the end: the first stage
+        # arrives with the handle at zero and the maximum still zero, and a
+        # film that grew away from it under the artist's nose would be worse
+        # than one that keeps up.
+        at_end = self._stage.value() >= self._stage.maximum()
+        with self._suppressed():
+            self._stage.setRange(0, last)
+            if at_end or self._stage.value() > last:
+                self._stage.setValue(last)
+                planes.sculpt_stage = last
+        self._film_note(film)
+
+    def _film_note(self, film) -> None:
+        """The line under the scrub handle: which stage, and of how many."""
+        if film is None or not len(film):
+            self._stage_label.setText("Recording...")
+            return
+        stage = film.at(self._stage.value())
+        of = f"of {len(film)}" if film.complete else f"of {len(film)} so far"
+        where = ""
+        if stage is not None:
+            # A stage the sliders cannot reach says so rather than naming a
+            # setting that would give you something else.
+            back = "" if stage.planes is None else f", Detail {stage.planes}"
+            where = f" -- {stage.label}{back}"
+        self._stage_label.setText(f"Stage {self._stage.value() + 1} {of}{where}")
+
     def update_enabled(self) -> None:
         """Show what this way of working needs, and put the rest away.
 
@@ -597,7 +713,6 @@ class PlanesPanel(Panel):
         """
         planes = self.state.render.planes
         shading, sculpting = planes.shades_normals, planes.sculpts_geometry
-        self._target.setEnabled(planes.enabled)
 
         self._normals_box.setVisible(shading)
         self._detail.setToolTip(_DETAIL_TIPS[planes.mode])
@@ -625,6 +740,47 @@ class PlanesPanel(Panel):
         self._sculpt_form.setRowVisible(self._masses, clay)
         for widget in (self._median, self._median_reach, self._relax):
             self._finish_form.setRowVisible(widget, clay)
+        # The scrub only means anything once there is a film to scrub, so the
+        # slider and its note come and go with the checkbox rather than
+        # sitting there dead.
+        self._sculpt_form.setRowVisible(self._stage, planes.sculpt_film)
+        self._sculpt_form.setRowVisible(self._stage_label, planes.sculpt_film)
+
+        # While a film is being recorded, everything it is being recorded
+        # *from* is held still.  Changing one of these mid-recording would
+        # abandon the film and start another, which is a minute of work
+        # thrown away for a slider the artist may only have brushed past --
+        # and the settings a stage was built from have to be the settings the
+        # stage is labelled with, or the scrub is lying about what it shows.
+        settled = not self._recording
+        for widget in (
+            self._sculpt,
+            self._sculpt_detail,
+            self._masses,
+            self._median,
+            self._median_reach,
+            self._relax,
+            self._locality,
+            self._coplanarity,
+            self._flat_span,
+            self._reset_design,
+            self._mode,
+        ):
+            widget.setEnabled(settled)
+        # The target picker is only live when the filter is on at all, and
+        # never while a film is being made of the target it would switch away
+        # from.
+        self._target.setEnabled(planes.enabled and settled)
+        # These two stay live on purpose.  The scrub picks among stages that
+        # are already recorded, which is the whole reason for recording in the
+        # background; AutoSmooth only re-reads normals and cannot change a
+        # stage's shape.  Turning the film off is how you cancel a recording,
+        # so it has to stay reachable as well.
+        self._enabled.setEnabled(True)
+        self._film.setEnabled(True)
+        self._stage.setEnabled(True)
+        self._smooth.setEnabled(True)
+        self._recording_note.setVisible(self._recording)
 
         self._hint.setText(_SCULPT_HINTS[planes.sculpt] if sculpting else _HINTS[planes.mode])
         self._hint.setVisible(planes.enabled)
@@ -653,6 +809,8 @@ class PlanesPanel(Panel):
             self._smooth.set_value(render.planes.sculpt_smooth)
             self._median.set_value(render.planes.sculpt_median)
             self._median_reach.set_value(render.planes.sculpt_median_reach)
+            self._film.setChecked(render.planes.sculpt_film)
+            self._stage.setValue(int(render.planes.sculpt_stage))
             self._contour.setChecked(render.planes.show_contour)
             self._contour_color.set_color(render.planes.contour_color)
             self._contour_width.set_value(render.planes.contour_width)
