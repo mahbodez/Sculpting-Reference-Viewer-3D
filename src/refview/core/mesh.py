@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -169,6 +170,120 @@ class Mesh:
             f"Mesh(name={self.name!r}, vertices={self.vertex_count}, "
             f"triangles={self.triangle_count})"
         )
+
+
+#: Rounds of pointer jumping allowed when gathering corners into smoothing
+#: groups.  Each round squares how far a group can have spread, so this is a
+#: formality: a group would have to be wider than the atom count to need them.
+_GROUP_ROUNDS = 64
+
+
+def _gathered(links: np.ndarray, total: int) -> np.ndarray:
+    """Which group each of ``total`` things lands in, given pairs that agree.
+
+    Hooking and pointer jumping: each round every thing takes the lowest name
+    it can see, and then every name is replaced by the name *it* points at, so
+    a chain of any length collapses in a handful of rounds.
+    """
+    root = np.arange(total)
+    if len(links) == 0:
+        return root
+    for _ in range(_GROUP_ROUNDS):
+        before = root.copy()
+        np.minimum.at(root, links[:, 0], root[links[:, 1]])
+        np.minimum.at(root, links[:, 1], root[links[:, 0]])
+        root = root[root]
+        if np.array_equal(root, before):
+            break
+    return root
+
+
+def auto_smooth(mesh: Mesh, degrees: float) -> Mesh:
+    """A copy of ``mesh`` shaded smooth across every edge gentler than ``degrees``.
+
+    The same thing 3ds Max's AutoSmooth does, and for the same reason.  A form
+    built out of flats is meant to read as flats, but a facet that comes out of
+    a lattice is only *approximately* one plane: its triangles each lean by a
+    fraction of a degree, and flat shading shows every one of those leans as a
+    separate tone.  What should read as one clean plane reads as a mosaic.
+
+    So the triangles are gathered into groups -- neighbours joined wherever the
+    turn between them is gentler than ``degrees``, which is what a smoothing
+    group is -- and each corner takes the average of the normals in its own
+    group.  Within a facet that averaging is nearly a no-op geometrically and
+    removes the mosaic entirely.  Across a real plane change the turn is too
+    sharp to join, so the two sides stay in different groups, keep different
+    normals at the shared corner, and the edge stays every bit as hard as it
+    was.  Nothing moves: this is a change of shading and not of shape.
+
+    ``degrees`` of zero joins nothing and gives back the flat shading it was
+    handed, which is how the setting is turned off.
+    """
+    if float(degrees) <= 0.0 or mesh.triangle_count == 0:
+        return mesh
+    indices = np.asarray(mesh.indices, dtype=np.int64).reshape(-1, 3)
+    # Welded, because the flat mesh holds a separate copy of every corner and
+    # two triangles only share an edge if they share its ends.
+    _, back = np.unique(mesh.positions, axis=0, return_inverse=True)
+    face = back.ravel()[indices]
+    corner = np.arange(3 * len(face), dtype=np.int64).reshape(-1, 3)
+
+    points = np.asarray(mesh.positions, dtype=np.float64)
+    held = points[indices]
+    cross = np.cross(held[:, 1] - held[:, 0], held[:, 2] - held[:, 0])
+    length = np.linalg.norm(cross, axis=1)
+    unit = cross / np.maximum(length, 1e-20)[:, None]
+
+    # Every edge of every triangle, named by its two ends in a fixed order so
+    # that the same edge of two triangles is written the same way.
+    ends = np.concatenate([face[:, [0, 1]], face[:, [1, 2]], face[:, [2, 0]]])
+    slots = np.concatenate([corner[:, [0, 1]], corner[:, [1, 2]], corner[:, [2, 0]]])
+    turned = ends[:, 0] > ends[:, 1]
+    ends = np.where(turned[:, None], ends[:, ::-1], ends)
+    slots = np.where(turned[:, None], slots[:, ::-1], slots)
+    owner = np.tile(np.arange(len(face), dtype=np.int64), 3)
+
+    _, named, counts = np.unique(ends, axis=0, return_inverse=True, return_counts=True)
+    named = named.ravel()
+    order = np.argsort(named, kind="stable")
+    starts = np.searchsorted(named[order], np.arange(len(counts)))
+    # Only edges with exactly two triangles on them: an open edge has nothing
+    # to average with, and one with three or more is not a surface, so leaving
+    # it hard is both the safe answer and the honest one.
+    paired = np.flatnonzero(counts == 2)
+    here, there = order[starts[paired]], order[starts[paired] + 1]
+    gentle = np.einsum("ij,ij->i", unit[owner[here]], unit[owner[there]]) >= math.cos(
+        math.radians(min(float(degrees), 180.0))
+    )
+    links = np.concatenate(
+        [
+            np.stack([slots[here, 0], slots[there, 0]], axis=1)[gentle],
+            np.stack([slots[here, 1], slots[there, 1]], axis=1)[gentle],
+        ]
+    )
+
+    root = _gathered(links, 3 * len(face))
+    weighted = np.repeat(cross, 3, axis=0)
+    summed = np.stack(
+        [np.bincount(root, weights=weighted[:, a], minlength=len(root)) for a in range(3)],
+        axis=1,
+    )[root]
+    reach = np.linalg.norm(summed, axis=1)
+    # A group whose normals cancel outright has nothing to say; the triangle's
+    # own facing is the answer there, which is what it had before.
+    normals = np.where(
+        (reach > 1e-12)[:, None],
+        summed / np.maximum(reach, 1e-20)[:, None],
+        np.repeat(unit, 3, axis=0),
+    )
+    return Mesh(
+        mesh.positions,
+        normals.astype(np.float32),
+        mesh.indices,
+        mesh.name,
+        source_offset=mesh.source_offset,
+        units=mesh.units,
+    )
 
 
 def compute_vertex_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:

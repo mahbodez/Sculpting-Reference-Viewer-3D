@@ -30,8 +30,11 @@ Built with PySide6 and OpenGL 3.3.
 - A **Planes** filter that breaks the surface into the flat planes a
   sculptor blocks a form in with, from a six-sided box down to a barely
   faceted surface -- on a fixed grid, or fitted to the model itself by any of
-  three clusterings of its own surface. It acts on the normals rather than on
-  the shading, so it works under whichever shading mode you are in.
+  three clusterings of its own surface. It can round the shading normals onto
+  those planes, in which case it works under whichever shading mode you are
+  in, or cut the form itself into them -- additive like clay or subtractive
+  like stone -- in which case the silhouette, the wireframe and the shadow all
+  come out faceted too. Either way the model itself is left alone.
 - Adjustable background gradient.
 - The screen stays awake while the window is in front, so a pose holds
   while your hands are in the clay.
@@ -81,10 +84,16 @@ going back to the previous setting puts everything exactly where it was.
 
 Drawing and sculpting both start by reducing a form to flat planes: the front
 of the forehead, the side of the nose, the top of the cheekbone. The Planes
-tab does that to the model. Every shading normal is snapped to the nearest of
-a small set of directions, so the surface reads as a handful of flats with
-hard edges between them, and the light on each flat is even -- which is
-exactly what makes the turn of a form easy to see and to copy.
+tab does that to the model.
+
+*Simplify* chooses what the planes are used for, and the two settings are
+mutually exclusive because the second contains the first.
+
+**Simplify Normals** leaves the geometry alone. Every shading normal is
+snapped to the nearest of a small set of directions, so the surface reads as a
+handful of flats with hard edges between them, and the light on each flat is
+even -- which is exactly what makes the turn of a form easy to see and to
+copy. The silhouette stays as round as the model is.
 
 *Planes from* chooses where that set of directions comes from.
 
@@ -170,6 +179,192 @@ the first guess are down-weighted and the guess is taken again -- so a handful
 of bad normals inside a patch cannot tilt it. Like PCA, they fit once, the
 first time you pick the mode, and a model always breaks the same way twice.
 
+**Simplify Geometry** rebuilds the form out of those planes instead of
+rounding the light off them, so it really is faceted: straight runs of
+silhouette, hard edges where the planes meet, a wireframe that follows the
+flats, and a shadow to match. The planes come from the same fit the shading
+setting uses and the *Design matrix* below weighs it for both, but only their
+*facings* are taken -- where each flat actually goes is decided by the
+material it stands for, not by the fit.
+
+None of this is done by moving the model's vertices, because that cannot be
+made to work: a patch of surface wraps and a plane does not, so flattening a
+shoulder onto the shoulder's plane folds the far side of it back through the
+near side. Instead the model is read into a lattice as a solid, worked as a
+volume, and its surface found again from scratch. A plane arrives as a cut,
+which is what a plane is to a sculptor.
+
+*Method* is the choice between the two ways of making a form, and they do not
+give the same one.
+
+**Subtractive** is stone. The form starts as the block it would be carved out
+of -- the convex hull of the whole model -- and every step of *Detail* is
+another cut. The cut is taken through whichever part of the block is holding
+the most air, and each half is then hulled again, so the hollows open up
+deepest first: the gap between an arm and the ribs, then the knees, then the
+face. The result always holds the whole model inside it, so it is a rough-out
+with all the reach still present, waiting for the next cut to bring it down.
+
+Detail buys two things at once here, and they are not equally worth having: a
+cut opens one hollow, while another direction to cut along shaves every block
+of the form at the same time. Doubling the directions brings the stone in
+about twice as far as tripling the cuts does, so most of the slider goes
+there. At the far end a figure comes back within a twelfth of its own volume
+-- a carving rather than a rough-out, and still every bit of it a flat.
+
+**Additive** is clay, and it is built rather than cut. The largest rectangular
+block that will fit inside the model without poking out of it anywhere is
+pressed into the form; then another into whatever is still bare, and another.
+On a figure those land in the ribcage, the pelvis and the thighs, in that
+order, because the order is simply where the most uncovered material is.
+*Masses* is how many of them there are, and it is a control rather than a
+measurement: how many masses a form has is a reading, and a torso is one mass
+or two depending on who is looking. The range runs from a single lump in the
+largest form up to every mass a standing figure has -- head, neck, ribcage,
+pelvis, and upper arm, forearm, hand, thigh, shin and foot twice over -- and
+the blocks stay clean the whole way, because a mass is a plain box set square
+to the form it sits in and boxes stacked along a limb agree with each other.
+Detail is laid on top of the masses rather than sharing a budget with them, so
+reading a figure as more masses never costs it any modelling.
+
+After the masses come the tubes. Every step of *Detail* lays another lump into
+whichever part of the model the clay has not covered yet, largest first, so
+the arms arrive before the hands and the hands before the fingers. A tube is
+grown exactly as a mass is, but it is allowed the form's own planes as well as
+the three axes of the mass it sits in, so it comes out bevelled where the
+model turns. Nothing is ever told what a limb is.
+
+Where two lumps cross they leave a notch, and a form full of notches reads as
+a heap of stones rather than as one body. So the seams are filled, and in two
+stages, because they come in two sizes.
+
+The large ones are filled with more clay. Every pair of lumps that lie near
+enough to be joined gets a further piece pushed across the seam between them,
+shaped as the hull of what of each lump lies within a collar of the other --
+which is the shape of a thumb-full of clay worked into a join. That hull is
+then pulled back until it fits inside the model, exactly the way a lump is
+grown out to it, so a join is made of flats like everything else and cannot
+reach through the surface. A join that has to be pulled in further than the
+lumps are thick is dropped: the two lie on opposite sides of a gap in the form
+rather than across a seam, and a piece spanning them would be bridging air.
+The collar is what keeps this honest. The hull of two *whole* lumps, on a form
+anywhere near convex, is most of the form -- allow it and the mode quietly
+stops being clay pressed into a shape and becomes a cast taken from one.
+
+The small ones are closed in the volume, by a median filter run over the field
+before the surface is read back out of it. A median is the right filter for
+this and a blur is not: over a neighbourhood laid symmetrically about a point,
+the median of a field that is planar there is that point's own value exactly,
+so a flat passes through untouched however many passes are run. What it does
+change is everything a flat is not -- a slot one cell wide is outvoted by the
+material either side of it, a spike is outvoted by the air around it, and a
+pinhole closes. Those are precisely the things a lattice cannot make a clean
+surface out of, and one pass removes all of them: an additive form comes back
+with no open edges at all, and a quarter as many places where the surface
+passes through itself.
+
+Both ends of that filter are yours, under *Finishing*. *Median* is how many
+passes are run and *Median size* is how far each one reaches, in cells -- one
+being the three-by-three-by-three block of corners around each corner. The
+size is not a strength knob so much as which slots are within reach at all: a
+pass reaching one cell has a cell of material either side of a one-cell slot
+and closes it, and sees as much slot as material in a two-cell one and leaves
+it exactly where it was. What keeps both ranges short is that a median cuts
+both ways. A slot closes because it has material either side of it; by the
+same arithmetic a corner is shaved because it has air on more sides than
+material. One pass at one cell takes the slots out and leaves the form its
+size; four passes at three cells take three fifths of the form away with
+them.
+
+*Relax* is the pass a sculptor makes last, going over the block-in with the
+flat of a tool: the planes still read, but the form is no longer quarried out
+of them. It works on the finished mesh rather than on the volume, because by
+that point the volume has said everything it has to say. Each pass draws every
+point towards the middle of its neighbours and then pushes it back out by a
+shade more, which takes the corners off without letting the form shrink away,
+and anything that ends up outside the model is put back onto it -- so relaxing
+can never undo the containment the rest of the mode is careful about. At zero
+you get the block-in exactly as it was cut. It does nothing in subtractive,
+which is meant to keep its corners.
+
+Past a point the slider stops adding lumps and starts bevelling the ones there
+are, which is deliberate. A form built of sixty lumps reads as masses with
+clean flats between them; the same form built of two hundred reads as rubble,
+because every pair of lumps that cross at an angle leaves a ridge and enough
+ridges are all you can see. Joining the lumps is what closes the gaps -- more
+lumps is not, since a smaller lump in a gap leaves two narrower gaps.
+
+**AutoSmooth** shades the result, in either mode, and does the same job as the
+control of that name in 3ds Max. A facet that comes out of a lattice is only
+roughly one plane: its triangles each lean by a fraction of a degree, and
+shading every one of them on its own turns a clean flat into a mosaic. The
+slider is the angle at which a turn stops being noise and starts being an
+edge -- neighbouring triangles that agree to within it are gathered into a
+group and share their normals, and anything sharper is left as the hard edge
+it is. Thirty degrees is the usual reading and the default: every real plane
+change on a blocked-in form is a far sharper turn than that. Nothing moves;
+it is a change of shading and not of shape, and because it re-reads the
+normals of a form that has already been built it costs a tenth of a second
+rather than a rebuild. At zero every triangle is shaded on its own again.
+
+**Detail and Masses have soft ends.** Both sliders stop where their useful
+range stops, and both will take a number typed into the box past that: the
+slider then grows to reach it, and can be dragged over the wider range from
+then on.
+
+For *Masses* that is room for a form that is not a figure. Sixty-four is past
+every mass anyone reads a standing figure as, and going much beyond it the
+block-in stops reading as masses and starts reading as rubble -- measured on a
+figure, the surface holds a third fewer of its area in its commonest facings
+at two hundred and fifty-six masses than at thirty-two, which is what rubble
+looks like as a number. It is offered because it is yours to say.
+
+For *Detail* it buys something different from what the slider itself buys. At
+the slider's own end the form already has every plane a fit will give it and
+every block or lump those planes buy, and going past that changes nothing:
+doubling the planes to five hundred moved a carving by a hundredth of its
+volume and left the clay exactly where it was. What is holding it there is the
+lattice the form is worked on, so that is what a typed value lifts -- the same
+reading of the form, resolved finer. It shows as crisper flats and straighter
+creases rather than as more of them, and it costs, because a lattice is
+three-dimensional: at the top of the range a figure comes back with three
+times the triangles and takes about eight seconds to rebuild instead of three.
+Two hundred is where the lattice meets its own memory ceiling and stops
+getting finer, which is why that is the end of it.
+
+Read either against the model's own silhouette and it says how much of the
+form is mass and how much is detail.
+
+What comes back either way is a union of convex solids, each one the meeting
+of a handful of half-spaces, and the surface is read off the lattice by dual
+contouring: one vertex per cell, placed where the planes crossing that cell
+agree. Those planes are exact, so a cell inside a flat lands dead on it, a
+cell along a crease lands on the line where two flats cross, and a cell at a
+corner lands where three do. The flats come out flat to the last digit, the
+creases straight, and the surface closed and free of folds, because an
+isosurface always is. That is also why the clay is joined as a volume and
+never as surfaces: a tube laid across a mass leaves no seam where they meet
+and no sliver where they cross, because there is nothing there to stitch. The
+model itself is then held against the result as a floor under the stone and a
+ceiling over the clay, so that one is larger than the model and the other
+smaller by construction rather than by luck.
+
+*Detail* is a count of planes, coarse to fine, and with it a count of solids.
+Rebuilding geometry is real work, so it takes effect on letting go of the
+slider rather than at every value a drag passes over, though the line under
+the slider follows the handle so the drag is not blind. The fit is kept apart
+from the rebuild and only run again when the model or the design matrix
+changes, which makes flipping between additive and subtractive, or working the
+masses, free.
+
+**The model is never modified.** What the viewer draws is a stand-in, and
+picking, measuring, painting and the section cut all still read the real
+surface underneath. Unlike the shading filter, the stand-in is a mesh of its
+own -- its own vertices and its own triangles, a good deal fewer of both,
+found from the volume rather than moved from the model's. Marks already made
+on the model stay where they were made, so they will sit off the flats by
+however far the flats moved.
+
 *Draw the plane boundaries* lines every seam between two planes, in a colour
 and width you set, the way a construction drawing marks where the form turns.
 The lines are worked out from the quantisation itself rather than found by
@@ -181,13 +376,17 @@ line is drawn: the shading runs straight through, so a line there would say
 the form turns where it does not. They
 fade out where the planes themselves shrink to a pixel or two -- around the
 silhouette, or at the fine end of the slider -- instead of flooding the
-surface.
+surface. They belong to *Simplify Normals*: once the geometry has been cut,
+the seams are real edges of the model, and the wireframe or faceted shading
+already shows them.
 
 The planes are worked out on the model rather than on the screen, so they stay
-put on the form as you orbit around it. And because the filter changes the
-normals and not the shading, it applies to a matcap, to any of the analytic
-modes and to the normals view alike. Flat (faceted) shading, which quantises
-per triangle instead of per direction, sits on the same tab.
+put on the form as you orbit around it. And because rounding the normals
+changes them and not the shading, that setting applies to a matcap, to any of
+the analytic modes and to the normals view alike. Flat (faceted) shading,
+which quantises per triangle instead of per direction, sits on the same tab,
+and is worth turning on under *Simplify Geometry* to see the flats with no
+softening across their edges at all.
 
 **High Quality**
 

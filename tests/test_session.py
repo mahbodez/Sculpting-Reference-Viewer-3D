@@ -16,7 +16,16 @@ from refview.core.history import BOOKMARKS, History
 from refview.core.measurement import Measurement, MeasurementSettings, MeasurementStore
 from refview.core.plane_axes import MAX_PLANE_AXES
 from refview.core.session import Session, sidecar_path
-from refview.core.settings import PlaneMode, PlaneSettings, RenderSettings, ShadingMode
+from refview.core.settings import (
+    DETAIL_CEILING,
+    DETAIL_MAX,
+    PlaneMode,
+    PlaneSettings,
+    RenderSettings,
+    ShadingMode,
+    lattice_fineness,
+    plane_count,
+)
 
 
 def test_measurement_length_and_midpoint():
@@ -122,6 +131,27 @@ def test_plane_detail_moves_the_plane_size_evenly():
     # A detail outside the slider is held at its end rather than extrapolated.
     assert PlaneSettings(detail=-20.0).span_deg == pytest.approx(90.0)
     assert PlaneSettings(detail=140.0).span_deg == pytest.approx(8.0)
+
+
+def test_typing_past_the_geometry_slider_buys_a_finer_lattice_and_nothing_else():
+    """The slider's own end already asks for every plane a fit will give, so
+    what a number typed past it can still buy is the lattice the form is worked
+    on -- and nothing below the end may move a hair, because every setting
+    anyone has saved is down there.
+    """
+    for detail in (0.0, 25.0, 60.0, 99.0, DETAIL_MAX):
+        assert lattice_fineness(detail) == pytest.approx(1.0)
+    assert lattice_fineness(-40.0) == pytest.approx(1.0)
+
+    finer = [lattice_fineness(d) for d in (120.0, 150.0, DETAIL_CEILING)]
+    assert finer == pytest.approx([1.2, 1.5, DETAIL_CEILING / DETAIL_MAX])
+    assert all(later > earlier for earlier, later in pairwise(finer))
+
+    # The count of planes is done climbing by then, which is the whole reason
+    # the extra range spends itself somewhere else.
+    assert plane_count(DETAIL_CEILING) == plane_count(DETAIL_MAX) == MAX_PLANE_AXES
+    assert PlaneSettings(sculpt_detail=DETAIL_CEILING).sculpt_fineness > 1.0
+    assert PlaneSettings(sculpt_detail=60.0).sculpt_fineness == pytest.approx(1.0)
 
 
 def test_the_slider_climbs_to_the_plane_count_by_proportion_not_by_step():

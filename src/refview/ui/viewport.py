@@ -20,12 +20,14 @@ import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QApplication
 
 from ..core.annotation import Stroke
 from ..core.commands import AddItem, ReplaceItems, SetAttributes
 from ..core.history import ANNOTATIONS, MEASUREMENTS
 from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
+from ..core.plane_solids import SculptCache
 from ..core.section import section_segments
 from ..render.mesh_renderer import SceneRenderer
 from ..render.stroke_renderer import build_segment_vertices
@@ -74,6 +76,11 @@ class Viewport(QOpenGLWidget):
         # does not re-cut the model or rebuild the pedestal.
         self._pedestal_key: tuple | None = None
         self._section_key: tuple | None = None
+        self._sculpt_key: tuple | None = None
+        #: Keeps the plane fit and the vertex-to-plane assignment between one
+        #: turn of the geometry sliders and the next, so only the part that
+        #: actually went stale is worked out again.
+        self._sculpt = SculptCache()
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -129,7 +136,8 @@ class Viewport(QOpenGLWidget):
         self.makeCurrent()
         self._renderer.set_mesh(self._state.mesh)
         self.doneCurrent()
-        self._pedestal_key = self._section_key = None
+        self._pedestal_key = self._section_key = self._sculpt_key = None
+        self._sculpt.clear()
         self._sync_scene()
 
     def _upload_matcap(self) -> None:
@@ -165,6 +173,26 @@ class Viewport(QOpenGLWidget):
             if section_key != self._section_key:
                 self._section_key = section_key
                 self._upload_contour()
+            planes = render.planes
+            # Only the settings the stand-in is actually built from: the rest
+            # of the Planes panel moves the shading, and re-cutting the form
+            # for a change of contour colour would be a stall for nothing.
+            sculpt_key = (
+                id(self._state.mesh),
+                planes.sculpts_geometry,
+                planes.sculpt,
+                planes.sculpt_count,
+                planes.sculpt_masses,
+                planes.sculpt_relax,
+                planes.sculpt_smooth,
+                planes.sculpt_median,
+                planes.sculpt_median_reach,
+                planes.sculpt_fineness,
+                planes.coefficients,
+            )
+            if sculpt_key != self._sculpt_key:
+                self._sculpt_key = sculpt_key
+                self._upload_sculpt()
         self.update()
 
     def _upload_pedestal(self) -> None:
@@ -173,6 +201,30 @@ class Viewport(QOpenGLWidget):
         disc = None if mesh is None else build_pedestal(mesh.bounds, settings)
         self.makeCurrent()
         self._renderer.set_pedestal(disc)
+        self.doneCurrent()
+
+    def _upload_sculpt(self) -> None:
+        """Rebuild the planar stand-in and hand it to the renderer.
+
+        Cutting a form into planes takes long enough on a heavy model to be
+        felt, so the wait is shown for what it is rather than looking like a
+        hang.  The model itself is untouched throughout: picking, measuring,
+        painting and the section cut all still read the real surface.
+        """
+        planes = self._state.render.planes
+        proxy = None
+        if self._state.mesh is not None and planes.sculpts_geometry:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                proxy = self._sculpt.mesh_for(self._state.mesh, planes)
+            finally:
+                QApplication.restoreOverrideCursor()
+        if proxy is not None:
+            self._state.status_message.emit(
+                f"Form rebuilt from {planes.sculpt_count} planes, {planes.sculpt.value}"
+            )
+        self.makeCurrent()
+        self._renderer.set_sculpt(proxy)
         self.doneCurrent()
 
     def _upload_contour(self) -> None:

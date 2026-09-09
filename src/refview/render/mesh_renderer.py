@@ -120,6 +120,11 @@ class SceneRenderer:
     def __init__(self) -> None:
         self._programs: dict[str, ShaderProgram] = {}
         self._buffers: MeshBuffers | None = None
+        #: The planar stand-in drawn in place of the model, when the artist has
+        #: asked for the form itself to be broken into planes.  Empty the rest
+        #: of the time, and never anything the model is measured or picked
+        #: against -- see :mod:`refview.core.plane_solids`.
+        self._sculpt: MeshBuffers | None = None
         self._pedestal: MeshBuffers | None = None
         self._strokes: StrokeBuffers | None = None
         self._contour: StrokeBuffers | None = None
@@ -158,6 +163,7 @@ class SceneRenderer:
             "blur": ShaderProgram(shaders.FULLSCREEN_VERTEX, shaders.BLUR_FRAGMENT, "blur"),
         }
         self._buffers = MeshBuffers()
+        self._sculpt = MeshBuffers()
         self._pedestal = MeshBuffers()
         self._strokes = StrokeBuffers()
         self._contour = StrokeBuffers()
@@ -174,7 +180,13 @@ class SceneRenderer:
         for program in self._programs.values():
             program.dispose()
         self._programs.clear()
-        for buffers in (self._buffers, self._pedestal, self._strokes, self._contour):
+        for buffers in (
+            self._buffers,
+            self._sculpt,
+            self._pedestal,
+            self._strokes,
+            self._contour,
+        ):
             if buffers is not None:
                 buffers.dispose()
         for target in (
@@ -198,12 +210,33 @@ class SceneRenderer:
 
     def set_mesh(self, mesh: Mesh | None) -> None:
         self._set_geometry(self._buffers, mesh)
+        # Any stand-in in hand was built out of the model being replaced, so
+        # it goes now rather than being drawn for the frames until a new one
+        # arrives.
+        self._set_geometry(self._sculpt, None)
         self._mesh = mesh
         self._plane_axes.clear()
+
+    def set_sculpt(self, mesh: Mesh | None) -> None:
+        """Draw ``mesh`` in place of the model; pass ``None`` to draw the model.
+
+        The stand-in stands in everywhere the model is drawn -- the shading
+        pass, the shadow map, the depth pre-pass the occlusion is read off,
+        the wireframe -- because a form that is faceted to the eye and round
+        to its own shadow is not a form anyone could work from.
+        """
+        self._set_geometry(self._sculpt, mesh)
 
     def set_pedestal(self, mesh: Mesh | None) -> None:
         """Replace the ground disc; pass ``None`` to hide it."""
         self._set_geometry(self._pedestal, mesh)
+
+    @property
+    def _model(self) -> MeshBuffers | None:
+        """Whichever geometry is standing for the model this frame."""
+        if self._sculpt is not None and not self._sculpt.is_empty:
+            return self._sculpt
+        return self._buffers
 
     def _planes_for(self, mode: PlaneMode, coefficients: Coefficients, count: int) -> PlaneSet:
         """The model's own planes under ``mode``, fitted once and kept."""
@@ -365,7 +398,10 @@ class SceneRenderer:
             program.set_int("uMode", settings.shading_mode.shader_id)
             program.set_bool("uFlatShading", settings.flat_shading)
             plane_settings = settings.planes
-            program.set_bool("uPlaneShading", plane_settings.enabled)
+            # A form already rebuilt out of flats has nothing left for the
+            # normal quantiser to round, so the two targets never run together.
+            shades = plane_settings.shades_normals
+            program.set_bool("uPlaneShading", shades)
             program.set_int("uPlaneMode", plane_settings.mode.shader_id)
             program.set_float("uPlaneCellSize", plane_settings.cell_size)
             program.set_bool("uPlaneContour", plane_settings.show_contour)
@@ -374,7 +410,7 @@ class SceneRenderer:
                 "uPlaneContourWidth", plane_settings.contour_width * max(pixel_ratio, 0.1)
             )
             fitted = PlaneSet.empty()
-            if plane_settings.enabled and plane_settings.mode.fitted:
+            if shades and plane_settings.mode.fitted:
                 fitted = self._planes_for(
                     plane_settings.mode, plane_settings.coefficients, plane_settings.axis_count
                 )
@@ -420,7 +456,9 @@ class SceneRenderer:
                 self._matcap.bind(_MATCAP_UNIT)
 
             program.set_vec3("uDiffuseColor", surface.diffuse_color)
-            self._buffers.draw()
+            model = self._model
+            if model is not None:
+                model.draw()
             if not self._pedestal.is_empty:
                 program.set_vec3("uDiffuseColor", settings.pedestal.color)
                 # A fitted set of planes describes the model, not the ground
@@ -430,7 +468,7 @@ class SceneRenderer:
                 if len(fitted):
                     program.set_bool("uPlaneShading", False)
                 self._pedestal.draw()
-                program.set_bool("uPlaneShading", plane_settings.enabled)
+                program.set_bool("uPlaneShading", shades)
 
         if planes and settings.section.fill_cut:
             self._draw_cap(settings, view, projection)
@@ -501,7 +539,7 @@ class SceneRenderer:
 
     @property
     def _flat_targets(self) -> tuple[MeshBuffers, ...]:
-        return tuple(b for b in (self._buffers, self._pedestal) if b is not None)
+        return tuple(b for b in (self._model, self._pedestal) if b is not None)
 
     def _draw_contour(
         self,

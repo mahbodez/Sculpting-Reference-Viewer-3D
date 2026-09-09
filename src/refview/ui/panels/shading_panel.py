@@ -92,6 +92,7 @@ class ShadingPanel(Panel):
         pedestal_form.addRow("", self._pedestal)
         pedestal_form.addRow("", self._pedestal_snap)
         pedestal_form.addRow("Level", self._pedestal_level)
+        self._pedestal_form = pedestal_form
         pedestal_form.addRow("Diameter", self._pedestal_diameter)
         pedestal_form.addRow("Thickness", self._pedestal_thickness)
         pedestal_form.addRow("Colour", self._pedestal_color)
@@ -190,11 +191,22 @@ class ShadingPanel(Panel):
         self.update_enabled()
 
     def update_enabled(self) -> None:
+        """Show what this mode is actually lit and shaded by, and hide the rest.
+
+        A matcap carries its own light baked into a picture, so a light to
+        aim and a surface to reflect it are not dimmed versions of themselves
+        under one -- they are questions the mode does not answer.  Same for the
+        pedestal's height once it has been told to sit on the lowest point of
+        the model: the model is answering, and a slider that says otherwise is
+        a slider that lies.
+        """
         mode = self.state.render.shading_mode
-        self._light_box.setEnabled(mode.uses_lighting)
-        self._surface_box.setEnabled(mode.uses_lighting)
-        self._quality_box.setEnabled(mode.uses_quality)
-        self._pedestal_level.setEnabled(not self.state.render.pedestal.snap_to_lowest)
+        self._light_box.setVisible(mode.uses_lighting)
+        self._surface_box.setVisible(mode.uses_lighting)
+        self._quality_box.setVisible(mode.uses_quality)
+        self._pedestal_form.setRowVisible(
+            self._pedestal_level, not self.state.render.pedestal.snap_to_lowest
+        )
 
     def _reset(self) -> None:
         self.state.render.light = LightSettings()

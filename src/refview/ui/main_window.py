@@ -114,6 +114,14 @@ another window in front and the machine sleeps as usual.</p>
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
 
+#: How narrow the control dock may be pulled.  The panels no longer insist on
+#: a width of their own -- see :func:`~refview.ui.widgets.relax_widths` -- so
+#: this is the only thing left that decides, and it wants to be the smallest
+#: number at which a row is still worth using: a caption, a groove long enough
+#: to drag, and the box beside it.  A panel with a longer caption than that
+#: scrolls the last few pixels rather than holding every other panel wide.
+_DOCK_MIN_WIDTH = 300
+
 
 class MainWindow(QMainWindow):
     """Wires the viewport, the panels and the document together."""
@@ -183,7 +191,7 @@ class MainWindow(QMainWindow):
         dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
-        dock.setMinimumWidth(360)
+        dock.setMinimumWidth(_DOCK_MIN_WIDTH)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._dock = dock
 

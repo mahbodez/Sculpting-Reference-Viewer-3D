@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from ..state import ViewerState
+from ..widgets import relax_widths
 
 
 class Panel(QWidget):
@@ -15,6 +16,11 @@ class Panel(QWidget):
     Subclasses build their controls in ``_build`` and refresh them from the
     state in ``refresh``.  Refreshes run inside :meth:`_suppressed` so that
     programmatic widget updates never echo back as user edits.
+
+    Whatever they build is then made squeezable, once, here rather than in each
+    of them -- see :func:`~refview.ui.widgets.relax_widths`.  A panel is a
+    column of controls in a dock the artist sizes to taste, so none of it is
+    allowed to have an opinion about how wide that dock has to be.
     """
 
     def __init__(self, state: ViewerState, parent: QWidget | None = None) -> None:
@@ -25,6 +31,7 @@ class Panel(QWidget):
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(8)
         self._build()
+        relax_widths(self)
         self.refresh()
 
     # -- hooks ----------------------------------------------------------

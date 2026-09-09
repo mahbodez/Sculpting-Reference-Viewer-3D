@@ -44,6 +44,7 @@ class SectionPanel(Panel):
         self._thickness.setToolTip("Thickness of the retained slice, in scene units")
         keep_form.addRow("Side", self._mode)
         keep_form.addRow("Slice", self._thickness)
+        self._keep_form = keep_form
         self._add(keep_box)
 
         look_box, look_form = form_group("Appearance")
@@ -58,6 +59,7 @@ class SectionPanel(Panel):
         look_form.addRow("Width", self._contour_width)
         look_form.addRow("", self._fill)
         look_form.addRow("Cut colour", self._cap_color)
+        self._look_form = look_form
         self._add(look_box)
 
         centre = QPushButton("Centre the Plane")
@@ -129,11 +131,17 @@ class SectionPanel(Panel):
         self.refresh()
 
     def _update_enabled(self) -> None:
+        """Only the settings this cut has a use for.
+
+        A thickness is what a slab is; the other two ways of keeping a cut have
+        no thickness to set rather than a thickness of zero.  A colour for a
+        line nobody is drawing is the same kind of nothing.
+        """
         settings = self._settings
-        self._thickness.setEnabled(settings.mode is SectionMode.SLAB)
-        self._contour_color.setEnabled(settings.show_contour)
-        self._contour_width.setEnabled(settings.show_contour)
-        self._cap_color.setEnabled(settings.fill_cut)
+        self._keep_form.setRowVisible(self._thickness, settings.mode is SectionMode.SLAB)
+        for widget in (self._contour_color, self._contour_width):
+            self._look_form.setRowVisible(widget, settings.show_contour)
+        self._look_form.setRowVisible(self._cap_color, settings.fill_cut)
 
     # -- refreshing -----------------------------------------------------
 
