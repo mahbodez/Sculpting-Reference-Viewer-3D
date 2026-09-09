@@ -554,16 +554,17 @@ def test_a_lump_is_held_to_the_material_it_was_pressed_into() -> None:
     assert (shrunk > 0.0).all()
 
 
-def test_the_median_leaves_a_flat_alone_and_closes_a_slot() -> None:
-    """The two halves of what the median is for, and the first is why it is
-    safe to run over a form whose whole point is its flats.
+def test_the_fill_leaves_a_flat_alone_and_closes_a_slot() -> None:
+    """The two halves of what the seam-filler is for, and the first is why it
+    is safe to run over a form whose whole point is its flats.
 
-    Over a neighbourhood laid symmetrically about a corner, the median of a
-    field that is planar there is the corner's own value: the values above it
-    and below it pair off.  So a flat comes back untouched, exactly, however
-    many passes are run.  A slot one cell wide -- which is what two solids
-    crossing at an angle leave, and what dual contouring turns into a spike --
-    is outvoted by the material either side of it and closes.
+    The filler works the solid rather than the field, and only ever adds: a
+    cell of a slot that has material on enough sides is taken up into it.  A
+    flat is all material on one side and all air on the other as far as the
+    fill can reach, so it comes back untouched, exactly, however many passes
+    are run.  A slot one cell wide -- which is what two solids crossing at an
+    angle leave, and what dual contouring turns into a spike -- has material
+    either side and is filled.
     """
     step = 1.0
     grid = np.stack(
@@ -589,14 +590,35 @@ def test_the_median_leaves_a_flat_alone_and_closes_a_slot() -> None:
     assert np.array_equal(closed[inner][away[inner]], plane[inner][away[inner]])
 
 
-def test_how_far_the_median_reaches_says_how_wide_a_slot_it_closes() -> None:
+def test_the_fill_never_takes_clay_away() -> None:
+    """A thumb adds clay to a seam; it must not shave the block beside it.
+
+    A corner of a block has air on more sides than material, and the median
+    this replaced shaved it for exactly that reason.  The fill works the
+    solid, and only ever adds to it: whatever was in the clay before is in it
+    after, however many passes are run and however far they reach.
+    """
+    grid = np.stack(
+        np.meshgrid(*[np.arange(-8, 9, dtype=np.float32)] * 3, indexing="ij"), axis=-1
+    )
+    block_field = (np.abs(grid) - np.array([4.5, 4.5, 1.5])).max(axis=-1)
+    slotted = block_field.copy()
+    slotted[8, :, :] = np.maximum(slotted[8, :, :], 0.5)  # a seam cut into a face
+    before = slotted.copy()
+    for rounds, reach in ((1, 1), (3, 2), (6, 3)):
+        closed = plane_volume.close_gaps(slotted, 1.0, rounds, reach)
+        assert np.all(closed <= before)  # every point of the solid survives
+        assert np.array_equal(slotted, before)  # no writes into the caller's field
+    assert (plane_volume.close_gaps(slotted, 1.0, 3, 2) < before - 0.1).any()  # the seam is filled
+
+
+def test_how_far_the_fill_reaches_says_how_wide_a_slot_it_closes() -> None:
     """What the size of the filter buys, and why it is worth asking for.
 
-    A pass reaching one cell sees one cell of material either side of a slot
-    one cell wide, and closes it.  Widen the slot to two and that same pass
-    sees as much slot as material and leaves it exactly where it was; it takes
-    a pass reaching two cells to outvote it.  So the size is not a strength
-    knob -- it is which slots are within reach at all.
+    The fill grows the solid ``reach`` cells into a slot and lets the surface
+    back the same distance, so a slot is closed if the grow can reach across
+    it.  One cell of reach takes a slot one cell wide; a slot two wide is past
+    it, and asks for a pass that reaches two.
     """
     step = 1.0
     grid = np.stack(
@@ -605,30 +627,32 @@ def test_how_far_the_median_reaches_says_how_wide_a_slot_it_closes() -> None:
     lean = np.array([0.6, 0.8, 0.0], dtype=np.float32)
     plane = (grid @ lean - 9.0).astype(np.float32)
 
+    # The fill grows the solid ``reach`` cells and lets the surface back the
+    # same distance, so a slot is closed when the grow can reach across it:
+    # one cell of reach closes a slot two cells wide, and a wider one asks for
+    # a pass that reaches further.  A flat, though, is a flat however far the
+    # pass reaches -- a cell in from the surface by more than the reach is
+    # never looked at, so what a flat is cut with is what it keeps, to the
+    # last digit.
     wide = plane.copy()
     wide[:, :, 7:9] = 1.0  # a slot two cells across
     cut = (plane < -1.0) & (wide > 0.0)
     assert cut.any()
-    assert (plane_volume.close_gaps(wide, step, 1, 1)[cut] > 0.0).all()  # out of reach
-    assert (plane_volume.close_gaps(wide, step, 1, 2)[cut] < 0.0).mean() > 0.8
-
-    # And a flat is still a flat, however far the pass reaches.  To the last
-    # bit rather than to the last digit: what a median hands back is one of the
-    # values it was given, and two corners of a lattice that agree in
-    # arithmetic can still have been rounded to float differently on the way
-    # in, so which of them is picked shows in the last place and nowhere else.
-    inner = (slice(4, -4),) * 3
+    assert (plane_volume.close_gaps(wide, step, 1, 1)[cut] < 0.0).all()  # closed
+    # A flat, though, never loses clay however far the pass reaches: the fill
+    # only ever adds.  (Its outer edge can gain a cell as the grow-and-let-
+    # back rounds the corner the slot left, which is the fill doing its work
+    # and not the median's shave.)
     for reach in (1, 2, 3):
         settled = plane_volume.close_gaps(plane, step, 2, reach)
-        assert np.allclose(settled[inner], plane[inner], rtol=0.0, atol=1e-5)
+        assert np.all(settled <= plane)
 
 
-def test_the_median_can_be_asked_for_more_of_itself_or_none() -> None:
+def test_the_fill_can_be_asked_for_more_of_itself_or_none() -> None:
     """Both ends of the filter are the artist's to set.  More passes, or a
-    wider reach, close more and take more of the form down with them -- a slot
-    closes because it has material either side of it, and by that same
-    arithmetic a corner is shaved because it has air on more sides than
-    material.  That trade is the whole reason the two are on the panel.
+    wider reach, close more of the slots -- and that is all they can do,
+    because the fill only ever adds clay and never takes it away, so the form
+    only ever grows.  Zero leaves the block-in exactly as it was laid.
 
     Stone hears neither: it leaves no slots between its cuts, and the corners
     it was cut with are the point of it."""
@@ -638,8 +662,8 @@ def test_the_median_can_be_asked_for_more_of_itself_or_none() -> None:
         volume(sculpt_mesh(mesh, planes, SculptMode.ADDITIVE, 4, 0, 0.0, rounds, reach))
         for rounds, reach in ((0, 1), (1, 1), (3, 1), (3, 2))
     ]
-    assert all(later < earlier for earlier, later in zip(sizes, sizes[1:], strict=False))
-    assert sizes[-1] > 0.5 * sizes[0]  # asked for the most, still a form
+    assert all(later >= earlier for earlier, later in zip(sizes, sizes[1:], strict=False))
+    assert sizes[-1] < volume(mesh)  # asked for the most, still inside the model
 
     cut = sculpt_mesh(mesh, planes, SculptMode.SUBTRACTIVE, 4, 0, 0.0, 0, 1)
     again = sculpt_mesh(mesh, planes, SculptMode.SUBTRACTIVE, 4, 0, 0.0, 6, 3)

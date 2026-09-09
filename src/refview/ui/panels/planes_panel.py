@@ -104,8 +104,7 @@ _SCULPT_DETAIL_TIP = (
     "and the hands before the fingers.  Past the middle the slider spends less "
     "on solids and more on the directions they are cut along, which is what "
     "brings either one down onto the model -- a direction shaves the whole form "
-    "at once where a cut opens one hollow, and past sixty lumps the clay reads "
-    "as rubble rather than as masses.  Rebuilding geometry is real work, so it "
+    "at once where a cut opens one hollow.  Rebuilding geometry is real work, so it "
     "happens when you let go of the slider rather than as you drag.  At the "
     "end of the slider the form has every plane a fit will give it and every "
     "block or lump those planes buy; a number typed past the end spends itself "
@@ -131,28 +130,29 @@ _MASSES_TIP = (
 )
 
 _MEDIAN_TIP = (
-    "How many passes of the median filter to run over the clay volume before "
+    "How many passes of the seam-filler to run over the clay volume before "
     "its surface is read back out.  Two solids crossing at an angle leave a "
-    "slot between them, and a slot one cell wide is a dark slit to the eye and "
-    "a spike to the thing that finds the surface; a median closes them where "
-    "they are, in the volume, where there is no surface to mend yet.  It is "
-    "the right filter for a form made of flats because a flat comes through it "
-    "untouched -- over a neighbourhood laid evenly about a corner the values "
-    "above and below its own pair off, so the median is the corner itself.  "
-    "One pass takes every slot out of a figure.  Past that it starts to tell: "
-    "a slot closes because it has material either side of it, and by the same "
-    "arithmetic a corner is shaved because it has air on more sides than "
-    "material, so more passes take the form down as well as smooth it.  Does "
-    "nothing in subtractive, which has no slots and corners to keep"
+    "slot between them, and a slot one cell wide is a dark slit to the eye "
+    "and a spike to the thing that finds the surface; this closes them where "
+    "they are, in the volume, where there is no surface to mend yet.  What a "
+    "sculptor does about a slot is press clay into it, and that is all this "
+    "does: it works the solid rather than the field, so a cell of a slot with "
+    "material on enough sides is taken up into the form and nothing is ever "
+    "taken away.  A flat comes through untouched, and so does every corner "
+    "and thin wall -- which the median this replaced could not say, because a "
+    "slot closed by outvoting it shaved a corner by the very same arithmetic. "
+    " More passes close wider slots and cost more; none of them make the form "
+    "smaller.  Does nothing in subtractive, which has no slots to fill"
 )
 
 _MEDIAN_REACH_TIP = (
-    "How far each pass of the median reaches, in cells: one is the "
-    "three-by-three-by-three block of corners around each corner, two is "
-    "five-by-five-by-five.  Reaching further closes a wider slot in one pass "
-    "and shaves the form harder for it -- on a figure, one cell leaves the "
-    "volume where it was and three takes half of it away.  It also costs: the "
-    "neighbourhood is a cube, so twice the reach is eight times the reading"
+    "How far each pass of the fill reaches, in cells: it grows the clay this "
+    "far into a slot and then lets the surface back the same distance, which "
+    "leaves the fill in the slot and nowhere else.  So the size says which "
+    "slots are within reach -- one cell closes the slots two solids leave "
+    "where they cross, and a wider setting reaches a wider gap.  It costs: "
+    "the reach is taken along each axis in turn, so asking for more of it is "
+    "more passes over the lattice"
 )
 
 _RELAX_TIP = (
@@ -279,7 +279,7 @@ def _sculpt_summary(planes: PlaneSettings) -> str:
         after = []
         if planes.sculpt_median > 0:
             reach = planes.sculpt_median_reach
-            after.append(f"median {planes.sculpt_median}x at {reach} cell" + "s" * (reach > 1))
+            after.append(f"filled {planes.sculpt_median}x at {reach} cell" + "s" * (reach > 1))
         if planes.sculpt_relax > 0:
             after.append(f"relaxed {planes.sculpt_relax}x")
         way = "clay, pressed into the model" + (
@@ -428,8 +428,8 @@ class PlanesPanel(Panel):
             "slots closed in its volume, the corners settled on its surface, "
             "and how it is shaded"
         )
-        finish_form.addRow("Median", self._median)
-        finish_form.addRow("Median size", self._median_reach)
+        finish_form.addRow("Fill seams", self._median)
+        finish_form.addRow("Fill size", self._median_reach)
         finish_form.addRow("Relax", self._relax)
         finish_form.addRow("AutoSmooth", self._smooth)
         self._finish_form = finish_form

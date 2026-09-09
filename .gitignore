@@ -43,3 +43,4 @@ graphify-out/.graphify_root
 .claude
 .github/copilot*
 CLAUDE.md
+AGENTS.md

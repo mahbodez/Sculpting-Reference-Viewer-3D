@@ -248,14 +248,14 @@ RELAX_MIN, RELAX_MAX = 0, 20
 #: blocked-in form: a plane change is a plane change and anything gentler was
 #: the lattice, not the sculptor.
 SMOOTH_MIN, SMOOTH_MAX = 0.0, 90.0
-#: Ends of the two median sliders: how many passes of the filter that closes
-#: the clay's slots are run, and how far each pass reaches, in cells.
+#: Ends of the two seam-fill sliders: how many passes of the filter that
+#: closes the clay's slots are run, and how far each pass reaches, in cells.
 #:
-#: Both are short ranges because a median cuts both ways.  A slot has material
-#: either side of it and closes; a convex corner has air on more sides than
-#: material and is shaved.  One pass reaching one cell takes the slots out and
-#: leaves the form its size; past that the shaving starts to win, and at the
-#: far corner of the two ranges most of the form has gone with it.
+#: Short ranges because there is little to gain past them, not because the
+#: fill cuts both ways -- it does not.  It only ever adds clay to a slot, so
+#: more passes close more and none of them take the form down; one pass
+#: reaching one cell takes the slots two crossing solids leave, and the rest
+#: of the range is there for a form whose gaps are wider.
 MEDIAN_MIN, MEDIAN_MAX = 0, 6
 MEDIAN_REACH_MIN, MEDIAN_REACH_MAX = 1, 3
 #: How much of a turn one plane covers at either end of that slider.  The
@@ -363,14 +363,15 @@ class PlaneSettings:
     #: flat into a mosaic.  Thirty degrees takes that off without touching a
     #: single real plane change.  Zero leaves every triangle to itself.
     sculpt_smooth: float = 30.0
-    #: How many passes of the median filter are run over the finished clay
+    #: How many passes of the seam-filler are run over the finished clay
     #: volume, before its surface is read back out, to close the slots two
     #: solids leave where they cross.  One is enough to take every slot out of
     #: a figure; see :data:`MEDIAN_MIN`.  It says nothing to stone, which has
-    #: no slots to close and corners it is meant to keep.
+    #: no slots to close.
     sculpt_median: int = 1
-    #: How far each of those passes reaches, in cells.  One is the
-    #: three-by-three-by-three neighbourhood around a corner.
+    #: How far each of those passes reaches, in cells.  One grows the clay a
+    #: cell into a slot and lets the surface back the same distance, which is
+    #: what closes the slots two crossing solids leave.
     sculpt_median_reach: int = 1
     #: What a step across the form counts for against a turn in the surface,
     #: when the mode is one that reads the surface.  See

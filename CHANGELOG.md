@@ -4,6 +4,44 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.6.1]
+
+### Fixed
+
+- **The pass that closes the clay's seams no longer eats the form it is
+  mending.** *Simplify Geometry* in additive mode lays lumps of clay into the
+  model, and two lumps crossing at an angle leave a slot between them -- a
+  dark slit to the eye, and a spike to the thing that finds the surface. That
+  slot was being closed with a median filter, which was the wrong tool for a
+  reason worth stating: a median closes a slot because the material either
+  side of it outvotes it, and by the very same arithmetic it shaves a convex
+  corner because the air on more sides of it outvotes *that*. One pass took
+  the slots out and a slice of the form with them; the corners and thin walls
+  the mode exists to show were the first thing to go.
+
+  What a sculptor does about a slot is press clay into it, so that is what
+  this does now. It works the solid rather than the field -- the clay is grown
+  a cell or two into the slot and the surface is then let back the same
+  distance, which leaves the fill in the slot and nowhere else -- and it only
+  ever *adds*. Nothing is taken away, so no corner is shaved, no thin part is
+  thinned, and a flat comes through untouched to the last digit.
+
+  Measured on a posed figure, the fill now hands back about five per cent more
+  of the form than it used to take away, and the share of the surface lying in
+  the planes of the fit -- which is the whole point of the mode -- rises by
+  something like two thirds. The *Median* sliders in *Finishing* are now
+  *Fill seams* and *Fill size*, and the trade they used to make is gone: more
+  passes close wider slots and none of them make the form smaller.
+
+- **The clay may now be detailed twice as far.** The ceiling on the tubes laid
+  into the block-in rises from sixty-four to a hundred and twenty-eight. It
+  was held low because a form built from many crossing tubes used to read as
+  rubble -- but the rubble was the median shaving the ridges between them
+  rather than the tubes themselves, and with the seams filled instead of
+  shaved the extra lumps land clean. At the fine end of *Detail* the clay now
+  covers about eighty-five per cent of the model where it covered eighty, and
+  still reads as flats.
+
 ## [1.6.0]
 
 ### Added

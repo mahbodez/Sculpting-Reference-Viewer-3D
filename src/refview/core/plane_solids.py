@@ -87,24 +87,15 @@ MAX_BLOCKS = 192
 #: at the same reading of the form.
 PLANES_PER_TUBE = 2.0
 
-#: Most tubes the clay is ever detailed with, and the number is low on
-#: purpose.  A form detailed with sixty tubes reads as masses with clean flats
-#: between them; the same form with two hundred reads as rubble, because every
-#: pair of tubes that cross at an angle leaves a ridge and enough ridges are
-#: all there is to see.  So the slider stops adding tubes here and spends what
-#: is left on bevelling the ones there are -- see
-#: :data:`~refview.core.plane_volume.TUBE_FACINGS` -- which buys a form that
-#: fits better rather than one that is more finely broken up.  What closes the
-#: gaps between them is not more tubes but
-#: :func:`~refview.core.plane_volume.join_pieces`, which pushes a further piece
-#: of clay across each seam where it is.
-#:
-#: Tubes rather than lumps altogether, because the masses are not what makes
-#: rubble: a mass is a plain box set square to the form it sits in, and boxes
-#: stacked along a limb agree with each other where tubes bevelled at angles
-#: do not.  So a fuller reading of the masses rides on top of this rather than
-#: eating into it, and turning the masses up never costs the detail anything.
-MAX_TUBES = 64
+#: Most tubes the clay is ever detailed with.  A sculptor laying down clay
+#: does not stop at a handful: the masses first, then a tube into every
+#: hollow that is still bare, and a figure has a great many of them.  The
+#: slider spends its whole range laying them because that is what builds the
+#: form up towards the model -- a seam between two lumps is closed by the
+#: fill that runs after (:func:`~refview.core.plane_volume.close_gaps`), not
+#: by laying fewer lumps, and the reason sixty-odd used to read as rubble was
+#: the median shaving the ridges between them, which the fill no longer does.
+MAX_TUBES = 128
 
 
 def unit_normals(mesh: Mesh) -> np.ndarray:

@@ -201,28 +201,24 @@ JOIN_SPAN = 0.5
 #: knuckles, and it is worth more for the same reason.
 MAX_JOINS = 64
 
-#: How many passes of the median are run over the finished clay volume, and
-#: how far each of them reaches, in cells.
+#: How many passes of the seam-filler are run over the finished clay volume,
+#: and how far each of them reaches, in cells.
 #:
-#: A median is the right filter for this and a blur is not, and the reason is
-#: worth stating.  Over a neighbourhood laid symmetrically about a corner, the
-#: median of a field that is *planar* there is the corner's own value exactly
-#: -- the values above and below it pair off.  So a flat comes through a median
-#: pass unchanged, however many passes are run: this cannot soften the thing
-#: the whole mode exists to show.  What it does change is everything a flat is
-#: not.  A slot between two lumps has most of a neighbourhood inside the
-#: material and so is filled; a spike has most of one outside and so is taken
-#: off; a cell of a hole is outvoted by its neighbours and closed.  That is the
-#: list of things dual contouring cannot make a clean surface out of, and one
-#: pass of a three-cell median removes all of them.
+#: What two solids crossing at an angle leave is a slot, and a slot is what a
+#: sculptor's thumb is for: a press of clay into it, never a shave of the
+#: blocks either side.  So the filler only ever *adds*.  It works the solid
+#: rather than the field -- a cell of the slot that has material on enough
+#: sides is taken up into it, and then the surface is let back to where it
+#: was, which is a closing of the solid and adds clay to the slot while
+#: leaving every corner and thin wall exactly where it stood.  A median does
+#: the opposite trade: a slot closes because material outvotes it, and by the
+#: same arithmetic a corner is shaved because air outvotes it, so the median
+#: took the slots out and a slice of the form with them.  This cannot take a
+#: slice of anything.
 #:
-#: Both ends of this are the artist's to set, and the reason to be careful
-#: with them is that a median does not only fill.  A slot has material either
-#: side of it and closes; a convex corner has air on more sides than material
-#: and so is shaved, which is the same arithmetic read the other way round.
-#: One pass at one cell of reach takes a slot out and leaves the form where it
-#: was; four passes at three cells of reach take three fifths of the form away
-#: with them.  These are the defaults, not the limits.
+#: Both ends are the artist's to set, but the trade the median had is gone:
+#: more passes close wider slots and cost more, and they never make the form
+#: smaller.  These are the defaults, not the limits.
 MEDIAN_ROUNDS = 1
 MEDIAN_REACH = 1
 
@@ -1062,47 +1058,73 @@ def dual_contour(
 def close_gaps(
     value: np.ndarray, step: float, rounds: int, reach: int = MEDIAN_REACH
 ) -> np.ndarray:
-    """Median-filter the volume, so that what is remeshed has no slots in it.
+    """Fill the slots the lumps leave between them, without taking clay away.
 
     The surface between two solids that cross at an angle is a groove running
     into the material, and a groove one cell wide is worse than it sounds: it
     is a dark slot to the eye, and to dual contouring it is a cell whose planes
     agree on a point deep inside the material, which comes back as a spike.
-    Closing them here, in the volume, is both cheaper and better behaved than
+    Filling them here, in the volume, is both cheaper and better behaved than
     trying to mend the surface afterwards -- there is nothing to mend, because
     the surface is found after this rather than before it.
 
-    Only the band the surface actually runs through is filtered, which is a few
-    cells of a lattice rather than all of it; everywhere else the field is far
-    from zero and its median is itself.  See :data:`MEDIAN_ROUNDS` for why this
-    leaves the flats alone.
+    What a sculptor does about a slot is press clay into it, and that is all
+    this does.  It works the solid rather than the field: a cell that is out
+    but has material on enough sides is taken up into the solid -- that is the
+    slot filling -- and then the surface is let back to where it was, which
+    keeps the fill in the slot and nowhere else.  A cell in from the surface
+    by more than ``reach`` never changes, so a flat comes back untouched; and
+    because cells are only ever added and never taken, no corner is shaved and
+    no thin wall is thinned, which is the trade the median this replaces used
+    to make.  Only the band the surface actually runs through is looked at,
+    which is a few cells of a lattice rather than all of it.
     """
     if int(rounds) <= 0:
         return value
     reach = max(int(reach), 1)
-    steps = range(-reach, reach + 1)
-    limit = np.array(value.shape, dtype=np.int64) - 1
+    band = np.abs(value) <= np.float32((reach + 1.5) * step)
+    if not band.any():  # pragma: no cover - a field with no surface in it
+        return value
+    inner = value <= 0.0
     for _ in range(int(rounds)):
-        # Wide enough that every corner whose neighbourhood straddles the
-        # surface is in it, and no wider.
-        band = np.abs(value) <= np.float32((reach + 1.5) * step)
-        at = np.nonzero(band)
-        if len(at[0]) == 0:  # pragma: no cover - a field with no surface in it
-            return value
-        seen = np.empty(((2 * reach + 1) ** 3, len(at[0])), dtype=np.float32)
-        row = 0
-        for dx in steps:
-            for dy in steps:
-                for dz in steps:
-                    seen[row] = value[
-                        np.clip(at[0] + dx, 0, limit[0]),
-                        np.clip(at[1] + dy, 0, limit[1]),
-                        np.clip(at[2] + dz, 0, limit[2]),
-                    ]
-                    row += 1
-        value = value.copy()
-        value[band] = np.median(seen, axis=0)
-    return value
+        # The closing: grow the solid ``reach`` cells into the slot, then let
+        # the surface back the same distance, which keeps what the grow took
+        # in the slot and nowhere else.  Grown along each axis in turn, so a
+        # slot is closed in whichever direction it runs.
+        grown = _balloon(inner, reach, True)
+        inner = _balloon(grown, reach, False)
+    # A corner the closing filled is put just inside the material; every other
+    # corner keeps the value -- and so the exact plane -- it was cut with.
+    filled = band & inner & (value > 0.0)
+    if not filled.any():
+        return value
+    out = value.copy()
+    out[filled] = np.float32(-0.5 * step)
+    return out
+
+
+def _balloon(solid: np.ndarray, reach: int, outward: bool) -> np.ndarray:
+    """Grow or shrink a solid by ``reach`` cells, one axis at a time.
+
+    A separable dilation (outward) or erosion (not outward): for each axis in
+    turn, a cell is taken up into the grown solid if any of the ``reach``
+    cells beside it along that axis were already in, and dropped from the
+    shrunk one if any were out.  One axis at a time is the cross-shaped
+    structuring element, which closes a slot running in any direction without
+    the cube of neighbours a full ball would ask for.
+    """
+    out = solid
+    for axis in range(3):
+        for forward in (True, False):
+            for r in range(1, reach + 1):
+                here, there = _shifts(axis, forward, r)
+                moved = out.copy()
+                if outward:
+                    moved[here] |= out[there]
+                else:
+                    moved[here] &= out[there]
+                out = moved
+    return out
 
 
 def _slope(field: np.ndarray, step: float) -> list:
@@ -1603,7 +1625,7 @@ def carve(
     then run over the finished surface to take the corners off it.  Neither
     says anything to stone, which starts from a block rather than from a lump
     and is meant to keep its corners.  ``median`` and ``median_reach`` are how
-    many passes of the filter that closes the clay's slots are run and how far
+    many passes of the filter that fills the clay's slots are run and how far
     each of them reaches; see :func:`close_gaps`.  ``resolution`` is how fine a
     lattice the whole of it is worked on, which is what the detail slider
     spends itself on once it has bought every plane there is.
@@ -1707,19 +1729,16 @@ def carve(
         ).astype(np.float32)
 
     if additive:
-        # The slots the lumps leave between them, closed in the volume; then
-        # held under the model again, because a median fills a groove by adding
-        # material and some of those grooves run along the surface.
+        # The slots the lumps leave between them, filled in the volume; then
+        # held under the model again, because the fill adds clay and some of
+        # those slots run along the surface.
         settled = np.maximum(close_gaps(value, step, median, median_reach), model)
-        # Where it filled something, and not merely where the arithmetic came
-        # out a bit-width different: a facet that has been left alone must keep
-        # the exact plane it was cut with, or the flats stop reading as flats.
+        # Where it filled something, the two planes that made the slot are no
+        # longer what the surface is: the fill has a facing of its own, and
+        # leaving the old pair in place would have the vertex solver put its
+        # corner back down in the slot they cross at.
         moved = np.abs(settled - value) > np.float32(0.25 * step)
         value = settled
-        # Where it filled, the two planes that made the groove are no longer
-        # what the surface is: the fill has a facing of its own, and leaving
-        # the old pair in place would have the vertex solver put its corner
-        # back down in the groove they cross at.
         if moved.any():
             slope = np.stack(_slope(value, step), axis=-1)
             length = np.linalg.norm(slope, axis=-1)

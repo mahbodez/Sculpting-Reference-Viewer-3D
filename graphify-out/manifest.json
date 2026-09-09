@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1788719864.9915626,
-    "ast_hash": "310668373619fadf27d707e409bb24fc",
+    "mtime": 1788963876.113542,
+    "ast_hash": "45694ab4464feb13c9293bc69ad4dd5c",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -115,8 +115,8 @@
     "semantic_hash": "eb628ac628f10b5435188596b3b45c1e"
   },
   "src/refview/core/settings.py": {
-    "mtime": 1788961961.0342836,
-    "ast_hash": "1a477ec95e435cd8494317cdcc55ee9c",
+    "mtime": 1788979479.8399155,
+    "ast_hash": "794bcf4b51cb818e7e10519ad30ef243",
     "semantic_hash": ""
   },
   "src/refview/core/spatial.py": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/panels/planes_panel.py": {
-    "mtime": 1788962049.0101364,
-    "ast_hash": "5220850c015d611821b123becf21c431",
+    "mtime": 1788979486.4509296,
+    "ast_hash": "818b80c6a526f4b0873a2638897a4a11",
     "semantic_hash": ""
   },
   "src/refview/wakelock.py": {
@@ -450,18 +450,18 @@
     "semantic_hash": ""
   },
   "src/refview/core/plane_solids.py": {
-    "mtime": 1788961961.0342836,
-    "ast_hash": "5e865ba1cdcb8398df477a2dd6d6a8f4",
+    "mtime": 1788978395.6443703,
+    "ast_hash": "169d7671dda4315b0b56910dc34e583a",
     "semantic_hash": ""
   },
   "tests/test_plane_solids.py": {
-    "mtime": 1788962536.7731078,
-    "ast_hash": "f1fcffa312aa25b4a729b87f8e38e2c9",
+    "mtime": 1788979199.583279,
+    "ast_hash": "19b62ab20608700daceeef83ce00faae",
     "semantic_hash": ""
   },
   "src/refview/core/plane_volume.py": {
-    "mtime": 1788961961.0342836,
-    "ast_hash": "eeb7fb62da69de82872540e3e371c109",
+    "mtime": 1788979651.0007102,
+    "ast_hash": "0d9dfd2015f9dd13096134f3237aa05d",
     "semantic_hash": ""
   }
 }
