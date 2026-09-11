@@ -1,9 +1,9 @@
-"""Offscreen render targets used by the high-quality pass.
+"""Offscreen render targets used by the high-quality and ghost passes.
 
-Three of them are needed: a depth map rendered from the light for shadows, a
-depth-and-normal buffer rendered from the camera for ambient occlusion, and a
-pair of single-channel colour buffers the occlusion is computed and blurred
-in.
+Four of them are needed: a depth map rendered from the light for shadows, a
+depth-and-normal buffer rendered from the camera for ambient occlusion, a pair
+of single-channel colour buffers the occlusion is computed and blurred in, and
+the two-attachment buffer a see-through model is summed into.
 
 Qt draws a :class:`QOpenGLWidget` into a framebuffer of its own, so the
 "default" framebuffer is rarely object zero.  Callers capture whatever was
@@ -189,4 +189,94 @@ class GeometryTarget(DepthTarget):
         if self._normals:
             GL.glDeleteTextures(1, [self._normals])
             self._normals = 0
+        super().dispose()
+
+
+class AccumTarget(_Target):
+    """The pair of buffers a see-through model is summed into.
+
+    Attachment 0 holds the weighted sum of the colours that covered a pixel,
+    with the total weight in its alpha; attachment 1 holds the sum of
+    ``log(1 - alpha)`` over the same fragments, whose exponential is the
+    product of their transmittances -- how much of the scene behind still
+    shows through.  Both are plain additions, so one blend function serves for
+    both attachments, which is all OpenGL 3.3 offers, and neither sum can
+    depend on the order the fragments arrived in.
+
+    A depth attachment comes with them.  The model still has to be hidden by
+    the opaque geometry already drawn, and an offscreen framebuffer cannot
+    borrow the depth buffer Qt handed the widget, so the opaque shapes are laid
+    in here again depth-only.  It is never sampled, hence a renderbuffer.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._reveal = 0
+        self._depth = 0
+
+    def _allocate(self, width: int, height: int) -> None:
+        if not self._reveal:
+            self._reveal = int(GL.glGenTextures(1))
+        if not self._depth:
+            self._depth = int(GL.glGenRenderbuffers(1))
+
+        # Floating point, and not for the dynamic range: the colour sum passes
+        # one as soon as a second surface lands on a pixel, and clamping it at
+        # the attachment would be exactly the breakage the sum exists to avoid.
+        for texture, internal, layout in (
+            (self._texture, GL.GL_RGBA16F, GL.GL_RGBA),
+            (self._reveal, GL.GL_R16F, GL.GL_RED),
+        ):
+            GL.glBindTexture(GL.GL_TEXTURE_2D, texture)
+            GL.glTexImage2D(
+                GL.GL_TEXTURE_2D, 0, internal, width, height, 0, layout, GL.GL_FLOAT, None
+            )
+            for parameter in (GL.GL_TEXTURE_MIN_FILTER, GL.GL_TEXTURE_MAG_FILTER):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, parameter, GL.GL_NEAREST)
+            for parameter in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, parameter, GL.GL_CLAMP_TO_EDGE)
+
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self._depth)
+        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24, width, height)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, 0)
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self._fbo)
+        GL.glFramebufferTexture2D(
+            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self._texture, 0
+        )
+        GL.glFramebufferTexture2D(
+            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT1, GL.GL_TEXTURE_2D, self._reveal, 0
+        )
+        GL.glFramebufferRenderbuffer(
+            GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self._depth
+        )
+        # Kept with the framebuffer, so the shader's second output lands on the
+        # second attachment every time this target is bound.
+        GL.glDrawBuffers(2, [GL.GL_COLOR_ATTACHMENT0, GL.GL_COLOR_ATTACHMENT1])
+        _require_complete("accumulation")
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+
+    def clear(self) -> None:
+        """Empty both sums, and the depth nothing has been laid into yet.
+
+        Zero starts each of them: no colour, and ``log(1) == 0`` for a pixel
+        nothing has passed through.
+        """
+        empty = [0.0, 0.0, 0.0, 0.0]
+        GL.glClearBufferfv(GL.GL_COLOR, 0, empty)
+        GL.glClearBufferfv(GL.GL_COLOR, 1, empty)
+        GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
+
+    def bind_reveal(self, unit: int) -> None:
+        GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._reveal)
+
+    def dispose(self) -> None:
+        if self._reveal:
+            GL.glDeleteTextures(1, [self._reveal])
+            self._reveal = 0
+        if self._depth:
+            GL.glDeleteRenderbuffers(1, [self._depth])
+            self._depth = 0
         super().dispose()

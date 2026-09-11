@@ -7,6 +7,11 @@ the annotations legible in front of the model, and gets text labels for free.
 Surface annotations are the exception -- they are real geometry, drawn by the
 scene renderer so the model can hide the ones painted on its far side.  Only
 the stroke in progress is previewed here, where it costs nothing.
+
+An armature is drawn here too, and for the opposite reason: it lives *inside*
+the form, so geometry the model could hide would be a wire nobody ever saw.
+It is drawn over the model instead, and the part standing behind the surface
+is dimmed rather than cut away, which says where it is without losing it.
 """
 
 from __future__ import annotations
@@ -16,9 +21,11 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen
 
 from ..core.annotation import AnnotateMode, Stroke
+from ..core.armature import Armature, ArmatureSettings, BoneLabels
 from ..core.camera import Camera
 from ..core.measurement import Measurement, MeasurementSettings
 from .annotate_tool import AnnotateTool
+from .armature_tool import ArmatureTool, Handle
 from .measure_tool import MeasureTool
 from .state import ViewerState
 
@@ -31,6 +38,7 @@ _PENDING_COLOR = QColor(120, 200, 255)
 _HANDLE_OUTLINE = QColor(12, 13, 16, 220)
 _HANDLE_HOVER = QColor(255, 255, 255)
 _ERASER_COLOR = QColor(255, 120, 120)
+_LANDMARK_COLOR = QColor(255, 196, 92)
 
 
 def to_qcolor(color, alpha: float = 1.0) -> QColor:
@@ -64,6 +72,8 @@ class ViewportOverlay:
         annotate: AnnotateTool,
         width: int,
         height: int,
+        armature: ArmatureTool | None = None,
+        buried: frozenset[Handle] = frozenset(),
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
@@ -76,9 +86,11 @@ class ViewportOverlay:
                         painter, state.camera, measurement, index, settings, tool, width, height
                     )
         self._draw_pending(painter, state, tool, width, height)
+        if armature is not None:
+            self._draw_armature(painter, state, armature, width, height, buried)
         self._draw_annotation(painter, state, annotate, width, height)
         self._draw_gizmo(painter, state.camera, width, height)
-        self._draw_hud(painter, state, tool, annotate, width, height)
+        self._draw_hud(painter, state, tool, annotate, armature, width, height)
 
     # ------------------------------------------------------------------
     # Measurements
@@ -155,21 +167,38 @@ class ViewportOverlay:
         dashed: bool = False,
         points: bool = True,
     ) -> None:
-        outline = QPen(QColor(0, 0, 0, 150), settings.line_width + 2.0)
+        self._stroke(painter, start, end, color, settings.line_width, dashed)
+        if points:
+            for point in (start, end):
+                self._draw_point(painter, point, color, settings.point_radius)
+
+    def _stroke(
+        self,
+        painter: QPainter,
+        start: QPointF,
+        end: QPointF,
+        color: QColor,
+        width: float,
+        dashed: bool = False,
+    ) -> None:
+        """A line laid over its own dark outline, so it reads against anything."""
+        outline = QPen(QColor(0, 0, 0, 150), width + 2.0)
         outline.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(outline)
         painter.drawLine(start, end)
 
-        pen = QPen(color, settings.line_width)
+        pen = QPen(color, width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         if dashed:
             pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.drawLine(start, end)
 
-        if points:
-            for point in (start, end):
-                self._draw_point(painter, point, color, settings.point_radius)
+    def _draw_ring(self, painter: QPainter, point: QPointF, color: QColor, radius: float) -> None:
+        """An unfilled circle: how thick the form is here, not how big a dot is."""
+        painter.setPen(QPen(color, 1.4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(point, radius, radius)
 
     def _draw_point(self, painter: QPainter, point: QPointF, color: QColor, radius: float) -> None:
         painter.setPen(QPen(QColor(0, 0, 0, 180), 1.5))
@@ -200,6 +229,161 @@ class ViewportOverlay:
         painter.drawLine(QPointF(point.x() + 3, point.y()), QPointF(point.x() + 11, point.y()))
         painter.drawLine(QPointF(point.x(), point.y() - 11), QPointF(point.x(), point.y() - 3))
         painter.drawLine(QPointF(point.x(), point.y() + 3), QPointF(point.x(), point.y() + 11))
+
+    # ------------------------------------------------------------------
+    # Armature
+    # ------------------------------------------------------------------
+
+    def _draw_armature(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        tool: ArmatureTool,
+        width: int,
+        height: int,
+        buried: frozenset[Handle],
+    ) -> None:
+        settings = state.armature_settings
+        if not settings.show_all:
+            return
+        for index, armature in enumerate(state.armatures):
+            if armature.visible:
+                self._draw_wire(painter, state, armature, index, tool, width, height, buried)
+        self._draw_guide(painter, state, tool, width, height)
+
+    def _draw_wire(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        armature: Armature,
+        index: int,
+        tool: ArmatureTool,
+        width: int,
+        height: int,
+        buried: frozenset[Handle],
+    ) -> None:
+        settings = state.armature_settings
+        camera = state.camera
+        color = to_qcolor(armature.color)
+        faded = to_qcolor(armature.color, settings.buried_alpha)
+        screen = [project_visible(camera, node.at, width, height) for node in armature.nodes]
+
+        for position, bone in enumerate(armature.bones):
+            if not (0 <= bone.a < len(screen) and 0 <= bone.b < len(screen)):
+                continue
+            start, end = screen[bone.a], screen[bone.b]
+            if start is None or end is None:
+                continue
+            sunk = (index, bone.a) in buried and (index, bone.b) in buried
+            self._stroke(painter, start, end, faded if sunk else color, settings.bone_width)
+            if self._labels_bone(settings, tool, (index, position)):
+                self._draw_label(
+                    painter,
+                    (start + end) * 0.5,
+                    state.measurement_settings.format_length(armature.bone_length(bone)),
+                    state.measurement_settings.label_size,
+                    color,
+                )
+
+        active = tool.grabbed_handle or tool.hover_handle
+        for position, node in enumerate(armature.nodes):
+            at = screen[position]
+            if at is None:
+                continue
+            here = faded if (index, position) in buried else color
+            if settings.show_sizes and node.size > 0.0:
+                radius = self._pixel_radius(camera, node, width, height, settings)
+                self._draw_ring(painter, at, here, radius)
+            if node.locked:
+                self._draw_point(painter, at, here, settings.node_radius)
+            else:
+                chosen = tool.selected == (index, position)
+                self._draw_handle(
+                    painter,
+                    at,
+                    here,
+                    settings.handle_radius,
+                    active == (index, position) or chosen,
+                )
+            if settings.show_names:
+                self._draw_label(
+                    painter, at, node.name, state.measurement_settings.label_size, here
+                )
+
+    def _labels_bone(self, settings: ArmatureSettings, tool: ArmatureTool, bone: Handle) -> bool:
+        if settings.labels is BoneLabels.ALWAYS:
+            return True
+        return settings.labels is BoneLabels.HOVER and tool.hover_bone == bone
+
+    def _pixel_radius(
+        self,
+        camera: Camera,
+        node,
+        width: int,
+        height: int,
+        settings: ArmatureSettings,
+    ) -> float:
+        """A world radius in pixels, measured rather than converted.
+
+        Projecting the node and a point one radius to its right and taking the
+        distance between them gets the answer right under both projections,
+        without the overlay needing to know which one is in force.
+        """
+        at = project_visible(camera, node.at, width, height)
+        edge = project_visible(camera, node.point + camera.right * node.size, width, height)
+        if at is None or edge is None:
+            return settings.node_radius
+        span = float(np.hypot(edge.x() - at.x(), edge.y() - at.y()))
+        return max(span, settings.node_radius)
+
+    def _draw_guide(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        tool: ArmatureTool,
+        width: int,
+        height: int,
+    ) -> None:
+        """The landmarks of a guided run, and the point about to be placed."""
+        settings = state.armature_settings
+        camera = state.camera
+        if settings.show_landmarks:
+            # A cross being dragged or merely pointed at is ringed like the one
+            # the panel is editing: a landmark that can be taken hold of has to
+            # look as grabbable as a node handle does.
+            active = tool.grabbed_landmark or tool.hover_landmark
+            for index, armature in enumerate(state.armatures):
+                if not armature.visible:
+                    continue
+                for landmark in armature.landmarks:
+                    at = project_visible(camera, landmark.at, width, height)
+                    if at is None:
+                        continue
+                    here = (index, landmark.key)
+                    self._draw_cross(painter, at, _LANDMARK_COLOR, landmark.mirrored)
+                    if tool.selected_landmark == here:
+                        self._draw_ring(painter, at, _PENDING_COLOR, 9.0)
+                    elif active == here:
+                        self._draw_ring(painter, at, _HANDLE_HOVER, 8.0)
+        if tool.active and tool.hover_point is not None:
+            hover = project_visible(camera, tool.hover_point, width, height)
+            if hover is not None:
+                self._draw_crosshair(painter, hover, _PENDING_COLOR)
+
+    def _draw_cross(self, painter: QPainter, point: QPointF, color: QColor, hollow: bool) -> None:
+        """A small cross for a landmark; hollow when the mirror guessed it."""
+        for pen in (QPen(QColor(0, 0, 0, 170), 3.0), QPen(color, 1.6)):
+            painter.setPen(pen)
+            painter.drawLine(
+                QPointF(point.x() - 5.0, point.y() - 5.0),
+                QPointF(point.x() + 5.0, point.y() + 5.0),
+            )
+            painter.drawLine(
+                QPointF(point.x() - 5.0, point.y() + 5.0),
+                QPointF(point.x() + 5.0, point.y() - 5.0),
+            )
+        if not hollow:
+            self._draw_point(painter, point, color, 2.4)
 
     # ------------------------------------------------------------------
     # Annotations in progress
@@ -343,6 +527,22 @@ class ViewportOverlay:
     # Chrome
     # ------------------------------------------------------------------
 
+    def _armature_hud(self, state: ViewerState, tool: ArmatureTool) -> list[str]:
+        """What the armature tool is waiting for, said in as few lines as it takes."""
+        settings = state.armature_settings
+        if not tool.guiding or tool.guide is None:
+            anchor = "click to chain on" if tool.selected is not None else "click to place a node"
+            free = ", free placement" if settings.free_placement else ""
+            return [f"Armature: {anchor}{free}  (Shift+drag a node resizes it)"]
+
+        held = tool.guide.armature
+        armature = state.armatures[held] if 0 <= held < len(state.armatures) else Armature()
+        placed, wanted = tool.progress(armature, settings)
+        entry = tool.current(armature, settings)
+        if entry is None:
+            return [f"Armature: every landmark placed ({placed} of {wanted})"]
+        return [f"Landmark {placed + 1} of {wanted}: {entry.title}", entry.hint]
+
     def _draw_gizmo(self, painter: QPainter, camera: Camera, width: int, height: int) -> None:
         origin = QPointF(
             self.MARGIN + self.GIZMO_RADIUS + 8, height - self.MARGIN - self.GIZMO_RADIUS - 8
@@ -381,6 +581,7 @@ class ViewportOverlay:
         state: ViewerState,
         tool: MeasureTool,
         annotate: AnnotateTool,
+        armature: ArmatureTool | None,
         width: int,
         height: int,
     ) -> None:
@@ -405,6 +606,8 @@ class ViewportOverlay:
             mode = state.annotation_settings.mode
             action = "drag to erase" if mode.is_eraser else "drag to draw"
             lines.append(f"{mode.label}: {action}  (Alt+drag orbits)")
+        if armature is not None and armature.active:
+            lines.extend(self._armature_hud(state, armature))
 
         font = QFont(painter.font())
         font.setPointSize(10)

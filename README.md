@@ -27,6 +27,11 @@ Built with PySide6 and OpenGL 3.3.
   (diffuse, specular colour and level, shininess, metalness, roughness,
   reflection colour).
 - Flat (faceted) shading and a wireframe overlay for reading topology.
+- A **Ghost** mode with a solidity slider, which draws the model see-through so
+  you can read what is inside it: the far side of a form, the cut of a
+  cross-section, or the armature standing in it.  Every surface along the view
+  is summed rather than sorted, so a limb crossing a torso reads the same from
+  any angle instead of coming apart where the form folds over itself.
 - A **Planes** filter that breaks the surface into the flat planes a
   sculptor blocks a form in with, from a six-sided box down to a barely
   faceted surface -- on a fixed grid, or fitted to the model itself by any of
@@ -69,6 +74,75 @@ file can arrive lying on its side. The Model tab turns it upright: pick the up
 axis the file used, flip it if it came in upside down, and spin it a quarter
 turn to face forwards. Measurements and annotations turn with the model, and
 going back to the previous setting puts everything exactly where it was.
+
+**Armature**
+
+A wire under the form, laid out before any clay goes on: a graph of named nodes
+joined by bones. It is not a rig — nothing is animated by it, nothing is skinned
+or weighted. It is there to be read off the screen while you bend real wire to
+length, and to tell the clay mode where the masses of a figure belong.
+
+- Press `R` and click to place nodes along a limb, each joined to the last.
+  Drag one to move it, `Shift`+drag to change how thick the form is there.
+  Nodes can be dissolved out of the middle of a chain without breaking it and
+  locked once they are right. Each of those is one undo step.
+- Clicking a node selects it and highlights its row, whether or not the tool is
+  armed — reading which node is which should not first require arming anything.
+  With the tool armed, clicking a *second* node runs a bone between them;
+  `Ctrl`+click (`Cmd` on macOS) does the same at any time, in the viewport or
+  in the list, which is how you close a shoulder or a pelvic bar.
+- Clicking a bone drops a node into the middle of it and splits it in two, so a
+  chain can be subdivided where it needs more articulation rather than only
+  extended from its end. The new node takes its thickness from the two it was
+  dropped between.
+- Double-click a row to rename a node or the armature itself.
+- Every node carries its thickness as a radius in scene units rather than as a
+  dot on the screen, so the ring grows as you zoom in and reads as the body
+  rather than as a handle.
+- The armature lives inside the model, so it is drawn over the form rather than
+  hidden by it, and the part standing behind the surface is dimmed instead of
+  cut away.
+
+Or let a **guided preset** work the figure out for you. It walks a list of
+anatomical landmarks — the C7 bump, the jugular notch, the two hip points, the
+epicondyles either side of a knee — and never asks for a joint centre, because
+nobody can point at the middle of a femoral head. The hip is placed a quarter
+of the way from the trochanter you *can* feel towards the centre of the pelvis,
+which carries it medial and a little up and back, where it really is. Asking
+for what is visible and inferring the rest is both less to point at and more
+accurate than asking for the guess directly.
+
+Every rule is a ratio of the figure's own measured spans, so one preset fits a
+child and a heroic nude and nothing drifts when the pose changes. The paired
+landmarks then pay twice: the two epicondyles that locate an elbow are also the
+width of the elbow, so every joint arrives already sized and you are never
+asked for a thickness at all.
+
+Place the midline and one side and the other is reflected across a plane fitted
+through the midline landmarks — nineteen placements instead of thirty-three. A
+mirrored point is drawn hollow, so a guess reads as a guess; correct one and it
+is yours, because the mirror never writes over a point you have taken hold of.
+
+The landmarks are kept afterwards rather than consumed, so nudging one
+re-derives the nodes that read it: a misplaced hip point is a correction, not a
+restart. A locked node keeps its place and its size through that — one padlock,
+one meaning — and moving any node by hand hands the armature over to you and
+stops the re-derivation, in the same undo step, so one `Ctrl+Z` puts it back
+under the preset.
+
+Every placed landmark is listed in the panel, in the preset's own order down
+the figure, with its position in `X`, `Y` and `Z` in whatever unit the Measure
+panel is set to. Select a row to ring that cross in the view; type or nudge a
+number and the joints reading it follow at once, one undo step per number. Or
+drag the cross itself, the way you would a node: the figure re-forms under the
+cursor and the whole drag is one step. A cross answers within a tighter reach
+than a node handle, so where the two sit together — which is half the joints of
+a preset — aiming at the cross picks the landmark and a few pixels out picks the
+node.
+Deleting a landmark takes any guess mirrored from it along with it. An armature
+you have taken over by hand keeps the nodes you made — its landmarks stay an
+editable record of where the anatomy is, and **Rebuild Nodes** is how you hand
+it back to the preset, keeping your names and whatever you locked.
 
 **Cross-section**
 
@@ -520,13 +594,14 @@ Point `REFVIEW_RESOURCES` at another directory to use your own library.
 src/refview/
   core/      pure Python, no Qt: mesh, the OBJ/STL/glTF loaders, the picking
              index, camera, raycasting, cross-sections, the pedestal,
-             measurements, annotations, bookmarks, undo commands, settings,
-             session persistence
+             measurements, annotations, the armature and its landmark
+             presets, bookmarks, undo commands, settings, session
+             persistence
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
-  ui/        Qt: viewport widget, navigation, measuring and annotating tools,
-             the 2D overlay, the observable document, panels and the main
-             window
+  ui/        Qt: viewport widget, navigation, the measuring, annotating and
+             armature tools, the 2D overlay, the observable document, panels
+             and the main window
 tools/       the matcap generator
 tests/       pytest suite for the core layer
 ```
@@ -543,12 +618,19 @@ Three rules keep the pieces apart:
   mutate the settings held by `ViewerState` and emit a change signal; the
   viewport listens and repaints.
 - **Every document edit is a command.** Four generic commands — set attributes,
-  add, remove, replace — cover measurements, annotations and bookmarks alike,
-  so undo needs no new code when a new kind of object turns up.
+  add, remove, replace — cover measurements, annotations, armatures and
+  bookmarks alike, so undo needs no new code when a new kind of object turns
+  up. The armature was added without a fifth.
 
 Measurements are drawn in screen space with `QPainter` rather than as 3D
 geometry. That gives reliable line thickness and antialiasing on every driver,
 keeps them legible in front of the model, and makes the text labels free.
+
+The armature is drawn in screen space for the opposite reason: it lives inside
+the form, so geometry the model could hide would be a wire nobody ever saw. The
+part behind the surface is dimmed instead, which takes one ray per node — cheap
+for a figure, and cached against the camera so an orbit does not pay for it
+every frame.
 
 Annotations go the other way and are drawn as geometry, because paint on the
 back of the model has to be hidden by it. Each segment becomes a quad that the

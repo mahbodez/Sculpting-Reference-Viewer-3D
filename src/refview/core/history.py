@@ -17,6 +17,7 @@ from __future__ import annotations
 MEASUREMENTS = "measurements"
 ANNOTATIONS = "annotations"
 BOOKMARKS = "bookmarks"
+ARMATURE = "armature"
 
 
 class Command:

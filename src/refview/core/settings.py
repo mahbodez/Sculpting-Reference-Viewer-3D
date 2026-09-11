@@ -475,6 +475,11 @@ class PlaneSettings:
         return self.enabled and self.target is PlaneTarget.GEOMETRY
 
 
+#: A ghost thinner than this is a model you cannot find again, so the slider
+#: stops here rather than at nothing.
+GHOST_MIN = 0.05
+
+
 @dataclass
 class RenderSettings:
     """Everything the viewport needs in order to draw a frame."""
@@ -494,8 +499,21 @@ class RenderSettings:
     flat_shading: bool = False
     show_wireframe: bool = False
     wireframe_color: Color = (0.08, 0.09, 0.11)
+    #: Draw the model see-through.  A reference is often something you want to
+    #: look *into* rather than at: the far side of a form, a cross-section, or
+    #: the armature standing inside it.
+    ghost: bool = False
+    #: How solid a ghosted model is, from :data:`GHOST_MIN` to fully opaque.
+    ghost_opacity: float = 0.35
     background_top: Color = (0.26, 0.27, 0.30)
     background_bottom: Color = (0.10, 0.10, 0.12)
+
+    @property
+    def surface_opacity(self) -> float:
+        """How solid the model is drawn, 1.0 unless it is being ghosted."""
+        if not self.ghost:
+            return 1.0
+        return min(max(self.ghost_opacity, GHOST_MIN), 1.0)
 
 
 @dataclass

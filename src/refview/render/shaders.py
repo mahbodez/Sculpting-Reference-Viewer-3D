@@ -1,10 +1,11 @@
 """GLSL sources for the viewport.
 
-Six small programs cover everything the viewer draws: a fullscreen background
+Seven small programs cover everything the viewer draws: a fullscreen background
 gradient, the shaded mesh, a constant-colour pass reused for the wireframe and
 the cut cap, the widened surface strokes, a depth-only pass that feeds both the
-shadow map and the occlusion pre-pass, and the two fullscreen passes that turn
-that depth into ambient occlusion.  The mesh shader branches on ``uMode``,
+shadow map and the occlusion pre-pass, the two fullscreen passes that turn that
+depth into ambient occlusion, and one more that resolves a ghosted model out of
+the sums the mesh pass left for it.  The mesh shader branches on ``uMode``,
 whose values mirror :attr:`refview.core.settings.ShadingMode.shader_id`, and on
 ``uPlaneMode``, which mirrors :attr:`refview.core.settings.PlaneMode.shader_id`.
 
@@ -125,6 +126,10 @@ in vec3 vWorldNormal;
 in vec3 vWorldPosition;
 
 out vec4 fragColor;
+//: The second half of the ghost's running total -- see ``uAccumulate``.  The
+//: frame itself has no attachment there, so on an ordinary pass this write
+//: goes nowhere, which is cheaper than compiling the shader twice.
+layout(location = 1) out vec4 fragReveal;
 
 uniform int  uMode;
 uniform bool uFlatShading;
@@ -166,6 +171,14 @@ uniform vec3  uAmbientColor;
 uniform float uAmbientIntensity;
 
 uniform vec3  uDiffuseColor;
+uniform float uOpacity;
+//: Sum this fragment into the two order-independent buffers rather than
+//: writing it straight into the frame.  See ``ghostWeight`` below.
+uniform bool  uAccumulate;
+//: View depth at which the form begins, and how deep it is, so a fragment can
+//: say how far through the form it lies.
+uniform float uGhostNear;
+uniform float uGhostSpan;
 uniform vec3  uSpecularColor;
 uniform float uSpecularLevel;
 uniform float uShininess;
@@ -534,6 +547,23 @@ vec3 pbrShade(vec3 n, vec3 v) {
     return color;
 }
 
+//: How many surfaces a ghosted form is taken to stack up between its near side
+//: and its far one.  Correct front-to-back compositing gives the nth layer a
+//: share ``(1 - alpha)^(n - 1)`` of the light, so reading n off the fragment's
+//: depth through the form gives the same falloff without knowing which layer
+//: it actually is.  Four is a figure seen across a limb: slope enough that the
+//: near surface reads as the near one, little enough that the far side does
+//: not vanish, which is the whole point of a ghost.
+const float GHOST_LAYERS = 4.0;
+
+float ghostWeight(float alpha) {
+    // Normalised against the form's own depth rather than the window's: a
+    // tightly framed model occupies a sliver of the depth buffer, and every
+    // fragment of it would come out weighted the same.
+    float through = clamp((abs(vViewPosition.z) - uGhostNear) / max(uGhostSpan, 1e-6), 0.0, 1.0);
+    return max(pow(1.0 - alpha, through * GHOST_LAYERS), 1e-4);
+}
+
 void main() {
     clipSection(vWorldPosition);
 
@@ -561,7 +591,21 @@ void main() {
             : planeAxisContour(turning, vWorldPosition);
         color = mix(color, uPlaneContourColor, ink);
     }
-    fragColor = vec4(max(color, vec3(0.0)), 1.0);
+    vec3 shaded = max(color, vec3(0.0));
+    if (uAccumulate) {
+        // Both writes are sums, so whichever triangle of the form reached this
+        // pixel first cannot change the answer.  The colours are averaged
+        // under ghostWeight, and the transmittances multiplied -- as a sum of
+        // their logarithms, since one blend function has to serve for both
+        // attachments.
+        float alpha = clamp(uOpacity, 0.0, 0.999);
+        float weight = alpha * ghostWeight(alpha);
+        fragColor = vec4(shaded * weight, weight);
+        fragReveal = vec4(log(1.0 - alpha), 0.0, 0.0, 0.0);
+    } else {
+        fragColor = vec4(shaded, uOpacity);
+        fragReveal = vec4(0.0);
+    }
 }
 """))
 
@@ -812,5 +856,29 @@ void main() {
         }
     }
     fragColor = vec4(vec3(total / 16.0), 1.0);
+}
+"""
+
+
+GHOST_FRAGMENT = """
+#version 330 core
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uAccum;
+uniform sampler2D uReveal;
+
+void main() {
+    vec4 accum = texture(uAccum, vUv);
+    // The transmittances were summed in the log, so the product of them --
+    // what is left of the scene standing behind the ghost -- comes back as a
+    // single exponential, and it is exact however many surfaces there were.
+    float behind = exp(texture(uReveal, vUv).r);
+    float alpha = 1.0 - behind;
+    if (alpha <= 0.0) {
+        discard;  // Nothing was drawn here; leave the frame alone.
+    }
+    fragColor = vec4(accum.rgb / max(accum.a, 1e-5), alpha);
 }
 """

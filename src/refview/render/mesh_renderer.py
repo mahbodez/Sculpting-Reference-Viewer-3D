@@ -24,6 +24,7 @@ from ..core.plane_clusters import fit_planes
 from ..core.settings import PlaneMode, RenderSettings
 from . import shaders
 from .framebuffer import (
+    AccumTarget,
     ColorTarget,
     DepthTarget,
     GeometryTarget,
@@ -47,6 +48,8 @@ _CONTOUR_DEPTH_BIAS = 8e-4
 _SHADOW_SIZE = 2048
 #: Texture units, fixed so the uniforms can be set once per frame.
 _MATCAP_UNIT, _SHADOW_UNIT, _OCCLUSION_UNIT, _PLANE_UNIT = 0, 1, 2, 3
+#: The two the ghost's sums are read back through, used by the resolve pass only.
+_GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT = 4, 5
 
 #: How many fits to keep alongside the one in use.  Each is a mode and a set of
 #: coefficients, so dragging a coefficient slider leaves a trail of them; a
@@ -132,6 +135,8 @@ class SceneRenderer:
         self._scene_depth = GeometryTarget()
         self._occlusion = ColorTarget()
         self._occlusion_blur = ColorTarget()
+        #: Where a see-through model is summed, then resolved over the frame.
+        self._ghost = AccumTarget()
         self._empty_vao = 0
         self._matcap: Texture2D | None = None
         self._mesh: Mesh | None = None
@@ -161,6 +166,7 @@ class SceneRenderer:
                 shaders.FULLSCREEN_VERTEX, shaders.OCCLUSION_FRAGMENT, "occlusion"
             ),
             "blur": ShaderProgram(shaders.FULLSCREEN_VERTEX, shaders.BLUR_FRAGMENT, "blur"),
+            "ghost": ShaderProgram(shaders.FULLSCREEN_VERTEX, shaders.GHOST_FRAGMENT, "ghost"),
         }
         self._buffers = MeshBuffers()
         self._sculpt = MeshBuffers()
@@ -194,6 +200,7 @@ class SceneRenderer:
             self._scene_depth,
             self._occlusion,
             self._occlusion_blur,
+            self._ghost,
         ):
             target.dispose()
         if self._matcap is not None:
@@ -321,6 +328,15 @@ class SceneRenderer:
                 light_matrix = self._render_shadow_map(camera, settings, planes)
                 self._render_occlusion(camera, settings, projection, view, width, height, planes)
                 bind_default(target)
+            if self._ghost_opacity(settings) is not None:
+                # Sized here, with the other offscreen targets, because
+                # allocating one binds both a framebuffer and a texture.  Doing
+                # it inside the shading pass would take the widget's own
+                # framebuffer out from under that pass and the matcap off its
+                # texture unit -- so the first frame at each new size would come
+                # out unlike every frame after it.
+                self._ghost.resize(width, height)
+                bind_default(target)
 
             GL.glViewport(0, 0, width, height)
             GL.glEnable(GL.GL_DEPTH_TEST)
@@ -348,13 +364,108 @@ class SceneRenderer:
         disc = self._pedestal is not None and not self._pedestal.is_empty
         return model or disc
 
+    def _ghost_opacity(self, settings: RenderSettings) -> float | None:
+        """How see-through the model is this frame, or ``None`` if it is solid.
+
+        Asked in two places -- where the buffers are allocated and where they
+        are filled -- and the two must agree, or a frame allocates nothing and
+        then draws into it.
+        """
+        model = self._model
+        opacity = settings.surface_opacity
+        if model is None or model.is_empty or opacity >= 1.0:
+            return None
+        return opacity
+
+    def _accumulate_ghost(
+        self,
+        program: ShaderProgram,
+        model: MeshBuffers,
+        camera: Camera,
+        opacity: float,
+        width: int,
+        height: int,
+    ) -> None:
+        """Sum a see-through model into the ghost buffers, to be resolved after.
+
+        Blending is not commutative, so a ghost drawn straight into the frame
+        comes out in whatever order the triangles happen to sit in the buffer
+        -- a haze at a low opacity, and at a high one a form visibly shattered,
+        with the back of the skull painted over the face.
+
+        What used to stand here was two culled draws, back faces then front,
+        on the reading that a closed form puts exactly two surfaces under any
+        one pixel.  It does not.  Look along an arm held across a chest and
+        there are four, and the two passes cannot order them: both backs land
+        in the first draw and both fronts in the second, whichever is actually
+        nearer.  The shading comes apart exactly where the form folds over
+        itself, which is where an artist is looking.
+
+        So the fragments are not ordered at all.  Each is summed instead --
+        colours averaged by how far through the form they lie, transmittances
+        multiplied as a sum of logarithms -- and :meth:`_resolve_ghost` divides
+        the one by the other.  Addition does not care what order it happens in,
+        so the answer is the same from every angle and for any number of
+        surfaces.  One draw call over the geometry, where there were two.
+
+        Depth writes stay off, as they were: the form must not hide its own far
+        side, and the passes that follow are drawn as though it were not there.
+        """
+        frame = current_framebuffer()
+        self._ghost.bind()
+        self._ghost.clear()
+
+        # The ground the model stands behind still has to hide it, and this
+        # framebuffer has a depth buffer of its own, so the disc is laid in
+        # again with the colour writes shut off.
+        if self._pedestal is not None and not self._pedestal.is_empty:
+            GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE)
+            self._pedestal.draw()
+            GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+
+        near, span = _ghost_depth_range(camera)
+        program.set_float("uGhostNear", near)
+        program.set_float("uGhostSpan", span)
+        program.set_float("uOpacity", opacity)
+        program.set_bool("uAccumulate", True)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_ONE, GL.GL_ONE)
+        GL.glDepthMask(GL.GL_FALSE)
+        model.draw()
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glDisable(GL.GL_BLEND)
+        program.set_bool("uAccumulate", False)
+        program.set_float("uOpacity", 1.0)
+
+        bind_default(frame)
+        GL.glViewport(0, 0, width, height)
+
+    def _resolve_ghost(self) -> None:
+        """Lay the summed ghost over the scene already in the frame."""
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glDepthMask(GL.GL_FALSE)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        with self._programs["ghost"] as program:
+            program.set_int("uAccum", _GHOST_ACCUM_UNIT)
+            program.set_int("uReveal", _GHOST_REVEAL_UNIT)
+            self._ghost.bind_texture(_GHOST_ACCUM_UNIT)
+            self._ghost.bind_reveal(_GHOST_REVEAL_UNIT)
+            GL.glActiveTexture(GL.GL_TEXTURE0)
+            self._draw_fullscreen()
+        GL.glDisable(GL.GL_BLEND)
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
     @staticmethod
     def _reset_state() -> None:
         GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glDisable(GL.GL_BLEND)
+        GL.glDepthMask(GL.GL_TRUE)
         GL.glDisable(GL.GL_CULL_FACE)
         GL.glBindVertexArray(0)
         GL.glUseProgram(0)
-        for unit in (_SHADOW_UNIT, _OCCLUSION_UNIT):
+        for unit in (_SHADOW_UNIT, _OCCLUSION_UNIT, _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
             GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -391,6 +502,9 @@ class SceneRenderer:
         assert self._buffers is not None and self._pedestal is not None
         key_direction, fill_direction = light_directions(settings, view)
 
+        model = self._model
+        ghost_opacity = self._ghost_opacity(settings)
+
         with self._programs["mesh"] as program:
             program.set_matrix4("uView", view)
             program.set_matrix4("uProjection", projection)
@@ -422,6 +536,7 @@ class SceneRenderer:
             program.set_float("uPlaneCoplanar", fitted.coplanarity)
             program.set_float("uPlaneSpan", math.radians(plane_settings.axis_span_deg))
             program.set_bool("uOrthographic", camera.projection is Projection.ORTHOGRAPHIC)
+            program.set_bool("uAccumulate", False)
             _set_section(program, planes)
 
             matcap = settings.matcap
@@ -455,10 +570,12 @@ class SceneRenderer:
             if self._matcap is not None:
                 self._matcap.bind(_MATCAP_UNIT)
 
-            program.set_vec3("uDiffuseColor", surface.diffuse_color)
-            model = self._model
-            if model is not None:
-                model.draw()
+            # The ground goes down before the form standing on it.  A ghost is
+            # blended, and blending only composites over what is already
+            # there; the other way round the disc would paint over the legs in
+            # front of it, since a ghost leaves no depth to be tested against.
+            # With both solid the two orders cannot be told apart, so this is
+            # not worth a branch.
             if not self._pedestal.is_empty:
                 program.set_vec3("uDiffuseColor", settings.pedestal.color)
                 # A fitted set of planes describes the model, not the ground
@@ -469,6 +586,18 @@ class SceneRenderer:
                     program.set_bool("uPlaneShading", False)
                 self._pedestal.draw()
                 program.set_bool("uPlaneShading", shades)
+            if model is not None:
+                program.set_vec3("uDiffuseColor", surface.diffuse_color)
+                if ghost_opacity is not None:
+                    self._accumulate_ghost(program, model, camera, ghost_opacity, width, height)
+                else:
+                    program.set_float("uOpacity", 1.0)
+                    model.draw()
+
+        # After the program has been let go, since this is a pass of its own --
+        # and before the cap, which belongs over the ghost as it did before.
+        if ghost_opacity is not None:
+            self._resolve_ghost()
 
         if planes and settings.section.fill_cut:
             self._draw_cap(settings, view, projection)
@@ -675,6 +804,20 @@ def _set_section(program: ShaderProgram, planes: list) -> None:
     program.set_int("uSectionCount", min(len(planes), 2))
     for index, plane in enumerate(planes[:2]):
         program.set_vec4(f"uSectionPlanes[{index}]", (*plane.normal, plane.offset))
+
+
+def _ghost_depth_range(camera: Camera) -> tuple[float, float]:
+    """Where the form starts along the view, and how deep it is.
+
+    The ghost weighs a fragment by how far through the form it lies, which only
+    means anything against the form's own depth.  The scene's bounding sphere
+    gives it: near the eye side of the sphere, a span of its diameter, under
+    either projection, since view-space depth is measured from the eye both
+    times.
+    """
+    radius = max(float(camera.scene_radius), 1e-6)
+    distance = float(np.linalg.norm(camera.eye - camera.scene_center))
+    return max(distance - radius, 0.0), 2.0 * radius
 
 
 def normal_matrix(view: np.ndarray) -> np.ndarray:

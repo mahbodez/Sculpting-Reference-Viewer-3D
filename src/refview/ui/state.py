@@ -14,9 +14,17 @@ import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 from ..core.annotation import AnnotationSettings, AnnotationStore
+from ..core.armature import ArmatureSettings, ArmatureStore
 from ..core.bookmark import BookmarkStore
 from ..core.camera import Camera
-from ..core.history import ANNOTATIONS, BOOKMARKS, MEASUREMENTS, Command, History
+from ..core.history import (
+    ANNOTATIONS,
+    ARMATURE,
+    BOOKMARKS,
+    MEASUREMENTS,
+    Command,
+    History,
+)
 from ..core.measurement import MeasurementSettings, MeasurementStore
 from ..core.mesh import Mesh
 from ..core.mesh_io import load_mesh as read_mesh
@@ -35,6 +43,7 @@ class ViewerState(QObject):
     camera_changed = Signal()
     measurements_changed = Signal()
     annotations_changed = Signal()
+    armature_changed = Signal()
     bookmarks_changed = Signal()
     history_changed = Signal()
     #: A film of a form's making gained a stage, or finished.  Carries the
@@ -56,6 +65,8 @@ class ViewerState(QObject):
         self.measurements = MeasurementStore()
         self.annotation_settings = AnnotationSettings()
         self.annotations = AnnotationStore()
+        self.armature_settings = ArmatureSettings()
+        self.armatures = ArmatureStore()
         self.bookmarks = BookmarkStore()
         self.history = History()
         self.orientation = OrientationSettings()
@@ -83,6 +94,9 @@ class ViewerState(QObject):
     def notify_annotations(self) -> None:
         self.annotations_changed.emit()
 
+    def notify_armature(self) -> None:
+        self.armature_changed.emit()
+
     def notify_bookmarks(self) -> None:
         self.bookmarks_changed.emit()
 
@@ -91,6 +105,7 @@ class ViewerState(QObject):
         emit = {
             MEASUREMENTS: self.notify_measurements,
             ANNOTATIONS: self.notify_annotations,
+            ARMATURE: self.notify_armature,
             BOOKMARKS: self.notify_bookmarks,
         }.get(channel)
         if emit is not None:
@@ -146,12 +161,14 @@ class ViewerState(QObject):
         self.camera.scene_center = np.asarray(mesh.bounds.center, dtype=np.float64)
         self.measurements.clear()
         self.annotations.clear()
+        self.armatures.clear()
         self.bookmarks.clear()
         self.history.clear()
         self.frame_object()
         self.mesh_changed.emit()
         self.notify_measurements()
         self.notify_annotations()
+        self.notify_armature()
         self.notify_bookmarks()
         self.history_changed.emit()
         self.adopt_units(mesh)
@@ -170,9 +187,10 @@ class ViewerState(QObject):
     def set_orientation(self, orientation: OrientationSettings, move_marks: bool = True) -> None:
         """Turn the model, bringing the marks made on it along.
 
-        Measurements and annotations belong to the surface, so they are carried
-        through the same rotation; a saved camera view is a viewpoint on the
-        scene rather than a point on the model, and stays where it is.
+        Measurements, annotations and the armature belong to the model, so they
+        are carried through the same rotation; a saved camera view is a
+        viewpoint on the scene rather than a point on the model, and stays
+        where it is.
 
         The turn is not recorded in the undo history: like the camera, it is a
         way of looking at the model rather than an edit to it, and choosing the
@@ -194,9 +212,10 @@ class ViewerState(QObject):
         self.mesh_changed.emit()
         self.notify_measurements()
         self.notify_annotations()
+        self.notify_armature()
 
     def _move_marks(self, previous: Mesh, current: Mesh, was: np.ndarray) -> None:
-        """Rotate the measurements and annotations onto the turned model.
+        """Rotate the measurements, annotations and armature onto the turned model.
 
         A point sits at ``rotation @ file_point - centre`` in both orientations,
         so going from one to the other means undoing the old centring, applying
@@ -220,6 +239,11 @@ class ViewerState(QObject):
                 tuple(float(v) for v in change @ np.asarray(normal, dtype=np.float64))
                 for normal in stroke.normals
             ]
+        for armature in self.armatures:
+            for node in armature.nodes:
+                node.at = move(node.at)
+            for landmark in armature.landmarks:
+                landmark.at = move(landmark.at)
 
     def adopt_units(self, mesh: Mesh) -> None:
         """Take the display unit from the file when the format declares one.
@@ -266,6 +290,8 @@ class ViewerState(QObject):
             bookmarks=list(self.bookmarks),
             annotation_settings=self.annotation_settings,
             annotations=list(self.annotations),
+            armature_settings=self.armature_settings,
+            armatures=list(self.armatures),
         )
 
     def apply_session(self, session: Session) -> None:
@@ -279,6 +305,8 @@ class ViewerState(QObject):
         self.measurements = MeasurementStore(list(session.measurements))
         self.annotation_settings = session.annotation_settings
         self.annotations = AnnotationStore(list(session.annotations))
+        self.armature_settings = session.armature_settings
+        self.armatures = ArmatureStore(list(session.armatures))
         self.bookmarks = BookmarkStore(list(session.bookmarks))
         self.history.clear()
         if session.camera:
@@ -294,6 +322,7 @@ class ViewerState(QObject):
         self.notify_camera()
         self.notify_measurements()
         self.notify_annotations()
+        self.notify_armature()
         self.notify_bookmarks()
         self.history_changed.emit()
 

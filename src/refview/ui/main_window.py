@@ -27,6 +27,7 @@ from ..paths import model_dir
 from ..render.texture import MatcapLoadError
 from ..wakelock import WakeLock
 from .panels.annotate_panel import AnnotatePanel
+from .panels.armature_panel import ArmaturePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.matcap_panel import MatcapPanel
 from .panels.measure_panel import MeasurePanel
@@ -55,6 +56,7 @@ CONTROLS_TEXT = """
 <tr><td><b>Shift + left drag</b></td><td>Orbit in round steps (set the angle in Camera)</td></tr>
 <tr><td><b>F</b></td><td>Frame the object</td></tr>
 <tr><td><b>P</b></td><td>Toggle perspective / orthographic</td></tr>
+<tr><td><b>Shading panel</b></td><td>Ghost the model to see through it</td></tr>
 <tr><td><b>1</b> ... <b>6</b></td><td>Front, back, left, right, top, bottom</td></tr>
 </table>
 <h3>Measuring</h3>
@@ -69,6 +71,20 @@ CONTROLS_TEXT = """
 <tr><td><b>A</b></td><td>Arm the annotate tool</td></tr>
 <tr><td><b>Left drag</b></td><td>Paint freehand, a line or a circle on the surface</td></tr>
 <tr><td><b>E</b></td><td>Switch between the brush and the eraser</td></tr>
+</table>
+<h3>Armature</h3>
+<table cellpadding='3'>
+<tr><td><b>R</b></td><td>Arm the armature tool</td></tr>
+<tr><td><b>Click a node</b></td><td>Select it — in or out of armature mode</td></tr>
+<tr><td><b>Click a second node</b></td><td>Join the two with a bone (armed)</td></tr>
+<tr><td><b>Ctrl + click a node</b></td><td>Join it to the selected one, always</td></tr>
+<tr><td><b>Click a bone</b></td><td>Insert a node into it, splitting it in two</td></tr>
+<tr><td><b>Left click elsewhere</b></td><td>Place a node, joined to the last one</td></tr>
+<tr><td><b>Left drag a node</b></td><td>Move it (dragging elsewhere still orbits)</td></tr>
+<tr><td><b>Shift + drag a node</b></td><td>Change how thick the form is there</td></tr>
+<tr><td><b>Left drag a landmark</b></td><td>Move the cross; the wire follows it</td></tr>
+<tr><td><b>Double-click a row</b></td><td>Rename a node or an armature</td></tr>
+<tr><td><b>Esc</b></td><td>Drop the chain without disarming the tool</td></tr>
 </table>
 <h3>Cross-section</h3>
 <table cellpadding='3'>
@@ -87,15 +103,33 @@ the bottom or a slice</td></tr>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+Z</b> / <b>Ctrl+Shift+Z</b></td><td>Undo / redo</td></tr>
 </table>
-<p>Undo covers measurements, annotations and saved views.  Camera moves are
-not recorded, so a hundred orbits never bury the edit you wanted back.</p>
+<p>Undo covers measurements, annotations, the armature and saved views.
+Camera moves are not recorded, so a hundred orbits never bury the edit you
+wanted back.</p>
+<p>The Armature tab lays a wire under the model: a graph of named nodes, each
+carrying how thick the form is where it sits.  Nothing is animated by it -- it
+is there to be read off while you bend real wire, and to tell the clay modes
+where the masses of a figure are.  You can place the nodes by eye, or walk a
+guided preset instead, which asks for anatomical landmarks you can actually
+find on the model -- the C7 bump, the two hip points, the epicondyles either
+side of a knee -- and works the joints out from them.  The pairs pay twice: the
+distance between two epicondyles locates the elbow and also says how wide it
+is.  Place the midline and one side and the other is mirrored across the plane
+fitted through the midline, which is nineteen placements rather than
+thirty-three.  The landmarks are kept afterwards and listed in the panel with
+their positions; nudge one, by dragging its cross in the view or typing into
+the panel, and the nodes that read it move with it.  That holds until you move
+a node by hand and take the armature over yourself -- after which the list
+stays editable and <i>Rebuild Nodes</i> hands the wire back to the preset.  A
+cross sits closer to hand than the node beside it, so aiming at one picks the
+landmark; a few pixels out picks the node.</p>
 <p>OBJ, STL, GLB and glTF models can be opened or dropped onto the window.
 A glTF file states that its units are metres, so the measurement panel adopts
 that automatically; OBJ and STL declare nothing and are left alone.</p>
 <p>Formats also disagree about which axis points up, so a file can arrive lying
 on its side.  The Model tab turns it upright: pick the up axis the file used,
 flip it if it came in upside down, and spin it a quarter turn to face forwards.
-Measurements and annotations turn with the model.</p>
+Measurements, annotations and the armature turn with the model.</p>
 <p>The Planes tab breaks the surface into the flat planes a form is blocked
 in with, from a six-sided box down to a barely faceted surface.  Its detail
 slider moves the size of a plane evenly, so it bites as hard at the coarse end
@@ -151,6 +185,7 @@ class MainWindow(QMainWindow):
         self._measure_panel = MeasurePanel(self._state)
         self._section_panel = SectionPanel(self._state)
         self._annotate_panel = AnnotatePanel(self._state)
+        self._armature_panel = ArmaturePanel(self._state)
         self._camera_panel = CameraPanel(self._state)
 
         self._build_dock()
@@ -181,6 +216,7 @@ class MainWindow(QMainWindow):
             (self._section_panel, "Section"),
             (self._measure_panel, "Measure"),
             (self._annotate_panel, "Annotate"),
+            (self._armature_panel, "Armature"),
             (self._camera_panel, "Camera"),
         ):
             tabs.addTab(scrollable(panel), title)
@@ -238,6 +274,21 @@ class MainWindow(QMainWindow):
         )
         self._menu_action(measure_menu, "&Cancel Current  (Esc)", self._viewport.cancel_tools)
         self._menu_action(measure_menu, "Clear &All", self._measure_panel.clear_all)
+
+        armature_menu = self.menuBar().addMenu("A&rmature")
+        self._armature_action = self._menu_action(
+            armature_menu, "A&rmature Tool  (R)", self._toggle_armature, checkable=True
+        )
+        armature_menu.addSeparator()
+        self._menu_action(
+            armature_menu, "&New Armature", self._armature_panel.new_armature
+        )
+        self._menu_action(
+            armature_menu, "Start &Guided Preset", self._armature_panel.start_guide
+        )
+        self._menu_action(armature_menu, "&Finish Preset", self._armature_panel.end_guide)
+        armature_menu.addSeparator()
+        self._menu_action(armature_menu, "Clear &All", self._armature_panel.clear_all)
 
         annotate_menu = self.menuBar().addMenu("&Annotate")
         self._annotate_action = self._menu_action(
@@ -297,6 +348,7 @@ class MainWindow(QMainWindow):
             ("M", self._toggle_measure),
             ("A", self._toggle_annotate),
             ("E", self._toggle_eraser),
+            ("R", self._toggle_armature),
             ("Esc", self._viewport.cancel_tools),
             ("[", lambda: self._camera_panel.cycle(-1)),
             ("]", lambda: self._camera_panel.cycle(1)),
@@ -315,6 +367,7 @@ class MainWindow(QMainWindow):
         self._state.status_message.connect(self.statusBar().showMessage)
         self._state.measurements_changed.connect(self._measure_panel.refresh_list)
         self._state.annotations_changed.connect(self._annotate_panel.refresh_list)
+        self._state.armature_changed.connect(self._armature_panel.refresh_list)
         self._state.bookmarks_changed.connect(self._camera_panel.refresh_bookmarks)
         self._state.render_changed.connect(self._shading_panel.update_enabled)
         self._state.render_changed.connect(self._planes_panel.update_enabled)
@@ -332,6 +385,13 @@ class MainWindow(QMainWindow):
         self._measure_panel.measure_toggled.connect(self._set_measuring)
         self._measure_panel.center_requested.connect(self._viewport.center_on)
         self._annotate_panel.annotate_toggled.connect(self._set_annotating)
+        self._armature_panel.attach(self._viewport.armature_tool)
+        self._armature_panel.armature_toggled.connect(self._set_armaturing)
+        self._armature_panel.center_requested.connect(self._viewport.center_on_point)
+        self._viewport.armature_edited.connect(self._armature_panel.apply_edit)
+        self._viewport.armature_selected.connect(self._armature_panel.select_node)
+        self._viewport.landmark_selected.connect(self._armature_panel.select_landmark)
+        self._armature_panel.repaint_requested.connect(self._viewport.update)
 
     # ------------------------------------------------------------------
     # Public surface
@@ -384,28 +444,39 @@ class MainWindow(QMainWindow):
 
     def _set_measuring(self, active: bool) -> None:
         self._viewport.set_measure_active(active)
-        self._measure_panel.set_measuring(active)
-        self._measure_action.setChecked(active)
-        if active:
-            self._sync_annotating(False)
+        self._sync_tools(measuring=active)
 
     def _set_annotating(self, active: bool) -> None:
         self._viewport.set_annotate_active(active)
-        self._sync_annotating(active)
-        if active:
-            self._measure_panel.set_measuring(False)
-            self._measure_action.setChecked(False)
+        self._sync_tools(annotating=active)
 
-    def _sync_annotating(self, active: bool) -> None:
-        """Keep the panel button and the menu entry agreeing with the tool."""
-        self._annotate_panel.set_annotating(active)
-        self._annotate_action.setChecked(active)
+    def _set_armaturing(self, active: bool) -> None:
+        self._viewport.set_armature_active(active)
+        self._sync_tools(armaturing=active)
+
+    def _sync_tools(
+        self, measuring: bool = False, annotating: bool = False, armaturing: bool = False
+    ) -> None:
+        """Put every panel button and menu entry where the tools now stand.
+
+        Only one tool is ever armed, so arming one is also disarming the other
+        two; saying that once here keeps the three of them from drifting apart.
+        """
+        self._measure_panel.set_measuring(measuring)
+        self._measure_action.setChecked(measuring)
+        self._annotate_panel.set_annotating(annotating)
+        self._annotate_action.setChecked(annotating)
+        self._armature_panel.set_armaturing(armaturing)
+        self._armature_action.setChecked(armaturing)
 
     def _toggle_measure(self) -> None:
         self._set_measuring(not self._viewport.measure_tool.active)
 
     def _toggle_annotate(self) -> None:
         self._set_annotating(not self._viewport.annotate_tool.active)
+
+    def _toggle_armature(self) -> None:
+        self._set_armaturing(not self._viewport.armature_tool.active)
 
     def _toggle_eraser(self) -> None:
         """Swap between the eraser and the drawing mode it was called from."""
@@ -560,6 +631,7 @@ class MainWindow(QMainWindow):
             self._planes_panel,
             self._measure_panel,
             self._annotate_panel,
+            self._armature_panel,
             self._section_panel,
             self._camera_panel,
         ):

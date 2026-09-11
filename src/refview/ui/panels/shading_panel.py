@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
-from ...core.settings import LightSettings, ShadingMode, SurfaceSettings
+from ...core.settings import GHOST_MIN, LightSettings, ShadingMode, SurfaceSettings
 from ..widgets import ColorButton, SliderSpin, form_group
 from .base import Panel
 
@@ -14,14 +14,24 @@ class ShadingPanel(Panel):
 
     def _build(self) -> None:
         box, form = form_group("Mode")
+        self._mode_form = form
         self._mode = QComboBox()
         for mode in ShadingMode:
             self._mode.addItem(mode.label, mode.value)
         self._wireframe = QCheckBox("Show wireframe")
         self._wireframe_color = ColorButton((0.08, 0.09, 0.11))
+        self._ghost = QCheckBox("Ghost (see through the model)")
+        self._ghost.setToolTip(
+            "Draw the model see-through, so you can read what is inside it:\n"
+            "the far side of a form, the cut of a cross-section, or the\n"
+            "armature standing in it."
+        )
+        self._ghost_opacity = SliderSpin(GHOST_MIN, 1.0, 0.35, decimals=2, step=0.05)
         form.addRow("Shading", self._mode)
         form.addRow("", self._wireframe)
         form.addRow("Wire colour", self._wireframe_color)
+        form.addRow("", self._ghost)
+        form.addRow("Solidity", self._ghost_opacity)
         self._add(box)
 
         self._light_box, light_form = form_group("Light")
@@ -114,6 +124,10 @@ class ShadingPanel(Panel):
 
     def _connect(self) -> None:
         self._mode.currentIndexChanged.connect(self._on_mode_changed)
+        self._ghost.toggled.connect(lambda v: self._apply(self.state.render, "ghost", v))
+        self._ghost_opacity.valueChanged.connect(
+            lambda v: self._apply(self.state.render, "ghost_opacity", v)
+        )
         self._wireframe.toggled.connect(
             lambda v: self._apply(self.state.render, "show_wireframe", v)
         )
@@ -201,6 +215,7 @@ class ShadingPanel(Panel):
         a slider that lies.
         """
         mode = self.state.render.shading_mode
+        self._mode_form.setRowVisible(self._ghost_opacity, self.state.render.ghost)
         self._light_box.setVisible(mode.uses_lighting)
         self._surface_box.setVisible(mode.uses_lighting)
         self._quality_box.setVisible(mode.uses_quality)
@@ -239,6 +254,8 @@ class ShadingPanel(Panel):
             self._mode.setCurrentIndex(self._mode.findData(render.shading_mode.value))
             self._wireframe.setChecked(render.show_wireframe)
             self._wireframe_color.set_color(render.wireframe_color)
+            self._ghost.setChecked(render.ghost)
+            self._ghost_opacity.set_value(render.ghost_opacity)
             self._background_top.set_color(render.background_top)
             self._background_bottom.set_color(render.background_bottom)
 

@@ -154,6 +154,65 @@ class SliderSpin(QWidget):
         self.valueCommitted.emit(value)
 
 
+class PointEdit(QWidget):
+    """Three spin boxes for one point in space.
+
+    Keyboard tracking is off, so a typed number arrives once it is finished
+    rather than at every digit: each change here is an undo step, and the edit
+    it drives can be as large as rebuilding a whole armature.  The arrows and
+    the wheel still step live, which is what makes nudging a point by hand
+    feel like nudging it.
+    """
+
+    #: The whole point, whichever axis moved.
+    valueChanged = Signal(tuple)
+
+    #: Far enough to hold any scene, in any unit anyone is likely to choose.
+    REACH = 1e7
+
+    def __init__(self, decimals: int = 2, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._boxes: list[QDoubleSpinBox] = []
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        for axis in ("X", "Y", "Z"):
+            label = QLabel(axis)
+            label.setStyleSheet("color: #8f939b;")
+            box = QDoubleSpinBox()
+            box.setDecimals(decimals)
+            box.setRange(-self.REACH, self.REACH)
+            box.setSingleStep(0.1)
+            box.setKeyboardTracking(False)
+            box.setMinimumWidth(58)
+            box.valueChanged.connect(self._emit)
+            layout.addWidget(label, 0)
+            layout.addWidget(box, 1)
+            self._boxes.append(box)
+
+    def value(self) -> tuple[float, float, float]:
+        first, second, third = (box.value() for box in self._boxes)
+        return (first, second, third)
+
+    def set_value(self, point) -> None:
+        for box, value in zip(self._boxes, point, strict=True):
+            blocked = box.blockSignals(True)
+            box.setValue(float(value))
+            box.blockSignals(blocked)
+
+    def set_decimals(self, decimals: int) -> None:
+        for box in self._boxes:
+            box.setDecimals(decimals)
+
+    def set_step(self, step: float) -> None:
+        """Match the arrows to the size of the thing being moved."""
+        for box in self._boxes:
+            box.setSingleStep(max(step, 10.0**-box.decimals()))
+
+    def _emit(self) -> None:
+        self.valueChanged.emit(self.value())
+
+
 class ColorButton(QPushButton):
     """A swatch button that opens a colour picker.
 

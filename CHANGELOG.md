@@ -4,6 +4,126 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.8.0]
+
+### Added
+
+- **A wire under the form, before any clay goes on.** The new Armature tab lays
+  out a graph of named nodes joined by bones. Nothing is animated by it: there
+  is no skinning, no weights, no rig. It is there to be read off the screen
+  while you bend real wire to length, and -- shortly -- to tell the clay mode
+  where the masses of a figure actually belong instead of letting it infer
+  them from the distance field alone.
+
+  Every node carries how thick the form is where it sits, as a radius in scene
+  units rather than as a dot on the screen, so a ring grows as you zoom in and
+  reads as the body rather than as a handle. Press `R` and click to place nodes
+  along a limb, each joined to the last; drag one to move it, `Shift`+drag to
+  change its thickness. Nodes can be dissolved out of the middle of a chain
+  without breaking it, joined across to close a shoulder or a pelvic bar, and
+  locked once they are where they belong. Every one of those is a single undo
+  step.
+
+  An armature lives inside the model, so hiding the buried half would hide
+  almost all of it. It is drawn over the form instead, and the part standing
+  behind the surface is dimmed rather than cut away -- still readable, still
+  clearly on the far side of the skin.
+
+- **A guided humanoid preset, which asks for anatomy rather than for joints.**
+  Instead of placing the nodes by eye, you can walk a list of landmarks and let
+  the figure be worked out from them. Each one is a bump or a hollow you can
+  actually find on a model -- the C7 bump at the base of the neck, the jugular
+  notch, the two hip points, the epicondyles either side of a knee -- and never
+  a joint centre, because nobody can point at the middle of a femoral head. The
+  hip is placed a quarter of the way from the trochanter you *can* feel towards
+  the centre of the pelvis, which carries it medial and a little up and back,
+  where it really is. Asking for what is visible and inferring the rest is both
+  less to point at and more accurate than asking for the guess directly.
+
+  Every rule is a ratio of the figure's own measured spans rather than an
+  absolute distance, so one preset fits a child and a heroic nude, and nothing
+  drifts when the pose changes. The paired landmarks then pay for themselves
+  twice: the two epicondyles that locate an elbow are also the width of the
+  elbow, so every joint arrives already sized and the artist is never asked for
+  a thickness at all.
+
+  Place the midline and one side and the other is reflected across a plane
+  fitted through the midline landmarks -- nineteen placements rather than
+  thirty-three. A mirrored point is drawn hollow so a guess reads as a guess,
+  and correcting one makes it yours, because the mirror never writes over a
+  point you have taken hold of. A midline too nearly straight to fit a plane
+  through is refused rather than guessed at.
+
+  The landmarks are kept afterwards, not consumed. Nudging one re-derives the
+  nodes that read it, so a misplaced ASIS is a correction rather than a restart.
+  A locked node keeps its place and its size through that -- one padlock, one
+  meaning -- and moving any node by hand hands the armature over to you and
+  stops the re-derivation, in the same undo step, so one `Ctrl+Z` puts it back
+  under the preset.
+
+- **The landmarks are a list you can edit, not a record you can only read.**
+  A Landmarks group in the Armature panel lists every point you placed, in the
+  preset's own order down the figure rather than in the order you happened to
+  get to them, so a skipped point and every mirrored one still read as anatomy.
+  Selecting a row rings that cross in the view, so the name and the point on
+  the model are obviously the same thing.
+
+  Each one has its position in `X`, `Y` and `Z`, in whatever unit the Measure
+  panel is set to, stepping by a hundredth of the model so an arrow key is a
+  nudge whether the figure is two units tall or two hundred. Move one and the
+  joints that read it follow immediately -- the promise the guided preset has
+  always made, now with something to nudge it with. Each committed number is
+  one undo step, not one per digit.
+
+  A cross can also just be dragged in the view, the way a node can, which is
+  how a landmark put down a centimetre off gets corrected: the figure re-forms
+  under the cursor and the whole drag lands in the history as one step. A cross
+  lights up as the cursor crosses it, and it answers within a tighter reach
+  than a node handle -- half the joints of a preset sit right beside the
+  landmarks that placed them, so aiming at the cross picks the cross and a few
+  pixels out picks the node. Dragging a mirrored guess makes it yours, exactly
+  as typing over it does, and a landmark clicked rather than dragged selects
+  its row instead of moving anything.
+
+  Deleting a landmark takes any guess mirrored from it along, rather than
+  leaving a cross anchored to nothing. And an armature you have taken over by
+  hand keeps the nodes you made: its landmarks stay a record of where the
+  anatomy is, editable without the wire moving under you, and *Rebuild Nodes*
+  is how you deliberately hand it back to the preset -- keeping your names and
+  whatever you locked.
+
+- **Ghost shading.** A checkbox and a solidity slider in the Shading panel draw
+  the model see-through. A reference is often something you want to look *into*
+  rather than at, so what comes back is every surface along the view laid over
+  the others -- which reads as glass rather than as a hole. It works under every
+  shading mode, and the pedestal stays solid under it.
+
+  The surfaces are not ordered at all, which is what makes the result the same
+  from every angle. Blending is not commutative, and a ghost drawn in whatever
+  order the triangles happen to sit in the file turns to haze at a low solidity
+  and to wreckage at a high one, with the back of a skull painted over its
+  face. Sorting a form per triangle every frame is out of the question, so each
+  fragment is summed instead: the colours averaged by how far through the form
+  they lie, the transmittances multiplied, and the two divided out in one
+  fullscreen pass at the end. Addition does not care what order it happens in,
+  so the answer holds for however many surfaces a pixel covers -- and it costs
+  one draw call over the geometry, not two. A ghost at full solidity is
+  indistinguishable from a solid model, which is what the top of the slider
+  ought to mean.
+
+### Changed
+
+- Sessions are now version 5 and carry the armature, its landmarks and its
+  display settings, and version 5 also carries the ghost settings. Older files
+  still open, with an empty armature and ghosting off.
+- The armature list sits in a splitter, so a figure with thirty nodes can be
+  given the height to show them.
+- A node picked in the view now actually highlights its row in the list. The
+  row was made current but never selected, because it was asked for before the
+  armature it hangs under had been put in the tree.
+- Arming a tool is written once rather than as a pairwise dance between every
+  two of them, which is what a third tool made worth doing.
+
 ## [1.7.0]
 
 ### Added

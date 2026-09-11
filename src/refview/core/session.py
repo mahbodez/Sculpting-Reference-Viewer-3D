@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .annotation import AnnotationSettings, Stroke
+from .armature import Armature, ArmatureSettings
 from .bookmark import CameraBookmark
 from .measurement import Measurement, MeasurementSettings
 from .orientation import OrientationSettings
@@ -22,10 +23,11 @@ class Session:
     """A snapshot of everything worth keeping between runs."""
 
     #: 1: the original format.  2 added the annotation layer.  3 added the
-    #: cross-section, pedestal, high-quality and navigation settings, and 4
-    #: the model orientation.  Older files still load: :func:`decode` fills
-    #: anything missing from the defaults.
-    version: int = 4
+    #: cross-section, pedestal, high-quality and navigation settings, 4 the
+    #: model orientation, and 5 the armature and the landmarks behind it.
+    #: Older files still load: :func:`decode` fills anything missing from the
+    #: defaults.
+    version: int = 5
     mesh_path: str | None = None
     camera: dict = field(default_factory=dict)
     render: RenderSettings = field(default_factory=RenderSettings)
@@ -34,6 +36,8 @@ class Session:
     bookmarks: list[CameraBookmark] = field(default_factory=list)
     annotation_settings: AnnotationSettings = field(default_factory=AnnotationSettings)
     annotations: list[Stroke] = field(default_factory=list)
+    armature_settings: ArmatureSettings = field(default_factory=ArmatureSettings)
+    armatures: list[Armature] = field(default_factory=list)
     navigation: NavigationSettings = field(default_factory=NavigationSettings)
     orientation: OrientationSettings = field(default_factory=OrientationSettings)
 
