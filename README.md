@@ -1,7 +1,7 @@
 # Reference Viewer 3D
 
 <p align="center">
-  <img src="resources/images/splashscreen.png" alt="Reference Viewer 3D" width="900">
+  <img src="resources/images/readme.png" alt="Reference Viewer 3D" width="900">
 </p>
 
 A small, fast 3D reference viewer for clay sculpting. Load an OBJ, STL or
@@ -40,6 +40,17 @@ Built with PySide6 and OpenGL 3.3.
   in, or cut the form itself into them -- additive like clay or subtractive
   like stone -- in which case the silhouette, the wireframe and the shadow all
   come out faceted too. Either way the model itself is left alone.
+- **Record the making of a form and scrub through it**, rather than only
+  arriving at the end of it. Every stage is the form exactly as the Detail
+  slider set that far would build it, so what you scrub past is what you could
+  stop at. The recording runs in the background and the stages become
+  scrubbable as they land, coarsest first.
+- **Export that making as a video** — MP4, AVI, GIF or WebP — with each stage
+  held on screen for as long as you say, the frame size, shading and ghosting
+  chosen for the clip rather than inherited from the window, and each helper
+  ticked in or out of shot. Which stage a frame is can be burned into its
+  corner. GIF needs nothing installed; the other three use ffmpeg if it is
+  there and say so plainly if it is not.
 - Adjustable background gradient.
 - The screen stays awake while the window is in front, so a pose holds
   while your hands are in the clay.

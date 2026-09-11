@@ -50,10 +50,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from .armature import Armature
 from .mesh import Mesh, auto_smooth, compute_vertex_normals
 from .plane_axes import Coefficients, PlaneAxes, PlaneSet
 from .plane_clusters import plane_regions
-from .plane_volume import RESOLUTION, carve
+from .plane_volume import RESOLUTION, Wires, carve
 from .settings import PlaneSettings, SculptMode
 
 #: Most rows of samples a single triangle is filled in with.  A model made of
@@ -199,6 +200,36 @@ def solid_count(planes: int, sculpt: SculptMode, masses: int) -> int:
     return block_count(planes)
 
 
+def wires_for(armature: Armature | None) -> Wires | None:
+    """An armature as the clay reads it, or ``None`` when there is nothing to read.
+
+    Everything the volume needs and nothing it does not: the two ends of each
+    length of wire, how thick the form is at each of them, and whether clay is
+    laid along it -- in the order the artist is laying them down.  A bone whose
+    ends have gone is dropped here rather than checked for again further in.
+
+    The bones taking no clay are carried through rather than dropped, because
+    turning one off says to keep the clay off that part of the form and the
+    volume has to be told where that part is.  But an armature with *nothing*
+    laid on it says nothing at all rather than saying to leave the whole
+    figure bare: that is the artist emptying the list in order to tick a few
+    bones back, and a form that vanished in the meantime would be no help.
+    """
+    if armature is None:
+        return None
+    bones = armature.intact_bones()
+    if not any(bone.laid for bone in bones):
+        return None
+    ends = np.asarray(
+        [armature.bone_ends(bone) for bone in bones], dtype=np.float64
+    ).reshape(-1, 2, 3)
+    girth = np.asarray(
+        [armature.bone_girth(bone) for bone in bones], dtype=np.float64
+    ).reshape(-1, 2)
+    laid = np.asarray([bone.laid for bone in bones], dtype=bool)
+    return Wires(ends=ends, girth=girth, laid=laid)
+
+
 def sculpt_mesh(
     mesh: Mesh,
     planes: PlaneSet,
@@ -209,6 +240,7 @@ def sculpt_mesh(
     median: int = PlaneSettings().sculpt_median,
     median_reach: int = PlaneSettings().sculpt_median_reach,
     fineness: float = 1.0,
+    wires: Wires | None = None,
 ) -> Mesh:
     """A stand-in for ``mesh`` blocked in out of ``planes``, worked from one side.
 
@@ -222,6 +254,11 @@ def sculpt_mesh(
     every setting the detail slider itself can reach, and more only where a
     number has been typed past the end of it -- see
     :data:`~refview.core.settings.DETAIL_CEILING`.
+
+    ``wires`` is an armature for the clay to be built on, which says where the
+    first lumps go instead of the distance field being asked.  It means
+    nothing to stone, which is cut out of a block rather than built up on
+    anything.
     """
     if mesh.vertex_count == 0 or len(planes) == 0:
         return mesh  # nothing was built, so there is nothing to shade either
@@ -250,6 +287,7 @@ def sculpt_mesh(
             f"{mesh.name} (planes)",
             source_offset=mesh.source_offset,
             units=mesh.units,
+            wires=wires if sculpt is SculptMode.ADDITIVE else None,
         ),
         float(smooth),
     )
@@ -320,7 +358,9 @@ class SculptCache:
             self._work, self._carved = None, None
         return self._planes
 
-    def mesh_for(self, mesh: Mesh | None, settings: PlaneSettings) -> Mesh | None:
+    def mesh_for(
+        self, mesh: Mesh | None, settings: PlaneSettings, wires: Wires | None = None
+    ) -> Mesh | None:
         """The stand-in these settings ask for, or ``None`` for the model itself."""
         if mesh is None or not settings.sculpts_geometry:
             return None
@@ -333,6 +373,7 @@ class SculptCache:
             settings.sculpt_median,
             settings.sculpt_median_reach,
             settings.sculpt_fineness,
+            None if wires is None else wires.signature,
         )
         if work != self._work or self._carved is None:
             self._work = work
@@ -351,6 +392,7 @@ class SculptCache:
                 median=settings.sculpt_median,
                 median_reach=settings.sculpt_median_reach,
                 fineness=settings.sculpt_fineness,
+                wires=wires,
             )
         if settings.sculpt_smooth != self._smooth or self._result is None:
             self._smooth = settings.sculpt_smooth

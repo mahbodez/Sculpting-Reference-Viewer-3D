@@ -687,3 +687,134 @@ def test_the_drag_a_landmark_makes_is_the_edit_the_panel_would_make():
     assert armature.landmark_for("asis.L").at == pytest.approx((10.0, 100.0, 8.0))
     armature.nodes, armature.bones, armature.landmarks = nodes, bones, landmarks
     assert armature.node_for_role("pelvis").point[1] > before[1]
+
+
+# -- the bones, and the order the clay is laid in --------------------------
+#
+# A bone is a named length of wire rather than an anonymous pair of indices,
+# because the clay mode lays one lump per bone down the list and the artist
+# has to be able to read and reorder that list.  What is asserted here is the
+# order a preset arrives in, that reordering is a reordering and nothing else,
+# and that a re-derive does not quietly put the artist's order back.
+
+
+def test_a_preset_names_every_bone_it_makes():
+    armature = _derived()
+    names = [bone.name for bone in armature.bones]
+    assert all(names)
+    assert len(set(names)) == len(names)  # a name is worth nothing if it is shared
+    assert "Ribcage" in names
+    assert {"Thigh L", "Thigh R", "Upper arm L", "Upper arm R"} <= set(names)
+
+
+def test_a_preset_lays_its_bones_out_the_way_a_figure_is_built_up():
+    """Hips, then the ribcage, then the head, then the limbs largest first.
+
+    This order is not decoration: it is the order the clay goes down in, so
+    the first few lumps of a coarse block-in are exactly these.
+    """
+    armature = _derived()
+    at = {bone.name: position for position, bone in enumerate(armature.bones)}
+
+    assert at["Hip L"] < at["Lumbar"] < at["Ribcage"] < at["Neck"] < at["Head"]
+    assert at["Head"] < at["Thigh L"]
+    assert at["Thigh L"] < at["Shin L"] < at["Hand L"]
+    assert at["Thigh L"] < at["Upper arm L"]
+    # Both sides of a mass before either side of the next, so a block-in
+    # stopped half way is a figure standing evenly.
+    assert at["Thigh R"] < at["Shin L"]
+
+
+def test_moving_a_bone_moves_only_the_order():
+    armature = _derived()
+    was = list(armature.nodes), [bone.name for bone in armature.bones]
+    moved = armature.with_bone_moved(3, -2)
+
+    assert [bone.name for bone in moved] != was[1]
+    assert sorted(bone.name for bone in moved) == sorted(was[1])
+    assert armature.nodes == was[0]  # nothing structural was touched
+    assert moved[1].name == was[1][3]
+
+
+def test_a_bone_at_the_end_of_the_list_cannot_be_moved_off_it():
+    armature = _chain()
+    assert armature.with_bone_moved(0, -1) == armature.bones
+    assert armature.with_bone_moved(len(armature.bones) - 1, 1) == armature.bones
+    assert armature.with_bone_moved(99, -1) == armature.bones
+
+
+def test_re_deriving_keeps_the_order_the_artist_put_the_bones_in():
+    """A nudged landmark rebuilds the whole wire, and it would be intolerable
+    for that to put a hand-made laying order back every time."""
+    armature = _derived()
+    armature.bones = armature.with_bone_moved(
+        [bone.name for bone in armature.bones].index("Head"), -6
+    )
+    before = [bone.name for bone in armature.bones]
+
+    armature.landmark_for("asis.L").at = (10.0, 100.0, 8.0)
+    armature.nodes, armature.bones = rebuild(armature)
+
+    assert [bone.name for bone in armature.bones] == before
+
+
+def test_a_bone_without_a_name_is_called_after_the_nodes_it_joins():
+    armature = _chain()
+    assert armature.bone_name(armature.bones[0]) == "N0 to N1"
+    armature.bones[0].name = "Shin"
+    assert armature.bone_name(armature.bones[0]) == "Shin"
+
+
+def test_the_thickness_of_a_bone_is_read_from_its_ends():
+    armature = _chain()
+    armature.nodes[1].size = 0.25
+    first, second = armature.bone_girth(armature.bones[0])
+    # An unset node falls back to the armature's own default rather than to
+    # nothing, so a hand-drawn wire still says how fat the clay should be.
+    assert first == pytest.approx(armature.default_size())
+    assert second == pytest.approx(0.25)
+
+
+def test_a_bone_left_dangling_is_not_one_the_clay_can_be_laid_on():
+    armature = _chain()
+    armature.bones.append(Bone(0, 99))
+    assert len(armature.laid_bones()) == len(armature.bones) - 1
+
+
+def test_a_bone_turned_off_takes_no_clay_but_is_still_wire():
+    """Which is the difference between the parts of a figure an artist wants
+    blocked in and the parts they mean to model themselves."""
+    armature = _derived()
+    hands = [bone for bone in armature.bones if bone.name.startswith("Hand")]
+    assert hands
+    for bone in hands:
+        bone.laid = False
+
+    laid = armature.laid_bones()
+    assert len(laid) == len(armature.bones) - len(hands)
+    assert not any(bone.name.startswith("Hand") for bone in laid)
+    # Still wire: it is drawn, it is measured, it holds its joints apart.
+    assert len(armature.intact_bones()) == len(armature.bones)
+    assert armature.bone_length(hands[0]) > 0.0
+
+
+def test_re_deriving_keeps_the_bones_the_artist_turned_off():
+    armature = _derived()
+    for bone in armature.bones:
+        if bone.name in ("Hand L", "Skull"):
+            bone.laid = False
+
+    armature.landmark_for("asis.L").at = (10.0, 100.0, 8.0)
+    armature.nodes, armature.bones = rebuild(armature)
+
+    off = {bone.name for bone in armature.bones if not bone.laid}
+    assert off == {"Hand L", "Skull"}
+
+
+def test_a_bone_turned_off_gives_its_place_to_the_ones_after_it():
+    """The budget is spent on what is actually laid, so skipping the hips
+    means the ribcage is the first mass rather than the second."""
+    armature = _derived()
+    order = [bone.name for bone in armature.laid_bones()]
+    armature.bones[0].laid = False
+    assert [bone.name for bone in armature.laid_bones()] == order[1:]

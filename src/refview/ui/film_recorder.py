@@ -36,6 +36,7 @@ from ..core.plane_film import Film, Stage
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
     from ..core.plane_axes import PlaneSet
+    from ..core.plane_volume import Wires
     from ..core.settings import PlaneSettings
 
 
@@ -46,12 +47,17 @@ class _Recorder(QObject):
     finished = Signal(bool)
 
     def __init__(
-        self, mesh: Mesh, planes: PlaneSet, settings: PlaneSettings
+        self,
+        mesh: Mesh,
+        planes: PlaneSet,
+        settings: PlaneSettings,
+        wires: Wires | None = None,
     ) -> None:
         super().__init__()
         self._mesh = mesh
         self._planes = planes
         self._settings = settings
+        self._wires = wires
         self._stop = False
 
     def stop(self) -> None:
@@ -66,7 +72,7 @@ class _Recorder(QObject):
     def run(self) -> None:
         try:
             for stage in plane_film.record(
-                self._mesh, self._planes, self._settings, lambda: self._stop
+                self._mesh, self._planes, self._settings, lambda: self._stop, self._wires
             ):
                 if self._stop:
                     break
@@ -154,7 +160,12 @@ class FilmRecorder(QObject):
         return was_recording
 
     def start(
-        self, mesh: Mesh, planes: PlaneSet, settings: PlaneSettings, key: tuple
+        self,
+        mesh: Mesh,
+        planes: PlaneSet,
+        settings: PlaneSettings,
+        key: tuple,
+        wires: Wires | None = None,
     ) -> Film:
         """Begin recording, abandoning whatever was being recorded before."""
         self.abandon()
@@ -162,7 +173,7 @@ class FilmRecorder(QObject):
         self._film = film
 
         thread = QThread(self)
-        worker = _Recorder(mesh, planes, settings)
+        worker = _Recorder(mesh, planes, settings, wires)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.staged.connect(lambda stage: self._took(film, stage))

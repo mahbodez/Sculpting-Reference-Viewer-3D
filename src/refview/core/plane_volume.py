@@ -202,6 +202,24 @@ JOIN_SPAN = 0.5
 #: knuckles, and it is worth more for the same reason.
 MAX_JOINS = 64
 
+#: How much fatter than the armature says a lump laid along a wire may grow
+#: before the material has to be the thing that stops it.
+#:
+#: A node's thickness is measured at a joint, and a joint is the narrow part
+#: of a limb: the belly of the muscle above it is wider, and a lump held
+#: exactly to the wire would be a stick standing inside the form rather than
+#: the form.  So the wire is read as the near end of a range rather than as a
+#: measurement to obey, and the model stops the lump wherever it gets there
+#: first -- which, on a limb the artist has sized honestly, it usually does.
+WIRE_GIRTH = 1.4
+
+#: How far either side of a length of wire the material is read to find which
+#: way the lump laid on it lies, as a multiple of the thickness the wire
+#: declares there.  Wide enough that the cross-section of a limb is read as
+#: the cross-section of that limb, narrow enough that a thigh does not read
+#: the pelvis it hangs from.
+WIRE_SPAN = 2.0
+
 #: How many passes of the seam-filler are run over the finished clay volume,
 #: and how far each of them reaches, in cells.
 #:
@@ -1554,6 +1572,204 @@ def join_pieces(
     return out
 
 
+@dataclass(frozen=True)
+class Wires:
+    """An armature, as the clay reads it: where each length of wire runs.
+
+    The order matters and is the artist's: a lump is laid on each of these in
+    turn, so the first of them is the first mass of the block-in.  Everything
+    else about an armature -- its names, its colour, which node is locked --
+    is none of the volume's business and is left behind in
+    :mod:`refview.core.armature`.
+
+    A length of wire the artist has turned off is still here, because turning
+    one off says something: not merely *do not start a lump here* but *keep
+    the clay off this part of the form*.  The two are different the moment the
+    detail runs past the end of the wire, and the second is the one that
+    means anything -- a part of a figure you have said you will model yourself
+    is not a part you want filled in behind your back.  See :func:`kept_off`.
+    """
+
+    #: The two points each length of wire runs between.  ``(n, 2, 3)``.
+    ends: np.ndarray
+    #: How thick the form is at each of those two ends, as a radius.  ``(n, 2)``.
+    girth: np.ndarray
+    #: Whether clay is laid along each of them.  ``(n,)`` of bool.
+    laid: np.ndarray
+
+    def __len__(self) -> int:
+        return len(self.ends)
+
+    @property
+    def laying(self) -> np.ndarray:
+        """Which lengths of wire take a lump, in the order they take one."""
+        return np.flatnonzero(np.asarray(self.laid, dtype=bool))
+
+    @property
+    def count(self) -> int:
+        """How many lumps the wire itself asks for."""
+        return int(np.count_nonzero(np.asarray(self.laid, dtype=bool)))
+
+    @property
+    def signature(self) -> tuple:
+        """What a cache has to compare to know the wire has not moved."""
+        return (self.ends.tobytes(), self.girth.tobytes(), self.laid.tobytes())
+
+
+def within_sleeve(
+    ends: np.ndarray, girth: np.ndarray, points: np.ndarray, step: float
+) -> np.ndarray:
+    """Which points lie in the sleeve a length of wire declares round itself.
+
+    The wire with its own thickness swept along it: a radius that runs from
+    what the armature says at one end to what it says at the other, widened by
+    :data:`WIRE_GIRTH`, which is exactly as far as a lump laid here would have
+    been allowed to grow.  So the sleeve is the form this bone stands for, as
+    nearly as the armature can say it.
+    """
+    a, b = np.asarray(ends, dtype=np.float64)
+    along = b - a
+    length = float(np.linalg.norm(along))
+    if length <= 1e-9:
+        return np.zeros(len(points), dtype=bool)
+    along = along / length
+    toward = points - a
+    travel = np.clip(toward @ along, 0.0, length)
+    aside = np.linalg.norm(toward - travel[:, None] * along, axis=1)
+    first, second = float(girth[0]), float(girth[1])
+    radius = WIRE_GIRTH * (first + (second - first) * (travel / length))
+    return aside <= np.maximum(radius, step)
+
+
+def kept_off(wires: Wires, points: np.ndarray, step: float) -> np.ndarray:
+    """Which material lies under a length of wire that is to take no clay.
+
+    Turning a bone off is a statement about the *form*, not about the seeding:
+    the clay is to keep off this part of the figure, so that what the artist
+    means to model themselves is still there to be modelled once the detail
+    slider has run past the end of the wire.  Barred material is therefore
+    dropped from the lattice outright rather than merely passed over -- see
+    :func:`clay_lumps` -- which makes it a hole in the material as far as the
+    clay is concerned: nothing seeds in it and no lump may grow into it, wire
+    lumps and free lumps alike, and both for the same reason.
+
+    A point is kept off when it lies in the sleeve of a bone that was turned
+    off and in the sleeve of no bone that was not.  That second half is what
+    stops a turned-off hand from taking a bite out of the forearm it shares a
+    wrist with: material two bones both reach belongs to whichever of them is
+    still being laid.
+    """
+    off = ~np.asarray(wires.laid, dtype=bool)
+    barred = np.zeros(len(points), dtype=bool)
+    if not off.any() or not len(points):
+        return barred
+    for index in np.flatnonzero(off):
+        barred |= within_sleeve(wires.ends[index], wires.girth[index], points, step)
+
+    rows = np.flatnonzero(barred)
+    for index in wires.laying:
+        if not len(rows):
+            break
+        inside = within_sleeve(wires.ends[index], wires.girth[index], points[rows], step)
+        if inside.any():
+            barred[rows[inside]] = False
+            rows = rows[~inside]
+    return barred
+
+
+def _perpendicular(along: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Two unit directions across ``along``, neither of them near it."""
+    axis = np.zeros(3)
+    axis[int(np.argmin(np.abs(along)))] = 1.0
+    first = np.cross(along, axis)
+    first = first / max(float(np.linalg.norm(first)), 1e-12)
+    return first, np.cross(along, first)
+
+
+def _wire_frame(along: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Which three ways a lump laid along a wire runs.  Columns, thinnest first.
+
+    The wire settles the last of the three outright -- that is the whole of
+    what building on an armature means, and it is the difference between a
+    lump that runs down a thigh and one that runs across it.  The material
+    around the wire settles the other two, by the same reading of a mass
+    :func:`_frame` makes, so the cross-section of the lump lies the way the
+    cross-section of the limb does rather than at whatever angle the wire
+    happened to be drawn at.
+    """
+    first, second = _perpendicular(along)
+    if len(points) >= 8:
+        flat = np.stack([points @ first, points @ second], axis=1)
+        flat = flat - flat.mean(axis=0)
+        turn = np.linalg.eigh(flat.T @ flat / len(flat))[1]
+        first, second = turn.T @ np.stack([first, second])
+    return np.ascontiguousarray(np.stack([first, second, along], axis=1))
+
+
+def wire_piece(
+    ends: np.ndarray,
+    girth: np.ndarray,
+    place: np.ndarray,
+    wall: np.ndarray,
+    bevels: np.ndarray,
+    boxy: bool,
+    step: float,
+) -> tuple | None:
+    """One lump of clay laid along a length of the armature.
+
+    The free-seeded lump next door asks where the most uncovered material is
+    and grows from that one point.  This asks nothing: the artist has already
+    said where the mass goes by bending the wire, so the lump *starts* as the
+    wire -- the smallest solid of its facings that holds the whole segment --
+    and is then pulled back into the model and pushed out to fill it, which is
+    :func:`fit_piece` doing exactly what it does for every other piece here.
+
+    That start is what makes this centred on the wire rather than merely near
+    it.  The segment is inside the solid from the first pass onwards, so the
+    clay is laid *on* the armature the way clay is laid on a real one, and
+    what the model does is decide how thick.
+
+    Two things cap the pushing out, whichever comes first: how far the
+    material round the wire actually reaches, which is what keeps a lump on
+    the thigh from running off down the shin; and the thickness the armature
+    declares at each end, widened by :data:`WIRE_GIRTH`, which is what lets an
+    artist say the arm is thinner than the model's sleeve.
+
+    ``None`` for a wire with no material worth speaking of round it, or one
+    lying so far outside the model that nothing is left once it is pulled in.
+    """
+    a, b = np.asarray(ends, dtype=np.float64)
+    along = b - a
+    length = float(np.linalg.norm(along))
+    if length <= 1e-9:
+        return None
+    along = along / length
+    thick = max(float(np.max(girth)), step)
+
+    # The material this length of wire runs through, and only that.
+    toward = place - a
+    travel = np.clip(toward @ along, 0.0, length)
+    aside = np.linalg.norm(toward - travel[:, None] * along, axis=1)
+    near = aside <= max(WIRE_SPAN * thick, 3.0 * step)
+    if int(near.sum()) < 8:
+        return None
+    mass = place[near]
+
+    frame = _wire_frame(along, mass - mass.mean(axis=0))
+    facing = _box_facings(frame) if boxy else _tube_facings(frame, bevels)
+    hull = np.maximum(facing @ a, facing @ b)
+    declared = np.maximum(
+        facing @ a + WIRE_GIRTH * float(girth[0]), facing @ b + WIRE_GIRTH * float(girth[1])
+    )
+    caps = np.maximum(np.minimum((mass @ facing.T).max(axis=0), declared), hull)
+    offsets, _room = fit_piece(facing, hull, wall, caps)
+    middle = 0.5 * (a + b)
+    scale = float((offsets - facing @ middle).min())
+    if scale <= 0.0:  # the wire lies outside what little form is here
+        return None
+    return facing, offsets, frame, scale
+
+
 def clay_lumps(
     model: np.ndarray,
     origin: np.ndarray,
@@ -1561,6 +1777,7 @@ def clay_lumps(
     bevels: np.ndarray,
     masses: int,
     wanted: int,
+    wires: Wires | None = None,
 ) -> tuple[list, list, np.ndarray, np.ndarray]:
     """The lumps themselves, in the order a sculptor lays them down.
 
@@ -1571,6 +1788,23 @@ def clay_lumps(
     walk rather than one walk apiece.  The joins cannot be shared that way:
     which pairs are near enough to bridge changes as lumps are added, so they
     are worked out afresh for each stage, which is the cheap half.
+
+    With ``wires``, the armature is laid on first: one lump along each length
+    of wire, in the order the artist put them in, and only then the free
+    seeding for whatever is left of the budget.  That ordering is the whole of
+    what an armature buys.  Where the clay goes stops being a guess read off
+    the distance field and becomes a thing the artist said -- the pelvis is
+    the pelvis because the wire says so, not because it happened to be the
+    deepest material -- and the lumps that come after still land wherever the
+    wire did not reach, because ``free`` counts the wire's clay like any
+    other.  So the hands and the feet arrive last exactly as they did before.
+
+    Except where the artist has said otherwise.  A length of wire turned off
+    is not merely skipped: the material under it is taken out of the lattice
+    before anything is laid at all, so nothing seeds there and no lump may
+    grow in, however much detail is asked for afterwards.  That is the whole
+    difference between an armature that guides the clay and one that can also
+    be told to leave a part of the form alone -- see :func:`kept_off`.
 
     Hands back the lumps, which corners of the lattice each of them holds,
     where those corners are, and the wall outside the material.
@@ -1587,6 +1821,22 @@ def clay_lumps(
     if not room.any():  # pragma: no cover - a model the lattice never found
         return [], [], np.zeros((0, 3)), np.zeros((0, 3))
 
+    if wires is not None:
+        # Material under a length of wire that is to take no clay stops being
+        # material at all.  Taken out here rather than guarded against further
+        # in, because everything below reads the lattice: the wall is found
+        # round what is left, so no lump may grow into the gap; the seeds are
+        # picked from what is left, so nothing starts in it; and the depth the
+        # seeding sorts on is read from what is left, so the mode cannot even
+        # see it to want it.  One removal, and the whole of the mode keeps off.
+        at = np.stack(np.nonzero(room), axis=1)
+        barred = kept_off(wires, origin + at * grow_step, grow_step)
+        if barred.any():
+            at = at[barred]
+            room[at[:, 0], at[:, 1], at[:, 2]] = False
+            if not room.any():  # every scrap of the form was turned off
+                return [], [], np.zeros((0, 3)), np.zeros((0, 3))
+
     wall = outside_points(room, origin, grow_step)
     place = origin + np.stack(np.nonzero(room), axis=1) * grow_step
     spots = place.astype(np.float32)
@@ -1595,7 +1845,37 @@ def clay_lumps(
 
     out: list = []
     held: list = []
-    for lump in range(max(int(wanted), 1)):
+    room_for = max(int(wanted), 1)
+
+    def lay(piece: tuple) -> None:
+        """Take a fitted solid into the clay, and let the rest of it know."""
+        nonlocal free
+        facing, offsets = piece[0], piece[1]
+        out.append(piece)
+        mine = (spots @ facing.astype(np.float32).T - offsets).max(axis=1)
+        held.append(np.flatnonzero(mine <= 0.0))
+        free = np.minimum(free, mine)
+
+    # The armature first, in the order the artist laid it out, and only the
+    # bones they are laying on.  A wire that the form has nothing to say about
+    # is passed over rather than costing a lump: an armature is a guide, and a
+    # guide may reach somewhere this model does not go.
+    for index in () if wires is None else wires.laying:
+        if len(out) >= room_for:
+            break
+        piece = wire_piece(
+            wires.ends[index],
+            wires.girth[index],
+            place,
+            wall,
+            bevels,
+            len(out) < masses,
+            grow_step,
+        )
+        if piece is not None:
+            lay(piece)
+
+    while len(out) < room_for:
         # Deepest in the model and furthest from the clay, both at once.
         pick = int(np.argmax(np.minimum(deep, free)))
         if min(deep[pick], free[pick]) <= safety:
@@ -1615,15 +1895,12 @@ def clay_lumps(
         # it.  A lump held to the bare sliver it was seeded in could never
         # bridge a gap, and the form would stay a heap of separate stones.
         frame = _frame(place[bare] - seed if bare.sum() >= 8 else mass)
-        facing = _box_facings(frame) if lump < masses else _tube_facings(frame, bevels)
+        facing = _box_facings(frame) if len(out) < masses else _tube_facings(frame, bevels)
         offsets = grow_piece(seed, facing, wall, (mass @ facing.T).max(axis=0))
         if offsets is None:  # pragma: no cover - a seed with no room round it
             deep[pick] = 0.0
             continue
-        out.append((facing, offsets, frame, float((offsets - facing @ seed).min())))
-        mine = (spots @ facing.astype(np.float32).T - offsets).max(axis=1)
-        held.append(np.flatnonzero(mine <= 0.0))
-        free = np.minimum(free, mine)
+        lay((facing, offsets, frame, float((offsets - facing @ seed).min())))
     return out, held, place, wall
 
 
@@ -1634,6 +1911,7 @@ def clay_pieces(
     bevels: np.ndarray,
     masses: int,
     wanted: int,
+    wires: Wires | None = None,
 ) -> list:
     """Lumps of clay pressed into the model, the biggest masses first.
 
@@ -1645,6 +1923,10 @@ def clay_pieces(
     hands and the hands before the fingers.  Nothing is ever told what a limb
     is: the order falls out of asking where the most uncovered material is.
 
+    Unless ``wires`` says otherwise, in which case the artist has already
+    answered it for as far as their armature reaches: a lump is laid along
+    each length of wire in turn, and the free seeding picks up from there.
+
     The first ``masses`` lumps are plain rectangular blocks, set square to the
     mass each sits in.  The rest are tubes, allowed the form's own planes as
     well, so they are bevelled where the model turns.  Then the joins between
@@ -1654,7 +1936,7 @@ def clay_pieces(
     the last of these being how far the lump reaches along its nearest facing,
     which is the scale everything about it is judged on.
     """
-    out, held, place, wall = clay_lumps(model, origin, step, bevels, masses, wanted)
+    out, held, place, wall = clay_lumps(model, origin, step, bevels, masses, wanted, wires)
     if not out:
         return []
     return out + join_pieces(out, held, place, wall, bevels, min(len(out), MAX_JOINS))
@@ -1840,6 +2122,7 @@ def carve(
     name: str = "mesh",
     source_offset: np.ndarray | None = None,
     units: object = None,
+    wires: Wires | None = None,
 ) -> Mesh:
     """The form ``directions`` leave of the model, worked one way or the other.
 
@@ -1855,7 +2138,8 @@ def carve(
     many passes of the filter that fills the clay's slots are run and how far
     each of them reaches; see :func:`close_gaps`.  ``resolution`` is how fine a
     lattice the whole of it is worked on, which is what the detail slider
-    spends itself on once it has bought every plane there is.
+    spends itself on once it has bought every plane there is.  ``wires`` is the
+    armature the clay is built on, when there is one; see :func:`clay_lumps`.
     """
     bed = lay_bed(vertices, triangles, seeds, seed_normals, resolution)
     empty = _flat_mesh(
@@ -1870,7 +2154,7 @@ def carve(
         # anything, so it never asks where the blocks are: a lump goes wherever
         # the most uncovered material is, and the next lump asks again.
         made = clay_pieces(
-            bed.model, bed.origin, bed.step, fitted_facings(directions), masses, wanted
+            bed.model, bed.origin, bed.step, fitted_facings(directions), masses, wanted, wires
         )
         if not made:  # pragma: no cover - a model the lattice never found
             return empty

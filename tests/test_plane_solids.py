@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from refview.core import plane_volume
+from refview.core.armature import Armature, ArmatureNode, Bone
 from refview.core.mesh import Mesh, auto_smooth, compute_vertex_normals
 from refview.core.plane_axes import PlaneSet
 from refview.core.plane_clusters import plane_regions
@@ -38,8 +39,11 @@ from refview.core.plane_solids import (
     block_count,
     piece_count,
     sculpt_mesh,
+    seed_spacing,
     solid_count,
     surface_seeds,
+    unit_normals,
+    wires_for,
 )
 from refview.core.settings import (
     DETAIL_CEILING,
@@ -1023,3 +1027,348 @@ def test_the_cache_stands_aside_unless_the_geometry_target_asked_for_it() -> Non
         cache.mesh_for(mesh, PlaneSettings(enabled=True, target=PlaneTarget.GEOMETRY))
         is not None
     )
+
+
+# -- clay built on an armature --------------------------------------------
+#
+# The free-seeded mode asks the distance field where the masses of a form are.
+# Given an armature it asks nobody: the artist has already said, by bending a
+# wire, and the whole of what these assert is that the answer is honoured --
+# each lump is laid *on* its length of wire, in the order they were listed,
+# and the lumps that follow still land wherever the wire did not reach.
+
+
+def _bar(length: float = 2.2, radius: float = 0.5) -> Mesh:
+    """A long ellipsoid: one closed form with an obvious axis to lie along."""
+    round_one = ball(radius=radius)
+    points = round_one.positions * np.array([0.5 * length / radius, 1.0, 1.0])
+    faces = round_one.indices
+    return Mesh(points, compute_vertex_normals(points, faces), faces, "bar")
+
+
+def _bed_for(mesh: Mesh) -> tuple:
+    """A model read onto a lattice, ready for lumps to be laid on it."""
+    triangles = np.asarray(mesh.indices, dtype=np.int64).reshape(-1, 3)
+    seeds, leaning = surface_seeds(
+        np.asarray(mesh.positions, dtype=np.float64),
+        triangles,
+        unit_normals(mesh),
+        seed_spacing(mesh, TEST_RESOLUTION),
+    )
+    bed = plane_volume.lay_bed(mesh.positions, triangles, seeds, leaning, TEST_RESOLUTION)
+    return bed, plane_volume.fitted_facings(plane_regions(mesh).for_count(14).directions)
+
+
+def _holds(lump, point) -> bool:
+    """Whether a fitted solid has a point inside it."""
+    facing, offsets = lump[0], lump[1]
+    return bool((facing @ np.asarray(point, dtype=np.float64) - offsets).max() <= 1e-9)
+
+
+def _wires(*segments, girth: float = 0.3, off: tuple = ()) -> plane_volume.Wires:
+    """An armature for the volume, with ``off`` naming the rows taking no clay."""
+    ends = np.asarray(segments, dtype=np.float64).reshape(-1, 2, 3)
+    laid = np.ones(len(ends), dtype=bool)
+    laid[list(off)] = False
+    return plane_volume.Wires(
+        ends=ends, girth=np.full((len(ends), 2), girth), laid=laid
+    )
+
+
+def test_a_lump_laid_on_a_wire_holds_the_wire() -> None:
+    """The claim the whole armature mode rests on.
+
+    A lump that merely landed near its bone would be the free seeding wearing
+    a different label.  What makes this building *on* an armature is that the
+    segment is inside the solid, so the clay is wrapped round the wire the way
+    clay really is.
+    """
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    wires = _wires(
+        [[-0.8, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]],
+    )
+    lumps = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 2, wires)[0]
+
+    assert len(lumps) == 2
+    for lump, (first, second) in zip(lumps, wires.ends, strict=True):
+        assert _holds(lump, first)
+        assert _holds(lump, second)
+        assert _holds(lump, 0.5 * (first + second))
+
+
+def test_a_lump_laid_on_a_wire_still_never_grows_out_through_the_model() -> None:
+    """The wire says where the clay goes; the model still says how far.
+
+    A lump started from a whole segment rather than from a point has a far
+    larger shape to be pulled back in, so this is the one that would break if
+    the pulling back were skipped -- and asked of the lump rather than of the
+    finished mesh, which is held under the model afterwards and would hide the
+    fault.
+
+    Measured in cells, because cells are the whole of the tolerance: a lump is
+    grown against corners of the lattice, so between two of them it has
+    nothing to hold it and it may bulge by about that much.  What is asserted
+    is that the bulge stays at the scale of the lattice, which is where the
+    model itself takes over.
+    """
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    # Deliberately far fatter than the bar, so the model has to do the
+    # stopping rather than the thickness the wire declares.
+    wires = _wires([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]], girth=2.0)
+    lumps = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 1, wires)[0]
+    assert len(lumps) == 1
+
+    grid = np.stack(plane_volume._axes(bed.origin, bed.step, bed.shape), axis=-1)
+    inside = (grid @ lumps[0][0].T <= lumps[0][1]).all(axis=-1)
+    assert inside.any()
+    beyond = inside & ~bed.within
+    overshoot = 0.0 if not beyond.any() else float(bed.model[beyond].max())
+    assert overshoot <= 2.0 * bed.step
+
+
+def test_clay_built_on_a_wire_still_sits_within_the_model() -> None:
+    """The invariant an artist actually sees, on the finished stand-in: clay
+    is added from the inside out, and being told where to add it does not
+    change which side of the surface it ends up on."""
+    mesh = _bar()
+    planes = plane_regions(mesh).for_count(14)
+    wires = _wires([[-0.8, 0.0, 0.0], [0.8, 0.0, 0.0]], girth=0.6)
+    out = sculpt_mesh(mesh, planes, SculptMode.ADDITIVE, 1, wires=wires)
+    assert volume(out) < volume(mesh)
+    assert out.bounds.radius <= mesh.bounds.radius + 1e-6
+
+
+def test_the_clay_goes_down_the_wire_in_the_order_it_is_listed() -> None:
+    """Which is what makes the order worth reordering, and what a film of a
+    block-in built on an armature scrubs through."""
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    ends = [
+        [[-0.9, 0.0, 0.0], [-0.4, 0.0, 0.0]],
+        [[-0.1, 0.0, 0.0], [0.1, 0.0, 0.0]],
+        [[0.4, 0.0, 0.0], [0.9, 0.0, 0.0]],
+    ]
+    forward, backward = _wires(*ends), _wires(*reversed(ends))
+
+    first = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 1, forward)[0]
+    last = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 1, backward)[0]
+
+    assert len(first) == 1
+    assert len(last) == 1
+    assert _holds(first[0], ends[0][0])
+    assert _holds(last[0], ends[-1][1])
+    assert not _holds(first[0], ends[-1][1])
+
+
+def test_a_budget_shorter_than_the_wire_takes_the_wire_from_the_top() -> None:
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    wires = _wires(
+        [[-0.9, 0.0, 0.0], [-0.4, 0.0, 0.0]],
+        [[-0.1, 0.0, 0.0], [0.1, 0.0, 0.0]],
+        [[0.4, 0.0, 0.0], [0.9, 0.0, 0.0]],
+    )
+    for wanted in (1, 2, 3):
+        lumps = plane_volume.clay_lumps(
+            bed.model, bed.origin, bed.step, bevels, 1, wanted, wires
+        )[0]
+        assert len(lumps) == wanted
+        # The wire is taken from the top, so the lumps are its first `wanted`
+        # bones and nothing else.
+        for lump, (a, b) in zip(lumps, wires.ends[:wanted], strict=True):
+            assert _holds(lump, 0.5 * (a + b))
+
+
+def test_detail_past_the_end_of_the_wire_is_still_found_the_old_way() -> None:
+    """An armature is a guide, not a cage.
+
+    Once the wire has been laid on, the lumps that follow go wherever the most
+    material is still uncovered -- which is what puts the hands and the feet in
+    after the block-in.
+    """
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    wires = _wires([[-0.7, 0.0, 0.0], [-0.3, 0.0, 0.0]])
+
+    lumps = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 6, wires)[0]
+    assert len(lumps) > 1
+    # The far end of the bar is nowhere near the single length of wire, so
+    # something laid after it has to have reached there by itself.
+    assert any(_holds(lump, [0.85, 0.0, 0.0]) for lump in lumps[1:])
+
+
+def test_a_wire_the_model_has_nothing_to_say_about_is_passed_over() -> None:
+    """A guide may reach somewhere this model does not go -- a wire drawn for
+    one figure and reused on another, or a preset half placed.  That should
+    cost the wire rather than the whole block-in."""
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    wires = _wires(
+        [[0.0, 6.0, 0.0], [0.0, 8.0, 0.0]],  # nowhere near the model
+        [[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]],
+    )
+    lumps = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 2, wires)[0]
+
+    assert len(lumps) == 2  # the budget is spent, not lost
+    assert _holds(lumps[0], [0.0, 0.0, 0.0])  # by the wire that could be laid on
+
+
+def test_the_wire_says_how_thick_the_clay_is() -> None:
+    """A node's size is a measurement the artist took, so thinning one thins
+    the clay laid along the bone it ends -- which is the only way to say that
+    the arm is thinner than the sleeve a scan gave it."""
+    mesh = ball()
+    bed, bevels = _bed_for(mesh)
+    ends = [[[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]]]
+    thin, fat = _wires(*ends, girth=0.05), _wires(*ends, girth=1.0)
+
+    def across(wires) -> float:
+        lump = plane_volume.clay_lumps(
+            bed.model, bed.origin, bed.step, bevels, 1, 1, wires
+        )[0][0]
+        low, high = plane_volume.piece_bounds(lump[2], lump[1])
+        return float((high - low)[1:].max())  # across the wire, not along it
+
+    assert across(thin) < 0.5 * across(fat)
+
+
+def test_an_armature_is_read_into_the_wire_the_volume_wants() -> None:
+    assert wires_for(None) is None
+    assert wires_for(Armature()) is None  # nothing joined up yet
+
+    armature = Armature(
+        nodes=[
+            ArmatureNode(name="A", at=(0.0, 0.0, 0.0), size=0.4),
+            ArmatureNode(name="B", at=(1.0, 0.0, 0.0)),
+        ],
+        bones=[Bone(0, 1, "Shin")],
+    )
+    wires = wires_for(armature)
+    assert wires is not None
+    assert len(wires) == 1
+    assert wires.ends[0][1] == pytest.approx([1.0, 0.0, 0.0])
+    assert wires.girth[0][0] == pytest.approx(0.4)
+    assert wires.girth[0][1] == pytest.approx(armature.default_size())
+    # Two readings of one wire have to compare equal, or the cache would
+    # re-cut the form every time the panel looked at it.
+    assert wires.signature == wires_for(armature).signature
+
+
+def test_stone_is_never_built_on_an_armature(rounded) -> None:
+    """It is cut out of a block rather than built up on anything, so handing
+    it a wire has to be a no-op rather than a quiet change of shape."""
+    mesh, axes = rounded
+    planes = axes.for_count(14)
+    wires = _wires([[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]])
+    bare = sculpt_mesh(mesh, planes, SculptMode.SUBTRACTIVE, 4)
+    wired = sculpt_mesh(mesh, planes, SculptMode.SUBTRACTIVE, 4, wires=wires)
+    assert np.array_equal(bare.positions, wired.positions)
+
+
+def test_the_cache_re_cuts_the_form_when_the_wire_moves(rounded) -> None:
+    mesh, _axes = rounded
+    settings = PlaneSettings(
+        enabled=True, target=PlaneTarget.GEOMETRY, sculpt=SculptMode.ADDITIVE
+    )
+    cache = SculptCache()
+    here = _wires([[-0.4, 0.0, 0.0], [0.4, 0.0, 0.0]])
+    first = cache.mesh_for(mesh, settings, here)
+    assert cache.mesh_for(mesh, settings, here) is first  # nothing moved
+
+    there = _wires([[0.0, -0.4, 0.0], [0.0, 0.4, 0.0]])
+    assert cache.mesh_for(mesh, settings, there) is not first
+
+
+def test_a_bone_turned_off_is_carried_through_rather_than_dropped() -> None:
+    """It has to be, because it says where the clay may not go, and the volume
+    cannot keep off a part of the form nobody told it about."""
+    armature = Armature(
+        nodes=[
+            ArmatureNode(name="A", at=(0.0, 0.0, 0.0), size=0.3),
+            ArmatureNode(name="B", at=(1.0, 0.0, 0.0), size=0.3),
+            ArmatureNode(name="C", at=(2.0, 0.0, 0.0), size=0.3),
+        ],
+        bones=[Bone(0, 1, "Thigh"), Bone(1, 2, "Shin")],
+    )
+    assert wires_for(armature).count == 2
+
+    armature.bones[0].laid = False
+    wires = wires_for(armature)
+    assert len(wires) == 2  # both are still described ...
+    assert wires.count == 1  # ... and one of them takes a lump
+    assert list(wires.laying) == [1]
+
+    # An armature with nothing laid on it says nothing at all, rather than
+    # saying to leave the whole figure bare: that is the artist emptying the
+    # list in order to tick a few bones back.
+    armature.bones[1].laid = False
+    assert wires_for(armature) is None
+
+
+def test_the_clay_keeps_off_a_bone_that_was_turned_off_however_much_detail_is_asked_for() -> None:
+    """Turning a bone off is a statement about the form, not about the seeding.
+
+    Skipping the *lump* would be no use at all: the next turn of the Detail
+    slider would find that part of the form by itself and fill it in anyway,
+    which is exactly what an artist meaning to model it themselves does not
+    want.  So the material under a bone that takes no clay leaves the lattice
+    altogether, and no amount of detail brings it back.
+    """
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    here, off_the_end = [-0.6, 0.0, 0.0], [0.7, 0.0, 0.0]
+    wires = _wires(
+        [[-0.9, 0.0, 0.0], [-0.3, 0.0, 0.0]],
+        [[0.4, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        girth=0.5,
+        off=(1,),
+    )
+    for wanted in (1, 4, 16):
+        lumps = plane_volume.clay_lumps(
+            bed.model, bed.origin, bed.step, bevels, 1, wanted, wires
+        )[0]
+        assert any(_holds(lump, here) for lump in lumps)
+        assert not any(_holds(lump, off_the_end) for lump in lumps)
+
+
+def test_what_no_bone_claims_is_still_found_the_old_way() -> None:
+    """An armature is a guide over the parts it speaks for and silent about
+    the rest, so detail past the end of the wire still lands wherever the most
+    material is uncovered -- which is what puts the hands and the feet in."""
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    wires = _wires([[-0.7, 0.0, 0.0], [-0.3, 0.0, 0.0]])
+
+    only_wire = plane_volume.clay_lumps(
+        bed.model, bed.origin, bed.step, bevels, 1, 1, wires
+    )[0]
+    assert not _holds(only_wire[0], [0.7, 0.0, 0.0])
+
+    with_detail = plane_volume.clay_lumps(
+        bed.model, bed.origin, bed.step, bevels, 1, 5, wires
+    )[0]
+    assert any(_holds(lump, [0.7, 0.0, 0.0]) for lump in with_detail)
+
+
+def test_material_two_bones_share_belongs_to_the_one_still_being_laid() -> None:
+    """Or turning the hand off would take a bite out of the forearm it shares
+    a wrist with, and the artist would be punished for saying something
+    reasonable."""
+    mesh = _bar()
+    bed, bevels = _bed_for(mesh)
+    joint = [0.0, 0.0, 0.0]
+    wires = _wires(
+        [[-0.9, 0.0, 0.0], joint],
+        [joint, [0.9, 0.0, 0.0]],
+        girth=0.5,
+        off=(1,),
+    )
+    lumps = plane_volume.clay_lumps(bed.model, bed.origin, bed.step, bevels, 1, 3, wires)[0]
+
+    assert lumps
+    # The joint the two share is still laid on, by the bone that kept it.
+    assert _holds(lumps[0], joint)
+    assert not any(_holds(lump, [0.8, 0.0, 0.0]) for lump in lumps)

@@ -122,13 +122,17 @@ class Film:
         return self.stages[min(max(int(index), 0), len(self.stages) - 1)]
 
 
-def film_key(settings: PlaneSettings, coefficients: object) -> tuple:
+def film_key(
+    settings: PlaneSettings, coefficients: object, wires: pv.Wires | None = None
+) -> tuple:
     """What a film depends on.
 
     Everything that changes the shape of any stage, and nothing that does not.
     AutoSmooth is left out on purpose: it re-reads normals rather than
     rebuilding a form, so it is applied to a stage as it is handed out and a
-    film survives it being changed.
+    film survives it being changed.  The armature is in by its positions
+    rather than by which one it is: bending the wire rebuilds the form, so it
+    has to rebuild the film of the form as well.
     """
     return (
         settings.sculpt,
@@ -138,6 +142,7 @@ def film_key(settings: PlaneSettings, coefficients: object) -> tuple:
         settings.sculpt_median,
         settings.sculpt_median_reach,
         settings.sculpt_fineness,
+        None if wires is None else wires.signature,
         coefficients,
     )
 
@@ -193,6 +198,7 @@ def record(
     planes: PlaneSet,
     settings: PlaneSettings,
     should_stop: Callable[[], bool] | None = None,
+    wires: pv.Wires | None = None,
 ) -> Iterator[Stage]:
     """Work the form stage by stage, handing each one back as it is finished.
 
@@ -201,6 +207,10 @@ def record(
     stop part way by way of ``should_stop`` when the artist has moved on to
     something else.  A film that stops early is still a film -- it just ends
     sooner than the slider does.
+
+    With an armature, what the scrub walks through is the artist's own order:
+    stage one is the first bone they put at the top of the list, and the film
+    is the block-in arriving the way they said to build it.
     """
     if mesh.vertex_count == 0 or len(planes) == 0:
         return
@@ -244,7 +254,7 @@ def record(
         # Every lump the finest stage will need, laid once.  A stage is then a
         # prefix of them, which is exactly what it would have laid for itself.
         lumps, held, place, wall = pv.clay_lumps(
-            bed.model, bed.origin, bed.step, bevels, masses, wanted[-1]
+            bed.model, bed.origin, bed.step, bevels, masses, wanted[-1], wires
         )
         if not lumps:  # pragma: no cover - a model the lattice never found
             return

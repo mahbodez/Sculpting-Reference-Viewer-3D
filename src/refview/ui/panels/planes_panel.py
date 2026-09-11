@@ -13,9 +13,24 @@ of the two is on offer is the thing worth seeing at a glance.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton, QSlider
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSlider,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ...core.commands import SetAttributes
+from ...core.history import ARMATURE
 from ...core.plane_axes import (
     COPLANARITY_RANGE,
     DEFAULT_COEFFICIENTS,
@@ -43,6 +58,7 @@ from ...core.settings import (
     PlaneSettings,
     PlaneTarget,
     SculptMode,
+    plane_count,
 )
 from ..widgets import ColorButton, SliderSpin, collapsible_group, form_group
 from .base import Panel
@@ -127,7 +143,57 @@ _MASSES_TIP = (
     "of the masses rather than sharing a budget with them.  The slider stops "
     "at every mass anyone reads a figure as; type a number past the end for a "
     "form that is not a figure, and the slider will take it in.  Does nothing "
-    "in subtractive, which starts from a block rather than from a lump"
+    "in subtractive, which starts from a block rather than from a lump.\n\n"
+    "Built on an armature, this is the same count read down the wire: the "
+    "first few lengths of wire are laid as plain blocks and everything after "
+    "them as bevelled tubes, so it says how much of the figure is blocked in "
+    "square before the modelling starts"
+)
+
+_ARMATURE_TIP = (
+    "Build the clay on an armature instead of letting the mode look for the "
+    "masses itself.  A real armature is a wire bent to say where the masses "
+    "of a figure are and how thick it is at each joint, and clay goes on top "
+    "of it; this is the same thing.  One lump is laid along each length of "
+    "wire, centred on it, and pushed out until the model or the thickness the "
+    "wire declares stops it -- so the pelvis is the pelvis because you said "
+    "so, not because it happened to be the deepest material the field could "
+    "find.  Anything no bone speaks for is still found the old way, which is "
+    "what puts the hands and the feet in after the block-in -- unless you "
+    "untick the bone that does speak for it, which keeps the clay off that "
+    "part of the form at any Detail at all.  Bend a node and the clay follows "
+    "it when you let go"
+)
+
+_ORDER_TIP = (
+    "The order the clay goes down in, one lump per length of wire, top of the "
+    "list first.  A wire derived from a preset arrives already in the order a "
+    "figure is built up -- the hips, then the ribcage, then the head, then "
+    "the limbs largest mass first -- because that is the order a sculptor "
+    "works in and the order the block-in reads in.  Move a row to say "
+    "otherwise.  Detail decides how far down this list the clay gets, so what "
+    "is at the top is what survives a coarse setting; the rows past the end "
+    "of the budget are shown greyed rather than hidden, so you can see what "
+    "another step of Detail would buy.\n\n"
+    "Untick a row to keep the clay off that length of wire altogether -- not "
+    "merely to skip its lump, but to leave that part of the form bare and "
+    "keep it bare.  However far you then push Detail, nothing seeds there and "
+    "nothing grows in, which is the whole point: it is the difference between "
+    "the parts of a figure you want blocked in and the parts you mean to "
+    "model yourself.  The bone is still wire, still drawn and measured and "
+    "holding its two joints apart; it simply has no clay on it, and it gives "
+    "its place in the budget to the bones after it.  How wide a berth the "
+    "clay gives it is the thickness its two nodes declare, so a bone that "
+    "keeps off more of the form than you meant is one whose nodes are too "
+    "fat.  Material a bone you kept also reaches stays with that one, so "
+    "turning the hand off does not take a bite out of the forearm.\n\n"
+    "Rows come in handfuls, so they are picked in handfuls: Ctrl-click or "
+    "Shift-click as many as you mean, and ticking any one of them ticks the "
+    "lot, as a single step.  All and None do the whole list, which is the "
+    "quick way to start from one end or the other -- None, then tick back the "
+    "four bones you actually want blocked in.\n\n"
+    "Both are edits of the armature, so they undo with everything else, and "
+    "re-deriving a preset keeps them"
 )
 
 _MEDIAN_TIP = (
@@ -229,7 +295,10 @@ _SCULPT_HINTS = {
         "is joined as volume rather than as surfaces, so a tube laid across a "
         "mass leaves no seam where they meet, and the groove where two of them "
         "cross is filled with the plane that bisects them -- the material a "
-        "thumb would push into the join.  Masses is the control to start with "
+        "thumb would push into the join.  Give it an armature and the wire "
+        "says where the lumps go and in what order instead, and the free "
+        "seeding only picks up where the wire stops reaching.  Masses is the "
+        "control to start with "
         "and Detail is how far the modelling is taken; read against the model's "
         "own silhouette it says how much of the form is mass and how much is "
         "detail."
@@ -270,6 +339,15 @@ _STAGE_TIP = (
     "handle only picks one"
 )
 
+_EXPORT_TIP = (
+    "Write the film out as a file -- MP4, AVI, GIF or WebP -- with each stage "
+    "of the making held on screen for as long as you say.  The scrub slider "
+    "is for you at the machine; this is for everyone who was not there.  The "
+    "frames are rendered at whatever size you ask for rather than at the size "
+    "of the window, and you choose which of the helpers are in shot: a clip "
+    "meant to be watched usually wants the form and nothing else"
+)
+
 _SCULPT_NOTE = (
     "The model itself is never touched: this is a stand-in drawn in its place, "
     "so picking, measuring, painting and the section cut all still read the "
@@ -295,13 +373,27 @@ def _summary(planes: PlaneSettings) -> str:
     return f"Each plane covers about {planes.span_deg:.0f} deg of turn"
 
 
-def _sculpt_summary(planes: PlaneSettings) -> str:
-    """The line under the geometry slider: how the form is being worked."""
+def _sculpt_summary(planes: PlaneSettings, wires: int = 0) -> str:
+    """The line under the geometry slider: how the form is being worked.
+
+    ``wires`` is how many lengths of armature the clay has been given to
+    build on, which changes what the count of solids is a count *of*: the
+    first of them are the wire, and only what is left over is found by
+    seeding.
+    """
     solids = solid_count(planes.sculpt_count, planes.sculpt, planes.sculpt_masses)
     if planes.sculpt is SculptMode.ADDITIVE:
         tubes = solids - planes.sculpt_masses
         laid = "no tubes yet" if tubes <= 0 else f"{tubes} tubes"
         made = f"{planes.sculpt_masses} masses and {laid}"
+        if wires > 0:
+            on = min(wires, solids)
+            rest = solids - on
+            made = f"{on} lengths of wire" if on == wires else f"{on} of {wires} lengths of wire"
+            if rest == 1:
+                made += " and one lump beyond it"
+            elif rest > 1:
+                made += f" and {rest} lumps beyond it"
         after = []
         if planes.sculpt_median > 0:
             reach = planes.sculpt_median_reach
@@ -326,11 +418,19 @@ def _sculpt_summary(planes: PlaneSettings) -> str:
 class PlanesPanel(Panel):
     """Breaks the form into planes, in the shading or in the geometry itself."""
 
+    #: The artist asked for the film to be written out to a file.  The panel
+    #: knows there is a film and the window knows how to render one, so the
+    #: asking happens here and the doing happens there.
+    export_film_requested = Signal()
+
     def _build(self) -> None:
         #: Whether a film is being recorded, which holds still every setting
         #: that would change what is being recorded.  See
         #: :meth:`recording_changed`.
         self._recording = False
+        #: How many stages the film in hand has, which is what says whether
+        #: there is anything to export yet.
+        self._stages_held = 0
         box, form = form_group("Normals")
         self._flat = QCheckBox("Flat (faceted) shading")
         self._flat.setToolTip("Shade each triangle from its own face normal, showing the topology")
@@ -407,6 +507,54 @@ class PlanesPanel(Panel):
             ceiling=MASSES_CEILING,
         )
         self._masses.setToolTip(_MASSES_TIP)
+        self._armature = QComboBox()
+        self._armature.setToolTip(_ARMATURE_TIP)
+        self._order = QListWidget()
+        self._order.setToolTip(_ORDER_TIP)
+        self._order.setAlternatingRowColors(True)
+        self._order.setMinimumHeight(110)
+        # Several rows at a time, because a limb is four bones and an artist
+        # deciding not to block the arms in has made one decision rather than
+        # eight.  Ticking any row of a selection ticks the whole of it.
+        self._order.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        # Clicking a checkbox selects its row before it ticks it, so by the
+        # time the tick is heard the selection it was made against is gone.
+        # This is that selection, caught on the way past.  See
+        # :meth:`_on_bone_toggled`.
+        self._selected_at_press: set[int] = set()
+        self._order.viewport().installEventFilter(self)
+        self._up = QToolButton()
+        self._up.setArrowType(Qt.ArrowType.UpArrow)
+        self._up.setToolTip("Lay the selected length of wire earlier.")
+        self._down = QToolButton()
+        self._down.setArrowType(Qt.ArrowType.DownArrow)
+        self._down.setToolTip("Lay the selected length of wire later.")
+        self._all = QToolButton()
+        self._all.setText("All")
+        self._all.setToolTip("Lay clay along every length of wire.")
+        self._none = QToolButton()
+        self._none.setText("None")
+        self._none.setToolTip(
+            "Take the clay off every length of wire, leaving the armature to be "
+            "drawn and measured while the form is found the way it was before "
+            "there was one.  Tick the few you do want back."
+        )
+        self._order_row = QWidget()
+        order_layout = QHBoxLayout(self._order_row)
+        order_layout.setContentsMargins(0, 0, 0, 0)
+        order_layout.setSpacing(4)
+        order_layout.addWidget(self._order, 1)
+        buttons = QWidget()
+        button_layout = QVBoxLayout(buttons)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(4)
+        button_layout.addWidget(self._up)
+        button_layout.addWidget(self._down)
+        button_layout.addSpacing(6)
+        button_layout.addWidget(self._all)
+        button_layout.addWidget(self._none)
+        button_layout.addStretch(1)
+        order_layout.addWidget(buttons)
         self._relax = SliderSpin(
             RELAX_MIN,
             RELAX_MAX,
@@ -446,6 +594,9 @@ class PlanesPanel(Panel):
         self._stage.setPageStep(1)
         self._stage_label = QLabel()
         self._stage_label.setStyleSheet("color: #8f939b;")
+        self._export = QPushButton("Export Video...")
+        self._export.setToolTip(_EXPORT_TIP)
+        self._export.clicked.connect(self.export_film_requested.emit)
         self._recording_note = QLabel(
             "Recording. The settings the form is being built from are held "
             "still until it finishes -- scrub, or untick to stop."
@@ -458,11 +609,14 @@ class PlanesPanel(Panel):
         self._sculpt_note.setStyleSheet("color: #8f939b;")
         sculpt_form.addRow("Method", self._sculpt)
         sculpt_form.addRow("Detail", self._sculpt_detail)
+        sculpt_form.addRow("Built on", self._armature)
         sculpt_form.addRow("Masses", self._masses)
+        sculpt_form.addRow("Order", self._order_row)
         sculpt_form.addRow("", self._sculpt_count)
         sculpt_form.addRow("", self._film)
         sculpt_form.addRow("Stage", self._stage)
         sculpt_form.addRow("", self._stage_label)
+        sculpt_form.addRow("", self._export)
         sculpt_form.addRow("", self._recording_note)
         sculpt_form.addRow("", self._sculpt_note)
         self._sculpt_form = sculpt_form
@@ -579,6 +733,13 @@ class PlanesPanel(Panel):
             lambda v: self._apply(self.state.render.planes, "sculpt_masses", int(v))
         )
         self._masses.valueChanged.connect(lambda _v: self.update_enabled())
+        self._armature.currentIndexChanged.connect(self._on_armature_picked)
+        self._up.clicked.connect(lambda: self._move_bone(-1))
+        self._down.clicked.connect(lambda: self._move_bone(1))
+        self._all.clicked.connect(lambda: self._lay_every_bone(True))
+        self._none.clicked.connect(lambda: self._lay_every_bone(False))
+        self._order.itemSelectionChanged.connect(self._sync_order_buttons)
+        self._order.itemChanged.connect(self._on_bone_toggled)
         self._relax.valueCommitted.connect(
             lambda v: self._apply(self.state.render.planes, "sculpt_relax", int(v))
         )
@@ -633,6 +794,234 @@ class PlanesPanel(Panel):
         self.state.notify_render()
         self.update_enabled()
 
+    # -- the armature the clay is built on -------------------------------
+
+    def _chosen_armature(self):
+        """The armature the clay is being built on, or ``None``.
+
+        An index past the end of the store reads as none rather than as an
+        error: a session saved with two armatures and reopened with one has to
+        come back as something, and coming back as no armature is the
+        behaviour the mode had before there were any.
+        """
+        index = int(self.state.render.planes.sculpt_armature)
+        if not 0 <= index < len(self.state.armatures):
+            return None
+        return self.state.armatures[index]
+
+    def _on_armature_picked(self, row: int) -> None:
+        if self._busy:
+            return
+        self._apply(self.state.render.planes, "sculpt_armature", int(self._armature.itemData(row)))
+        self.refresh_armatures()
+
+    def refresh_armatures(self) -> None:
+        """Re-read the armatures and what the chosen one is laying down.
+
+        Called whenever the document's armatures change, which is a node
+        dragged, a preset re-derived, a wire deleted or one of these very
+        reorderings.  Everything here is rebuilt rather than patched: the list
+        is a dozen rows on a figure, and a panel that patches is a panel that
+        disagrees with the document one day.
+        """
+        with self._suppressed():
+            self._armature.clear()
+            self._armature.addItem("None -- find the masses", -1)
+            for index, armature in enumerate(self.state.armatures):
+                bones = len(armature.intact_bones())
+                if bones == 0:
+                    continue  # nothing to lay clay along yet
+                # Listed by what will be laid, but offered whenever there are
+                # bones at all: an armature with every bone turned off has to
+                # stay pickable, or there would be no way to turn one back on.
+                laid = len(armature.laid_bones())
+                count = f"{laid} bones" if laid == bones else f"{laid} of {bones} bones"
+                self._armature.addItem(f"{armature.name}  ({count})", index)
+            chosen = int(self.state.render.planes.sculpt_armature)
+            at = self._armature.findData(chosen)
+            self._armature.setCurrentIndex(max(at, 0))
+        # Through the whole of it rather than only the list: how many lengths
+        # of wire there are to lay on is part of the line under the sliders,
+        # and a bone deleted or turned off changes that count.
+        self.update_enabled()
+
+    def _refresh_order(self) -> None:
+        """The bones of the chosen armature, in the order the clay goes down.
+
+        Every intact bone is listed, whether or not it takes clay, because the
+        tick beside it is how an artist turns one back on.  Only the ones that
+        do take clay are numbered, and the numbers are what the budget is
+        counted against -- so turning a bone off visibly hands its place to
+        the bones below it.
+
+        The rows past what Detail has bought are greyed rather than dropped,
+        because the question an artist has in front of this list is what one
+        more step of the slider would buy them, and a row that is not there
+        cannot answer it.
+        """
+        armature = self._chosen_armature()
+        planes = self.state.render.planes
+        budget = solid_count(
+            plane_count(float(self._sculpt_detail.value())),
+            planes.sculpt,
+            int(self._masses.value()),
+        )
+        # The list is rebuilt rather than patched on every change, so what the
+        # artist had picked out has to be put back on top of it -- otherwise
+        # ticking one row of a selected limb would drop the rest of the limb.
+        held = self._order.currentRow()
+        chosen = {
+            int(self._order.item(row).data(Qt.ItemDataRole.UserRole))
+            for row in range(self._order.count())
+            if self._order.item(row).isSelected()
+        }
+        with self._suppressed():
+            self._order.clear()
+            if armature is not None:
+                where = {id(bone): at for at, bone in enumerate(armature.bones)}
+                laid = 0
+                for bone in armature.intact_bones():
+                    count = f"{laid + 1}." if bone.laid else "--"
+                    item = QListWidgetItem(f"{count}  {armature.bone_name(bone)}")
+                    item.setData(Qt.ItemDataRole.UserRole, where[id(bone)])
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    item.setCheckState(
+                        Qt.CheckState.Checked if bone.laid else Qt.CheckState.Unchecked
+                    )
+                    if not bone.laid:
+                        item.setForeground(Qt.GlobalColor.gray)
+                        item.setToolTip("No clay on this one; tick it to lay a lump along it.")
+                    elif laid >= budget:
+                        item.setForeground(Qt.GlobalColor.gray)
+                        item.setToolTip("Past what Detail has bought; raise it, or move this up.")
+                    self._order.addItem(item)
+                    laid += bone.laid
+                # The current row first and the selection after it: setting
+                # the current row is itself a selection, and would otherwise
+                # wipe the one being put back.
+                self._order.setCurrentRow(min(held, self._order.count() - 1))
+                for row in range(self._order.count()):
+                    entry = self._order.item(row)
+                    entry.setSelected(int(entry.data(Qt.ItemDataRole.UserRole)) in chosen)
+        self._sync_order_buttons()
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
+        """Catch the selection a click on a checkbox is about to collapse.
+
+        Qt selects a row on the way to toggling its checkbox, so a plain click
+        inside a selection has already thrown that selection away by the time
+        the tick is heard -- and a tick that only ever applied to one row would
+        make selecting several of them pointless.  Keyboard toggles change no
+        selection at all, so they are read straight off the list instead; see
+        :meth:`_on_bone_toggled`.
+        """
+        if watched is self._order.viewport() and event.type() == QEvent.Type.MouseButtonPress:
+            self._selected_at_press = self._selected_rows()
+        return super().eventFilter(watched, event)
+
+    def _selected_rows(self) -> set[int]:
+        """Which bones of the armature the picked-out rows stand for."""
+        return {
+            int(item.data(Qt.ItemDataRole.UserRole)) for item in self._order.selectedItems()
+        }
+
+    def _on_bone_toggled(self, item: QListWidgetItem) -> None:
+        """Take lengths of wire out of the clay, or put them back.
+
+        A tick on a row that was part of a selection carries the whole
+        selection with it, because a limb is four bones and deciding not to
+        block the arms in is one decision rather than four.  A tick anywhere
+        else is that row alone, which is what a click on an unpicked checkbox
+        looks like it should do.
+        """
+        if self._busy:
+            return
+        armature = self._chosen_armature()
+        position = int(item.data(Qt.ItemDataRole.UserRole))
+        if armature is None or not 0 <= position < len(armature.bones):
+            return
+        laid = item.checkState() is Qt.CheckState.Checked
+        if laid == armature.bones[position].laid:
+            return
+        rows = self._selected_rows()
+        if position not in rows or len(rows) <= 1:
+            rows = self._selected_at_press
+        self._lay_bones(rows if position in rows and len(rows) > 1 else [position], laid)
+
+    def _lay_every_bone(self, laid: bool) -> None:
+        """Put the clay on all of the wire, or take it off all of it."""
+        armature = self._chosen_armature()
+        if armature is None:
+            return
+        self._lay_bones(range(len(armature.bones)), laid, whole=True)
+
+    def _lay_bones(self, positions, laid: bool, whole: bool = False) -> None:
+        """Write which lengths of wire take clay, as one undoable step."""
+        armature = self._chosen_armature()
+        if armature is None:
+            return
+        rows = [row for row in positions if 0 <= row < len(armature.bones)]
+        bones = armature.with_bones_laid(rows, laid)
+        if [bone.laid for bone in bones] == [bone.laid for bone in armature.bones]:
+            return  # nothing to say, so nothing to undo
+        verb = "Lay" if laid else "Skip"
+        if whole:
+            what = "every length of wire"
+        elif len(rows) == 1:
+            what = armature.bone_name(armature.bones[rows[0]])
+        else:
+            what = f"{len(rows)} lengths of wire"
+        self.state.do(
+            SetAttributes(armature, {"bones": bones}, text=f"{verb} {what}", channel=ARMATURE)
+        )
+        self.refresh_armatures()
+        self.update_enabled()
+
+    def _sync_order_buttons(self) -> None:
+        """What can be done to the list, given where the handle is and whether
+        a film is being recorded from it."""
+        row, last = self._order.currentRow(), self._order.count() - 1
+        settled = not self._recording
+        # The list edits the armature the film is being recorded from, so it
+        # holds still for the duration along with everything else that would
+        # change what is being recorded.
+        self._order.setEnabled(settled)
+        self._up.setEnabled(settled and row > 0)
+        self._down.setEnabled(settled and 0 <= row < last)
+        self._all.setEnabled(settled and last >= 0)
+        self._none.setEnabled(settled and last >= 0)
+
+    def _move_bone(self, offset: int) -> None:
+        """Lay one length of wire earlier or later, as one undoable step."""
+        armature = self._chosen_armature()
+        item = self._order.currentItem()
+        if armature is None or item is None:
+            return
+        position = int(item.data(Qt.ItemDataRole.UserRole))
+        if not 0 <= position < len(armature.bones):
+            return
+        bone = armature.bones[position]
+        bones = armature.with_bone_moved(position, offset)
+        if bones == armature.bones:
+            return
+        # Only the laying order moves, so the armature stays derived from its
+        # preset: nothing about the wire itself has been touched.
+        self.state.do(
+            SetAttributes(
+                armature,
+                {"bones": bones},
+                text=f"Lay {armature.bone_name(bone)} {'earlier' if offset < 0 else 'later'}",
+                channel=ARMATURE,
+            )
+        )
+        self.refresh_armatures()
+        # The bones are the same objects in a new order, so the row to follow
+        # the move to is the one holding the very bone that moved -- which is
+        # what lets the button be pressed twice to move something twice.
+        rows = [id(entry) for entry in armature.intact_bones()]
+        if id(bone) in rows:
+            self._order.setCurrentRow(rows.index(id(bone)))
+
     def _restore_defaults(self) -> None:
         """Put the design matrix back the way it reads a figure."""
         planes = self.state.render.planes
@@ -657,6 +1046,10 @@ class PlanesPanel(Panel):
         and cannot change a stage's shape.
         """
         self._recording = bool(recording)
+        if self._recording:
+            # A recording that has just started is a film with nothing in it,
+            # whatever the last one held.
+            self._stages_held = 0
         self.update_enabled()
 
     def film_changed(self, film) -> None:
@@ -671,6 +1064,8 @@ class PlanesPanel(Panel):
         if film is None:
             return
         planes = self.state.render.planes
+        self._stages_held = len(film)
+        self._export.setEnabled(self._stages_held > 0)
         last = max(len(film) - 1, 0)
         # Sitting at the end means "show me the newest stage", so the handle
         # follows the recording rather than being left behind by it.  A slider
@@ -731,13 +1126,20 @@ class PlanesPanel(Panel):
             sculpt_median=int(self._median.value()),
             sculpt_median_reach=int(self._median_reach.value()),
         )
-        self._sculpt_count.setText(_sculpt_summary(pending))
+        armature = self._chosen_armature()
+        wires = 0 if armature is None else len(armature.laid_bones())
+        self._sculpt_count.setText(_sculpt_summary(pending, wires))
         # None of these has anything to say to stone: it starts from a block
         # rather than from a lump, it leaves no slots between its cuts, and it
         # is meant to keep the corners it was cut with.  AutoSmooth is the one
         # that belongs to both, being a reading of a surface either way.
         clay = planes.sculpt is SculptMode.ADDITIVE
         self._sculpt_form.setRowVisible(self._masses, clay)
+        # Stone is cut out of a block rather than built up on anything, so it
+        # has no use for a wire; and the order of the bones is only worth
+        # showing once there is an armature whose bones they are.
+        self._sculpt_form.setRowVisible(self._armature, clay)
+        self._sculpt_form.setRowVisible(self._order_row, clay and armature is not None)
         for widget in (self._median, self._median_reach, self._relax):
             self._finish_form.setRowVisible(widget, clay)
         # The scrub only means anything once there is a film to scrub, so the
@@ -745,6 +1147,13 @@ class PlanesPanel(Panel):
         # sitting there dead.
         self._sculpt_form.setRowVisible(self._stage, planes.sculpt_film)
         self._sculpt_form.setRowVisible(self._stage_label, planes.sculpt_film)
+        # The export goes with them, and is dead until there is something
+        # recorded to export.  A film still being recorded can be exported as
+        # far as it has got, which is deliberate: a recording abandoned half
+        # way is still a making, and waiting for a minute of work you have
+        # already decided not to want is a strange thing to insist on.
+        self._sculpt_form.setRowVisible(self._export, planes.sculpt_film)
+        self._export.setEnabled(self._stages_held > 0)
 
         # While a film is being recorded, everything it is being recorded
         # *from* is held still.  Changing one of these mid-recording would
@@ -756,6 +1165,7 @@ class PlanesPanel(Panel):
         for widget in (
             self._sculpt,
             self._sculpt_detail,
+            self._armature,
             self._masses,
             self._median,
             self._median_reach,
@@ -781,6 +1191,12 @@ class PlanesPanel(Panel):
         self._stage.setEnabled(True)
         self._smooth.setEnabled(True)
         self._recording_note.setVisible(self._recording)
+        # The list greys out whatever Detail has not bought, so it has to be
+        # re-read when Detail moves and not only when the armature does.
+        if clay and armature is not None:
+            self._refresh_order()
+        else:
+            self._sync_order_buttons()
 
         self._hint.setText(_SCULPT_HINTS[planes.sculpt] if sculpting else _HINTS[planes.mode])
         self._hint.setVisible(planes.enabled)
@@ -817,4 +1233,4 @@ class PlanesPanel(Panel):
             self._locality.set_value(render.planes.locality)
             self._coplanarity.set_value(render.planes.coplanarity)
             self._flat_span.set_value(render.planes.flat_span_deg)
-        self.update_enabled()
+        self.refresh_armatures()  # which ends in update_enabled

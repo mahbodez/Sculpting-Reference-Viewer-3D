@@ -4,6 +4,119 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.10.0]
+
+### Added
+
+- **Hand the making to someone who was not there.** The film a form's making
+  is recorded as can now be written out as a file: *Export Video...* under the
+  scrub slider, or `Ctrl+E`. Every stage becomes a frame, held on screen for
+  as long as you say -- a fifth of a second is the block-in arriving at about
+  the pace of a hand, half a second is a lesson, two seconds is a slideshow of
+  block-ins -- and the finished form is left standing at the end for a moment
+  rather than being cut away from the instant it arrives.
+
+  The timing is asked for in seconds per stage rather than in frames per
+  second, because a stage is not a frame of anything. It is a step in the
+  making, and how long it should be looked at is a judgement about reading a
+  form. What the file does with that is the file's business: MP4 and AVI hold
+  each stage for as many frames as it takes, and a GIF carries the delay
+  itself.
+
+  MP4 for a portfolio or a lesson, AVI for an editing suite that will not take
+  one, GIF for sending to another artist because it plays by itself in the
+  message it arrives in, and WebP for the same errand at a quarter of the
+  size.
+
+- **A clip is not a screenshot, so it is composed rather than captured.** The
+  export window is its own set of choices, laid over how you have been working
+  rather than replacing it. Pick the frame size -- up to 4K, or the shape of
+  the viewport so the framing is the one you have been looking at -- the
+  shading mode, whether the form is ghosted, wireframed, standing on its
+  pedestal. Then tick which of the helpers are in shot: the readout naming a
+  file and a triangle count earns its place while you work and is clutter in
+  something you send, and the armature that told the clay where the masses go
+  has done its job before anyone presses play. Everything you do not name --
+  the matcap and how it is graded, the light rig, the section cut, the
+  colours -- comes out exactly as you left it.
+
+  Which stage this is can be burned into the corner of every frame, with the
+  count of solids and the Detail setting that rebuilds it, so a viewer can
+  stop the clip somewhere worth keeping and go and get it.
+
+  The frame beside the options is a real one, rendered through the path the
+  export will use at the shape the export will have, and it follows every
+  change. A window full of checkboxes whose effect you only find out about
+  after waiting a minute for a file is a window people fill in twice.
+
+- **It runs in the background, and it can be stopped.** Rendering a hundred
+  stages at 4K is a minute of work. It is done a frame at a time off the event
+  loop with the encoding on a thread behind it, so the window answers
+  throughout -- including answering Cancel, which leaves no half-written file
+  behind.
+
+- **A GIF needs nothing installed.** The other three formats are ffmpeg's job,
+  and if there is no ffmpeg the window says so in words you can act on rather
+  than failing when you press the button. GIF is the exception: it is written
+  here, palette and LZW and all, so the one format an artist actually sends
+  someone works on a machine with nothing on it. Where ffmpeg *is* present it
+  is used for GIFs too, being better at the palette and faster at the rest.
+
+## [1.9.0]
+
+### Added
+
+- **Clay built on the armature, the way clay is really built.** The additive
+  geometry mode can now be given an armature to stand on. Pick one under
+  *Planes → Simplify geometry → Built on*, and instead of asking the distance
+  field where the masses of the form are, the mode asks nobody: a lump is laid
+  along each length of wire, centred on it, and pushed out until either the
+  model or the thickness the wire declares at its ends stops it. The pelvis is
+  the pelvis because you said so by bending the wire, not because it happened
+  to be the deepest material anything could find.
+
+  Bones are named now rather than being anonymous pairs of indices, because
+  what a sculptor lays down is a *thigh*, not a *hip to knee*. A wire derived
+  from the humanoid preset arrives already in the order a figure is built up --
+  hips, then the ribcage, then the head, then the limbs largest mass first,
+  both sides of one before either side of the next -- so a block-in stopped
+  half way is a figure standing evenly rather than one limb modelled and its
+  pair still wire.
+
+  Detail and Masses keep their meanings and gain the wire's. Detail decides how
+  far down the bone list the clay gets, and what it has not bought is greyed in
+  the list rather than hidden, so you can see what one more step would buy.
+  Masses says how many of the first lengths of wire are laid as plain
+  rectangular blocks before the rest arrive as bevelled tubes. And detail spent
+  past the end of the wire is still found the old way -- the armature is a
+  guide, not a cage -- which is what puts the hands and the feet in after the
+  block-in is standing.
+
+  Bend a node and the clay follows it when you let go, the same bargain the
+  geometry sliders make. Record the making and the film scrubs through your own
+  order rather than through a reading of the field.
+
+- **Which bones take clay, and in what order, is yours to say.** The bone list
+  in the Planes panel is the armature's own, so reordering it is an edit of the
+  document: one undo step, and a nudged landmark no longer puts your order
+  back.
+
+  Untick a bone to keep the clay off it altogether -- not merely to skip its
+  lump, but to leave that part of the form bare and keep it bare. However far
+  you then push Detail, nothing seeds there and nothing grows in: the material
+  under a bone that takes no clay leaves the lattice before anything is laid at
+  all. Which is the difference between the parts of a figure you want blocked
+  in and the parts you mean to model yourself. The bone is still wire, still
+  drawn and measured and holding its two joints apart. How wide a berth the
+  clay gives it is the thickness its two nodes declare, and material a bone you
+  kept also reaches stays with that one, so turning the hand off does not take
+  a bite out of the forearm it shares a wrist with.
+
+  Rows come in handfuls, so they are picked in handfuls: Ctrl-click or
+  Shift-click as many as you mean and ticking any one of them ticks the lot, as
+  a single step. *All* and *None* do the whole list, which is the quick way to
+  start from one end -- None, then tick back the four bones you actually want.
+
 ## [1.8.0]
 
 ### Added

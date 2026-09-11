@@ -94,10 +94,29 @@ class ArmatureNode:
 
 @dataclass
 class Bone:
-    """A length of wire between two nodes, by their index in the armature."""
+    """A length of wire between two nodes, by their index in the armature.
+
+    A bone carries a name of its own rather than borrowing the names of the two
+    nodes it runs between, because the two say different things: the nodes of a
+    figure are joints, and the bones are the masses slung between them.  What a
+    sculptor lays down is a *thigh*, not a *hip to knee*.  The clay mode lays
+    one lump per bone in the order the bones are listed, so this name is what
+    the artist reorders and what the panel shows them reordering.  Empty on a
+    hand-drawn bone, where the two node names are the best anyone can do; see
+    :meth:`Armature.bone_name`.
+    """
 
     a: int
     b: int
+    name: str = ""
+    #: Whether the clay mode lays a lump along this bone.  A bone turned off
+    #: is still wire -- it is drawn, it is measured, it holds the nodes at its
+    #: ends apart -- it simply takes no clay, which is what an artist wants
+    #: for the parts of a figure they mean to model rather than block in, and
+    #: for a bone that stands for a direction rather than for a mass.  What
+    #: the clay then does with that part of the form is what it did before
+    #: there was an armature: find it, if there is detail left to spend.
+    laid: bool = True
 
     @property
     def ends(self) -> tuple[int, int]:
@@ -182,6 +201,51 @@ class Armature:
     def default_size(self) -> float:
         """A plausible thickness for a node placed by hand."""
         return self.longest_bone() * DEFAULT_SIZE_SHARE
+
+    def bone_name(self, bone: Bone) -> str:
+        """What to call a bone: its own name, or the two nodes it runs between."""
+        if bone.name:
+            return bone.name
+        if not (self._holds(bone.a) and self._holds(bone.b)):
+            return "Bone"
+        return f"{self.nodes[bone.a].name} to {self.nodes[bone.b].name}"
+
+    def bone_girth(self, bone: Bone) -> tuple[float, float]:
+        """How thick the form is at each end of a bone, in scene units.
+
+        A node whose thickness was never set falls back to the armature's own
+        default rather than to nothing, so a wire drawn by hand still says how
+        fat the clay laid along it ought to be.
+        """
+        if not (self._holds(bone.a) and self._holds(bone.b)):
+            return (0.0, 0.0)
+        fallback = self.default_size()
+        first, second = (self.nodes[index].size for index in bone.ends)
+        return (
+            float(first) if first > 0.0 else fallback,
+            float(second) if second > 0.0 else fallback,
+        )
+
+    def intact_bones(self) -> list[Bone]:
+        """Every bone whose two ends still exist, in list order.
+
+        What the panel lists.  A bone left dangling by an edit is not one
+        anything can be done with, so it is left out here rather than checked
+        for again at every use.
+        """
+        return [bone for bone in self.bones if self.bone_ends(bone) is not None]
+
+    def laid_bones(self) -> list[Bone]:
+        """The bones the clay is laid on, in the order it lays them.
+
+        List order, because that *is* the order: a preset writes its bones out
+        the way a figure is blocked in -- hips, ribcage, head, then the rest --
+        and moving one up the list is how the artist says otherwise.  A bone
+        the artist has turned off drops out of it entirely rather than being
+        laid on and then hidden, so turning one off gives its budget to the
+        bones after it.
+        """
+        return [bone for bone in self.intact_bones() if bone.laid]
 
     def neighbours(self, index: int) -> list[int]:
         """Every node joined to ``index`` by a bone, each listed once."""
@@ -279,6 +343,34 @@ class Armature:
         bones = [existing for position, existing in enumerate(self.bones) if position != index]
         bones += [Bone(bone.a, added), Bone(added, bone.b)]
         return nodes, bones
+
+    def with_bone_moved(self, index: int, offset: int) -> list[Bone]:
+        """The bone list with one bone moved up or down it.
+
+        The order of that list is the order the clay is laid in and nothing
+        else reads it, so this is a reordering of the *making* rather than a
+        structural edit: no node moves, no bone is made or unmade, and an
+        armature that was derived from a preset stays derived from it.
+        """
+        if not 0 <= index < len(self.bones):
+            return list(self.bones)
+        bones = list(self.bones)
+        bones.insert(min(max(index + int(offset), 0), len(bones) - 1), bones.pop(index))
+        return bones
+
+    def with_bones_laid(self, positions, laid: bool) -> list[Bone]:
+        """The bone list with these bones taking clay, or not taking it.
+
+        A fresh list of fresh bones, in the spirit of every other editor here,
+        so that turning a whole limb off is one command and therefore one undo
+        step.  Turning them off one at a time and undoing four times would be
+        nobody's idea of a single decision.
+        """
+        chosen = set(positions)
+        return [
+            replace(bone, laid=bool(laid)) if position in chosen else replace(bone)
+            for position, bone in enumerate(self.bones)
+        ]
 
     def without_bone(self, index: int) -> tuple[list[ArmatureNode], list[Bone]]:
         if not 0 <= index < len(self.bones):

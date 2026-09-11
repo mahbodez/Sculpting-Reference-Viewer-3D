@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "1.8.0"
-description = "A 3D reference viewer for clay sculpting: matcaps, shading modes and on-model measurements."
+version = "1.10.0"
+description = "A 3D reference viewer for sculpting"
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
 license = { text = "MIT" }

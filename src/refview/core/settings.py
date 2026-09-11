@@ -349,6 +349,17 @@ class PlaneSettings:
     #: has, down to the feet.  It says nothing to stone, which starts from a
     #: block rather than from a lump.
     sculpt_masses: int = 4
+    #: Which armature in the document the clay is built on, from zero, or -1
+    #: for none -- in which case the mode finds its own masses the way it
+    #: always has.  An armature is a wire the artist has already bent to say
+    #: where the masses of the figure are and how thick it is at each joint,
+    #: which is a better answer to both questions than a distance field can
+    #: give: it is the answer of someone who has looked.  Held by index
+    #: because that is the only name an armature really has; an index past the
+    #: end of the store reads as none, which is what a session saved with two
+    #: armatures and reopened with one comes back as.  It says nothing to
+    #: stone, which is cut out of a block rather than built up on anything.
+    sculpt_armature: int = -1
     #: How many passes are run over the finished clay to settle its surface
     #: into itself -- what a sculptor does last, going over a block-in with the
     #: flat of a tool so the planes still read but the form is no longer

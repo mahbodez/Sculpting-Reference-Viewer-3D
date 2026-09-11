@@ -26,6 +26,7 @@ from ..core.update_check import Release
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
 from ..wakelock import WakeLock
+from .film_export import ExportVideoDialog
 from .panels.annotate_panel import AnnotatePanel
 from .panels.armature_panel import ArmaturePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
@@ -98,6 +99,11 @@ the bottom or a slice</td></tr>
 <tr><td><b>F2</b></td><td>Rename the selected view</td></tr>
 <tr><td><b>[</b> / <b>]</b></td><td>Cycle through saved views</td></tr>
 <tr><td><b>Ctrl+1</b> ... <b>Ctrl+9</b></td><td>Recall a saved view</td></tr>
+</table>
+<h3>The making of a form</h3>
+<table cellpadding='3'>
+<tr><td><b>Planes tab</b></td><td>Record the making, and scrub through it</td></tr>
+<tr><td><b>Ctrl+E</b></td><td>Export the making as a video</td></tr>
 </table>
 <h3>Editing</h3>
 <table cellpadding='3'>
@@ -236,6 +242,8 @@ class MainWindow(QMainWindow):
         self._menu_action(file_menu, "&Open Model...", self._open_model, "Ctrl+O")
         self._menu_action(file_menu, "Load &Matcap...", self._matcap_panel.browse)
         file_menu.addSeparator()
+        self._menu_action(file_menu, "Export &Video...", self._export_film, "Ctrl+E")
+        file_menu.addSeparator()
         self._menu_action(file_menu, "&Save Session", self._save_session, "Ctrl+S")
         self._menu_action(file_menu, "Save Session &As...", self._save_session_as, "Ctrl+Shift+S")
         self._menu_action(file_menu, "&Load Session...", self._load_session)
@@ -368,6 +376,10 @@ class MainWindow(QMainWindow):
         self._state.measurements_changed.connect(self._measure_panel.refresh_list)
         self._state.annotations_changed.connect(self._annotate_panel.refresh_list)
         self._state.armature_changed.connect(self._armature_panel.refresh_list)
+        # The clay can be built on an armature, so the Planes panel has to
+        # know when there is a new one, when one has been deleted, and when
+        # the bones of the chosen one have been reordered or re-derived.
+        self._state.armature_changed.connect(self._planes_panel.refresh_armatures)
         self._state.bookmarks_changed.connect(self._camera_panel.refresh_bookmarks)
         self._state.render_changed.connect(self._shading_panel.update_enabled)
         self._state.render_changed.connect(self._planes_panel.update_enabled)
@@ -382,6 +394,7 @@ class MainWindow(QMainWindow):
         self._viewport.pick_failed.connect(
             lambda: self.statusBar().showMessage("No surface under the cursor", 2000)
         )
+        self._planes_panel.export_film_requested.connect(self._export_film)
         self._measure_panel.measure_toggled.connect(self._set_measuring)
         self._measure_panel.center_requested.connect(self._viewport.center_on)
         self._annotate_panel.annotate_toggled.connect(self._set_annotating)
@@ -428,6 +441,26 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{measurement.name}: {settings.format_length(measurement.length)}", 5000
         )
+
+    def _export_film(self) -> None:
+        """Open the window that writes the film of a form's making to a file.
+
+        Nothing is asked of the artist first except that there be a film: the
+        recording may still be running, and exporting what has landed so far
+        is a reasonable thing to want.  What is not reasonable is a dialog
+        full of options for a film that does not exist, so that case is turned
+        away here with the one sentence that says how to get one.
+        """
+        film = self._viewport.film
+        if film is None or not len(film):
+            QMessageBox.information(
+                self,
+                "Export Video",
+                "There is no film to export yet.\n\nTurn on Planes > Simplify "
+                "geometry, tick 'Record the making', and let a few stages land.",
+            )
+            return
+        ExportVideoDialog(self._viewport, film, self).exec()
 
     def _sync_section_action(self) -> None:
         """Keep the menu entry agreeing with the panel's own checkbox."""

@@ -448,31 +448,58 @@ def _node_name(role: str) -> str:
     return f"{name} {side}" if side else name
 
 
-def _humanoid_bones(build: _Build) -> list[tuple[str, str]]:
-    """The roles each length of wire runs between, whether or not both exist."""
-    pairs: list[tuple[str, str]] = [
-        ("pelvis", "spine"),
-        ("spine", "chest"),
-        ("chest", "neck"),
-        ("neck", "head"),
-        ("head", "head_top"),
+def _humanoid_bones(build: _Build) -> list[tuple[str, str, str]]:
+    """Each length of wire, as the two roles it runs between and its name.
+
+    In the order a figure is built up, because that order is read: the clay
+    mode lays one lump per bone down this list, so the list is the block-in.
+    A sculptor starts at the pelvis -- the mass the whole pose is weighed
+    against -- carries the spine up through the ribcage, sets the head on it,
+    and only then hangs the limbs off what is standing.  Within the limbs the
+    large masses come before the small: both thighs before either shin, both
+    upper arms before either forearm, and the hands, feet and heels last of
+    all, which is where the detail of a figure lives and where a block-in
+    stops.
+
+    Anything whose landmarks were never placed is dropped by the caller, so
+    this may name a bone that does not survive the trip.
+    """
+    trunk: list[tuple[str, str, str]] = [
+        ("pelvis", "hip.L", "Hip L"),
+        ("pelvis", "hip.R", "Hip R"),
+        ("pelvis", "spine", "Lumbar"),
+        ("spine", "chest", "Ribcage"),
+        ("chest", "neck", "Neck"),
+        ("neck", "head", "Head"),
+        ("head", "head_top", "Skull"),
     ]
+    shoulders: list[tuple[str, str, str]] = []
     for side in "LR":
         if build.has(f"clavicle.{side}"):
-            pairs += [("neck", f"clavicle.{side}"), (f"clavicle.{side}", f"shoulder.{side}")]
+            shoulders += [
+                ("neck", f"clavicle.{side}", f"Clavicle {side}"),
+                (f"clavicle.{side}", f"shoulder.{side}", f"Shoulder {side}"),
+            ]
         else:
-            pairs.append(("neck", f"shoulder.{side}"))
-        pairs += [
-            (f"shoulder.{side}", f"elbow.{side}"),
-            (f"elbow.{side}", f"wrist.{side}"),
-            (f"wrist.{side}", f"hand.{side}"),
-            ("pelvis", f"hip.{side}"),
-            (f"hip.{side}", f"knee.{side}"),
-            (f"knee.{side}", f"ankle.{side}"),
-            (f"ankle.{side}", f"foot.{side}"),
-            (f"ankle.{side}", f"heel.{side}"),
+            shoulders.append(("neck", f"shoulder.{side}", f"Shoulder {side}"))
+
+    # Largest mass first, and both sides of one before either side of the
+    # next, so that a block-in stopped half way is a figure standing evenly
+    # rather than one limb modelled and its pair still wire.
+    limbs: list[tuple[str, str, str]] = []
+    for first, second, name in (
+        ("hip", "knee", "Thigh"),
+        ("knee", "ankle", "Shin"),
+        ("shoulder", "elbow", "Upper arm"),
+        ("elbow", "wrist", "Forearm"),
+        ("ankle", "foot", "Foot"),
+        ("ankle", "heel", "Heel"),
+        ("wrist", "hand", "Hand"),
+    ):
+        limbs += [
+            (f"{first}.{side}", f"{second}.{side}", f"{name} {side}") for side in "LR"
         ]
-    return pairs
+    return trunk + shoulders + limbs
 
 
 def build_humanoid(placed: dict[str, np.ndarray]) -> tuple[list[ArmatureNode], list[Bone]]:
@@ -500,8 +527,8 @@ def build_humanoid(placed: dict[str, np.ndarray]) -> tuple[list[ArmatureNode], l
         for role in roles
     ]
     bones = [
-        Bone(index[first], index[second])
-        for first, second in _humanoid_bones(build)
+        Bone(index[first], index[second], name)
+        for first, second, name in _humanoid_bones(build)
         if first in index and second in index
     ]
     return nodes, bones
@@ -568,17 +595,40 @@ def mirror_landmarks(armature) -> list[PlacedLandmark]:
     return out
 
 
+def _kept_laying(armature, bones: list[Bone]) -> list[Bone]:
+    """Fresh bones, laid the way the armature was already laying them.
+
+    The bone list is the clay's running order and each bone says whether it
+    takes clay at all, and both of those are the artist's rather than the
+    preset's.  Once someone has said they want the head before the legs and no
+    clay on the hands, a nudged landmark must not quietly put either back.  So
+    a bone the armature already had keeps its place in the list and keeps
+    whether it is laid on, and one the re-derive has newly made falls in
+    behind them all in the preset's own order -- which is what the sort being
+    a stable one buys.
+    """
+    was = {bone.name: (position, bone) for position, bone in enumerate(armature.bones) if bone.name}
+    for bone in bones:
+        kept = was.get(bone.name)
+        if kept is not None:
+            bone.laid = kept[1].laid
+    return sorted(bones, key=lambda bone: was[bone.name][0] if bone.name in was else len(was))
+
+
 def rebuild(armature) -> tuple[list[ArmatureNode], list[Bone]] | None:
     """The nodes and bones an armature's landmarks now imply.
 
     A node's name and padlock always carry over, and a locked node keeps its
     place and its size as well: one padlock, one meaning, which is *leave this
-    one alone*.  Returns ``None`` when there is no preset to rebuild from.
+    one alone*.  The order the bones are laid in, and which of them take clay
+    at all, carry over too, by :func:`_kept_laying`.  Returns ``None`` when
+    there is no preset to rebuild from.
     """
     preset = PRESETS.get(armature.preset)
     if preset is None:
         return None
     nodes, bones = preset.build(armature.placed_points())
+    bones = _kept_laying(armature, bones)
     for node in nodes:
         kept = armature.node_for_role(node.role)
         if kept is None:

@@ -25,7 +25,15 @@ from refview.core.plane_clusters import plane_regions
 from refview.core.plane_film import MAX_STAGES, film_key, record, stage_counts
 from refview.core.plane_solids import sculpt_mesh, solid_count
 from refview.core.settings import PlaneSettings, SculptMode
-from test_plane_solids import TEST_RESOLUTION, ball, dumbbell, edge_use, volume
+from test_plane_solids import (
+    TEST_RESOLUTION,
+    _bar,
+    _wires,
+    ball,
+    dumbbell,
+    edge_use,
+    volume,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -280,3 +288,74 @@ def test_the_film_is_empty_for_a_model_with_no_planes_in_it() -> None:
     from refview.core.plane_axes import PlaneSet
 
     assert list(record(mesh, PlaneSet.empty(), settings)) == []
+
+
+# -- a making built on an armature ----------------------------------------
+
+
+def test_a_film_of_clay_on_a_wire_lays_it_down_in_the_order_it_was_listed() -> None:
+    """The order the artist put the bones in is what the scrub walks through,
+    which is the reason a bone list is worth reordering at all."""
+    mesh = _bar()
+    ends = [
+        [[-0.9, 0.0, 0.0], [-0.4, 0.0, 0.0]],
+        [[0.4, 0.0, 0.0], [0.9, 0.0, 0.0]],
+    ]
+    settings = PlaneSettings(
+        sculpt=SculptMode.ADDITIVE, sculpt_detail=6.0, sculpt_masses=2
+    )
+    planes = plane_regions(mesh).for_count(settings.sculpt_count)
+    stages = list(record(mesh, planes, settings, None, _wires(*ends)))
+    reversed_stages = list(record(mesh, planes, settings, None, _wires(*reversed(ends))))
+
+    assert len(stages) >= 2
+    # The first stage holds one lump, and which end of the bar it is on is
+    # decided by the list rather than by the model.
+    assert stages[0].mesh.positions[:, 0].mean() < 0.0
+    assert reversed_stages[0].mesh.positions[:, 0].mean() > 0.0
+
+
+def test_the_last_stage_of_a_film_on_a_wire_is_the_form_the_slider_gives() -> None:
+    """The claim the whole film rests on, asked again with an armature under
+    it: an armature must not be one thing to the slider and another to the
+    scrub, or the film would be lying about what it shows."""
+    mesh = _bar()
+    wires = _wires([[-0.8, 0.0, 0.0], [0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]])
+    settings = PlaneSettings(
+        sculpt=SculptMode.ADDITIVE, sculpt_detail=20.0, sculpt_masses=2
+    )
+    planes = plane_regions(mesh).for_count(settings.sculpt_count)
+    stages = list(record(mesh, planes, settings, None, wires))
+    assert stages
+
+    direct = sculpt_mesh(
+        mesh,
+        planes,
+        SculptMode.ADDITIVE,
+        settings.sculpt_masses,
+        settings.sculpt_relax,
+        smooth=0.0,
+        median=settings.sculpt_median,
+        median_reach=settings.sculpt_median_reach,
+        wires=wires,
+    )
+    assert np.allclose(stages[-1].mesh.positions, direct.positions)
+    assert np.array_equal(stages[-1].mesh.indices, direct.indices)
+
+
+def test_bending_the_wire_starts_a_new_film() -> None:
+    """A film is only good for the settings that made it, and where the
+    armature stands is one of them."""
+    settings = PlaneSettings(sculpt=SculptMode.ADDITIVE)
+    here = _wires([[-0.4, 0.0, 0.0], [0.4, 0.0, 0.0]])
+    there = _wires([[0.0, -0.4, 0.0], [0.0, 0.4, 0.0]])
+
+    assert film_key(settings, settings.coefficients, here) == film_key(
+        settings, settings.coefficients, here
+    )
+    assert film_key(settings, settings.coefficients, here) != film_key(
+        settings, settings.coefficients, there
+    )
+    assert film_key(settings, settings.coefficients, here) != film_key(
+        settings, settings.coefficients, None
+    )

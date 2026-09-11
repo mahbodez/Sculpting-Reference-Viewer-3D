@@ -18,11 +18,13 @@ an orbit to round angles.
 
 from __future__ import annotations
 
+import typing
 from dataclasses import astuple, replace
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter, QSurfaceFormat
+from PySide6.QtGui import QImage, QPainter, QSurfaceFormat
+from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QApplication
 
@@ -35,8 +37,10 @@ from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
 from ..core.plane_film import film_key
 from ..core.plane_film import shaded as film_shaded
-from ..core.plane_solids import SculptCache
+from ..core.plane_solids import SculptCache, wires_for
 from ..core.section import section_segments
+from ..core.settings import SculptMode
+from ..render.framebuffer import bind_default, current_framebuffer
 from ..render.mesh_renderer import SceneRenderer
 from ..render.stroke_renderer import build_segment_vertices
 from .annotate_tool import AnnotateTool
@@ -47,6 +51,12 @@ from .navigation import DragMode, NavigationController
 from .overlay import ViewportOverlay
 from .picking import SurfacePicker
 from .state import ViewerState
+
+if typing.TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
+    from collections.abc import Iterable, Iterator
+
+    from ..core.plane_film import Film, Stage
+    from .film_export import ExportLook
 
 
 def configure_surface_format() -> None:
@@ -121,6 +131,11 @@ class Viewport(QOpenGLWidget):
         self._film = FilmRecorder(self)
         self._film.grew.connect(self._film_grew)
         self._film.settled.connect(self._film_settled)
+        #: Whether frames are being rendered out of a film right now.  While
+        #: they are, the stand-in belongs to the export rather than to the
+        #: scrub handle, and a stage landing from the recorder must not put
+        #: its own mesh into the middle of somebody's video.
+        self._exporting = False
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -236,6 +251,10 @@ class Viewport(QOpenGLWidget):
                 planes.sculpt_film,
                 planes.sculpt_stage,
                 planes.coefficients,
+                # By where the wire is rather than by which one it is: bending
+                # it is what asks for a fresh cut, and choosing a different
+                # armature that happens to stand in the same place is not.
+                self._wires_signature(),
             )
             if sculpt_key != self._sculpt_key:
                 self._sculpt_key = sculpt_key
@@ -260,6 +279,28 @@ class Viewport(QOpenGLWidget):
         """
         self._film.wait()
 
+    def _sculpt_wires(self):
+        """The armature the clay is to be built on, if one was chosen.
+
+        Read here rather than held, because it is read from the document and
+        the document is what the artist has just been editing.  Anything that
+        is not an armature with bones in it -- no choice made, a choice left
+        behind by a session with more armatures than this one, a wire with
+        nothing joined up yet -- comes back as nothing at all, which is the
+        mode finding its own masses the way it always has.
+        """
+        planes = self._state.render.planes
+        index = int(planes.sculpt_armature)
+        if planes.sculpt is not SculptMode.ADDITIVE:
+            return None  # stone is cut out of a block, not built up on a wire
+        if not 0 <= index < len(self._state.armatures):
+            return None
+        return wires_for(self._state.armatures[index])
+
+    def _wires_signature(self) -> tuple | None:
+        wires = self._sculpt_wires()
+        return None if wires is None else wires.signature
+
     def _upload_sculpt(self) -> None:
         """Rebuild the planar stand-in and hand it to the renderer.
 
@@ -279,22 +320,25 @@ class Viewport(QOpenGLWidget):
             self._state.recording_changed.emit(False)
             self._show_sculpt(None)
             return
+        wires = self._sculpt_wires()
         if not planes.sculpt_film:
             self._film.abandon()
             self._state.recording_changed.emit(False)
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                proxy = self._sculpt.mesh_for(self._state.mesh, planes)
+                proxy = self._sculpt.mesh_for(self._state.mesh, planes, wires)
             finally:
                 QApplication.restoreOverrideCursor()
             if proxy is not None:
+                on = "" if wires is None else f" on {wires.count} lengths of wire"
                 self._state.status_message.emit(
-                    f"Form rebuilt from {planes.sculpt_count} planes, {planes.sculpt.value}"
+                    f"Form rebuilt from {planes.sculpt_count} planes{on}, "
+                    f"{planes.sculpt.value}"
                 )
             self._show_sculpt(proxy)
             return
 
-        key = film_key(planes, planes.coefficients)
+        key = film_key(planes, planes.coefficients, wires)
         held = self._film.matching(key)
         if held is not None:
             # The same film the settings already asked for: only the stage
@@ -302,7 +346,11 @@ class Viewport(QOpenGLWidget):
             self._show_stage(held)
             return
         film = self._film.start(
-            self._state.mesh, self._sculpt.planes_for(self._state.mesh, planes), planes, key
+            self._state.mesh,
+            self._sculpt.planes_for(self._state.mesh, planes),
+            planes,
+            key,
+            wires,
         )
         self._state.recording_changed.emit(True)
         self._state.status_message.emit(
@@ -336,10 +384,171 @@ class Viewport(QOpenGLWidget):
         self._show_sculpt(film_shaded(stage, planes.sculpt_smooth))
 
     def _show_sculpt(self, proxy) -> None:
+        if self._exporting:
+            # The stand-in belongs to the export while one is running.  A
+            # stage landing from the recorder mid-export would otherwise be
+            # rendered into whichever frame happened to be next, and the film
+            # is put back as it was when the export lets go.
+            return
         self.makeCurrent()
         self._renderer.set_sculpt(proxy)
         self.doneCurrent()
         self.update()
+
+    # ------------------------------------------------------------------
+    # Rendering a film out to frames
+    # ------------------------------------------------------------------
+
+    @property
+    def state(self) -> ViewerState:
+        """The document being drawn."""
+        return self._state
+
+    @property
+    def film(self) -> Film | None:
+        """The film of the form's making, as far as it has been recorded."""
+        return self._film.film
+
+    @property
+    def exporting(self) -> bool:
+        """Whether frames are being rendered out of a film right now."""
+        return self._exporting
+
+    def stage_image(self, stage: Stage, look: ExportLook) -> QImage:
+        """One stage, rendered as it would be exported.  For the preview."""
+        for image in self.stage_images([stage], look):
+            return image
+        raise RuntimeError("There was no stage to render")  # pragma: no cover
+
+    def stage_images(self, stages: Iterable[Stage], look: ExportLook) -> Iterator[QImage]:
+        """Render each of ``stages`` offscreen, at the size and look asked for.
+
+        A generator, and deliberately one: the caller drives it a frame at a
+        time from the event loop, so a hundred stages at four thousand pixels
+        does not hold the GUI thread for the whole of a minute.  Closing it
+        early -- which is what abandoning an export does -- runs the same
+        tidy-up as finishing it, because that tidy-up is in a ``finally``.
+
+        The frames are drawn into a framebuffer of this widget's own context
+        rather than into the widget: the export size has nothing to do with
+        the size of the window, and an artist should not have to make the
+        viewport 4K in order to export at it.  Everything else is the code
+        that draws the viewport, called with different arguments -- which is
+        the point.  A clip that did not match what the artist had been looking
+        at would be worth nothing to them.
+        """
+        if not self._ready:
+            raise RuntimeError("The view has no graphics context yet")
+        settings = look.render_settings(self._state.render)
+        smooth = self._state.render.planes.sculpt_smooth
+        # Line widths and handle radii arrive in logical pixels, and the same
+        # numbers at four times the size would be hairlines.  This is the
+        # same conversion the widget does for a high-DPI screen.
+        ratio = look.width / max(self.width(), 1)
+        width, height = look.width, look.height
+        self._exporting = True
+        surface: QOpenGLFramebufferObject | None = None
+        try:
+            self.makeCurrent()
+            if not look.annotations:
+                self._renderer.set_strokes([])
+            if not look.pedestal:
+                self._renderer.set_pedestal(None)
+            surface = self._export_surface(width, height)
+            self.doneCurrent()
+            for stage in stages:
+                self.makeCurrent()
+                self._renderer.set_sculpt(film_shaded(stage, smooth))
+                image = self._render_offscreen(surface, settings, width, height, ratio)
+                self.doneCurrent()
+                self._draw_over(image, look, stage, ratio)
+                yield image
+        finally:
+            self._exporting = False
+            self.makeCurrent()
+            del surface
+            self._renderer.set_strokes(
+                list(self._state.annotations)
+                if self._state.annotation_settings.visible
+                else []
+            )
+            self.doneCurrent()
+            if not look.pedestal:
+                self._upload_pedestal()
+            film = self._film.film
+            if film is not None:
+                self._show_stage(film)
+            self.update()
+
+    @staticmethod
+    def _export_surface(width: int, height: int) -> QOpenGLFramebufferObject:
+        """An offscreen target the frames are drawn into, made once per export.
+
+        Multisampled, because the edges of a blocked-in form are all straight
+        lines at odd angles and are exactly what aliasing ruins -- and a video
+        codec then spends its bits on the stair steps.  A driver that refuses
+        the samples at the size asked for gets a second chance without them,
+        since a frame with jagged edges beats no export at all.
+        """
+        for samples in (4, 0):
+            layout = QOpenGLFramebufferObjectFormat()
+            layout.setAttachment(QOpenGLFramebufferObject.Attachment.CombinedDepthStencil)
+            layout.setSamples(samples)
+            surface = QOpenGLFramebufferObject(width, height, layout)
+            if surface.isValid():
+                return surface
+        raise RuntimeError(
+            f"The graphics driver would not give a {width}x{height} frame to draw into"
+        )
+
+    def _render_offscreen(
+        self,
+        surface: QOpenGLFramebufferObject,
+        settings,
+        width: int,
+        height: int,
+        ratio: float,
+    ) -> QImage:
+        """Draw the scene into ``surface`` and read it back as an image."""
+        kept = current_framebuffer()
+        surface.bind()
+        try:
+            self._renderer.render(self._state.camera, settings, width, height, ratio)
+        finally:
+            # Not `release`, which binds framebuffer zero: in a widget the
+            # default framebuffer is Qt's own, and leaving zero bound behind
+            # is a window that draws nothing until something else rebinds it.
+            bind_default(kept)
+        return surface.toImage().convertToFormat(QImage.Format.Format_RGB888)
+
+    def _draw_over(
+        self, image: QImage, look: ExportLook, stage: Stage, ratio: float
+    ) -> None:
+        """Lay the overlay -- and the caption, if it was asked for -- on a frame.
+
+        Painted in logical pixels and scaled up, rather than being given the
+        export's own size: the overlay places things by projecting the camera
+        through a width and a height, and the projection has to agree with the
+        one the scene was just drawn with.
+        """
+        painter = QPainter(image)
+        painter.scale(ratio, ratio)
+        width = int(round(image.width() / ratio))
+        height = int(round(image.height() / ratio))
+        self._overlay.draw(
+            painter,
+            self._state,
+            self.measure_tool,
+            self.annotate_tool,
+            width,
+            height,
+            self.armature_tool,
+            self._buried_nodes(),
+            look.parts,
+        )
+        if look.caption:
+            self._overlay.draw_caption(painter, look.caption_for(stage), width, height)
+        painter.end()
 
     def _upload_contour(self) -> None:
         """Cut the mesh with each section plane and expand the result to strokes."""
@@ -922,7 +1131,21 @@ class Viewport(QOpenGLWidget):
             return
 
     def _armature_moved(self) -> None:
+        """The wire changed: redraw it, and re-cut anything built on it.
+
+        Not mid-drag, though.  A node being pulled about emits on every mouse
+        move, and cutting a form takes seconds, so the clay follows the wire
+        when the wire is let go of -- the same bargain the geometry sliders
+        make, and for the same reason.  The overlay still follows the drag
+        itself, so the wire bends under the cursor either way.
+        """
         self._stale_buried()
+        held = (
+            self.armature_tool.grabbed_handle is not None
+            or self.armature_tool.grabbed_landmark is not None
+        )
+        if not held:
+            self._sync_scene()
         self.update()
 
     def _stale_buried(self) -> None:

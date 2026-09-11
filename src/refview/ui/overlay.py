@@ -16,6 +16,8 @@ is dimmed rather than cut away, which says where it is without losing it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen
@@ -39,6 +41,41 @@ _HANDLE_OUTLINE = QColor(12, 13, 16, 220)
 _HANDLE_HOVER = QColor(255, 255, 255)
 _ERASER_COLOR = QColor(255, 120, 120)
 _LANDMARK_COLOR = QColor(255, 196, 92)
+
+
+@dataclass(frozen=True)
+class OverlayParts:
+    """Which of the things drawn over the model are wanted this time.
+
+    The viewport wants all of them: what is on screen is what the artist is
+    working with, and hiding half of it would only be a second set of
+    visibility switches to keep in step with the first.
+
+    An export wants to choose.  A clip of a form arriving is usually the form
+    and nothing else -- the readout naming a file and a triangle count is
+    worth having while you work and is clutter in something you send someone,
+    and the armature that told the clay where to go has done its job by the
+    time anyone watches.  So the parts are named here and the export says
+    which it wants, rather than the document's own visibility flags being
+    turned off and back on around the render.
+    """
+
+    #: Finished measurements, with their labels and handles.
+    measurements: bool = True
+    #: The gesture under way: a half-placed measurement, the brush ring, a
+    #: stroke being painted.  Never anything during an export, since nothing
+    #: is being drawn while one runs -- but it is what the flag means.
+    tools: bool = True
+    #: The wire standing inside the form, its nodes and its landmarks.
+    armature: bool = True
+    #: The axis cross in the corner.
+    gizmo: bool = True
+    #: The readout: model name, triangle count, projection, tool hints.
+    readout: bool = True
+
+
+#: Everything, which is what the viewport itself always asks for.
+ALL_PARTS = OverlayParts()
 
 
 def to_qcolor(color, alpha: float = 1.0) -> QColor:
@@ -74,23 +111,63 @@ class ViewportOverlay:
         height: int,
         armature: ArmatureTool | None = None,
         buried: frozenset[Handle] = frozenset(),
+        parts: OverlayParts = ALL_PARTS,
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
         settings = state.measurement_settings
-        if settings.show_all:
+        if parts.measurements and settings.show_all:
             for index, measurement in enumerate(state.measurements):
                 if measurement.visible:
                     self._draw_measurement(
                         painter, state.camera, measurement, index, settings, tool, width, height
                     )
-        self._draw_pending(painter, state, tool, width, height)
-        if armature is not None:
+        if parts.tools:
+            self._draw_pending(painter, state, tool, width, height)
+        if parts.armature and armature is not None:
             self._draw_armature(painter, state, armature, width, height, buried)
-        self._draw_annotation(painter, state, annotate, width, height)
-        self._draw_gizmo(painter, state.camera, width, height)
-        self._draw_hud(painter, state, tool, annotate, armature, width, height)
+        if parts.tools:
+            self._draw_annotation(painter, state, annotate, width, height)
+        if parts.gizmo:
+            self._draw_gizmo(painter, state.camera, width, height)
+        if parts.readout:
+            self._draw_hud(painter, state, tool, annotate, armature, width, height)
+
+    def draw_caption(self, painter: QPainter, text: str, width: int, height: int) -> None:
+        """Burn a line into the bottom of a frame, for an exported clip.
+
+        Which stage of the making this is, and what to set the sliders to in
+        order to come back to it.  In the viewport that belongs under the
+        scrub handle where it can be read at leisure; in a clip, where there
+        is no panel and no handle, it has to be in the picture or it is
+        nowhere.
+        """
+        font = QFont(painter.font())
+        font.setPointSize(10)
+        font.setBold(True)
+        metrics = QFontMetricsF(font)
+        padding = 9.0
+        rect = QRectF(
+            self.MARGIN,
+            height - self.MARGIN - metrics.height() - padding,
+            metrics.horizontalAdvance(text) + padding * 2.0,
+            metrics.height() + padding,
+        )
+        # Bottom right, because bottom left is where the gizmo stands and an
+        # export that kept both would have them on top of one another.
+        rect.moveLeft(width - self.MARGIN - rect.width())
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(_HUD_BACKDROP)
+        painter.drawRoundedRect(rect, 5.0, 5.0)
+        self._draw_text(
+            painter,
+            rect.x() + padding,
+            rect.y() + padding * 0.5 + metrics.ascent(),
+            text,
+            font,
+            _HUD_TEXT,
+        )
 
     # ------------------------------------------------------------------
     # Measurements
