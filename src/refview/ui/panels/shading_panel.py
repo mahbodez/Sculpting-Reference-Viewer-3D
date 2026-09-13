@@ -215,6 +215,10 @@ class ShadingPanel(Panel):
         a slider that lies.
         """
         mode = self.state.render.shading_mode
+        # The Forms panel has a ghost switch of its own, so this one follows
+        # the setting rather than only writing it.
+        with self._suppressed():
+            self._ghost.setChecked(self.state.render.ghost)
         self._mode_form.setRowVisible(self._ghost_opacity, self.state.render.ghost)
         self._light_box.setVisible(mode.uses_lighting)
         self._surface_box.setVisible(mode.uses_lighting)

@@ -18,6 +18,7 @@ MEASUREMENTS = "measurements"
 ANNOTATIONS = "annotations"
 BOOKMARKS = "bookmarks"
 ARMATURE = "armature"
+FORMS = "forms"
 
 
 class Command:

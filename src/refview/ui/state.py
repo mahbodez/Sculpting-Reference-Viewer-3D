@@ -17,10 +17,12 @@ from ..core.annotation import AnnotationSettings, AnnotationStore
 from ..core.armature import ArmatureSettings, ArmatureStore
 from ..core.bookmark import BookmarkStore
 from ..core.camera import Camera
+from ..core.forms import FormSettings, FormStore
 from ..core.history import (
     ANNOTATIONS,
     ARMATURE,
     BOOKMARKS,
+    FORMS,
     MEASUREMENTS,
     Command,
     History,
@@ -44,6 +46,7 @@ class ViewerState(QObject):
     measurements_changed = Signal()
     annotations_changed = Signal()
     armature_changed = Signal()
+    forms_changed = Signal()
     bookmarks_changed = Signal()
     history_changed = Signal()
     #: A film of a form's making gained a stage, or finished.  Carries the
@@ -67,6 +70,8 @@ class ViewerState(QObject):
         self.annotations = AnnotationStore()
         self.armature_settings = ArmatureSettings()
         self.armatures = ArmatureStore()
+        self.form_settings = FormSettings()
+        self.forms = FormStore()
         self.bookmarks = BookmarkStore()
         self.history = History()
         self.orientation = OrientationSettings()
@@ -97,6 +102,9 @@ class ViewerState(QObject):
     def notify_armature(self) -> None:
         self.armature_changed.emit()
 
+    def notify_forms(self) -> None:
+        self.forms_changed.emit()
+
     def notify_bookmarks(self) -> None:
         self.bookmarks_changed.emit()
 
@@ -106,6 +114,7 @@ class ViewerState(QObject):
             MEASUREMENTS: self.notify_measurements,
             ANNOTATIONS: self.notify_annotations,
             ARMATURE: self.notify_armature,
+            FORMS: self.notify_forms,
             BOOKMARKS: self.notify_bookmarks,
         }.get(channel)
         if emit is not None:
@@ -162,6 +171,7 @@ class ViewerState(QObject):
         self.measurements.clear()
         self.annotations.clear()
         self.armatures.clear()
+        self.forms.clear()
         self.bookmarks.clear()
         self.history.clear()
         self.frame_object()
@@ -169,6 +179,7 @@ class ViewerState(QObject):
         self.notify_measurements()
         self.notify_annotations()
         self.notify_armature()
+        self.notify_forms()
         self.notify_bookmarks()
         self.history_changed.emit()
         self.adopt_units(mesh)
@@ -187,8 +198,9 @@ class ViewerState(QObject):
     def set_orientation(self, orientation: OrientationSettings, move_marks: bool = True) -> None:
         """Turn the model, bringing the marks made on it along.
 
-        Measurements, annotations and the armature belong to the model, so they
-        are carried through the same rotation; a saved camera view is a
+        Measurements, annotations, the armature and the forms belong to the
+        model, so they are carried through the same rotation; a saved camera
+        view is a
         viewpoint on the scene rather than a point on the model, and stays
         where it is.
 
@@ -213,9 +225,10 @@ class ViewerState(QObject):
         self.notify_measurements()
         self.notify_annotations()
         self.notify_armature()
+        self.notify_forms()
 
     def _move_marks(self, previous: Mesh, current: Mesh, was: np.ndarray) -> None:
-        """Rotate the measurements, annotations and armature onto the turned model.
+        """Rotate the measurements, annotations, armature and forms onto the turned model.
 
         A point sits at ``rotation @ file_point - centre`` in both orientations,
         so going from one to the other means undoing the old centring, applying
@@ -243,6 +256,9 @@ class ViewerState(QObject):
             for node in armature.nodes:
                 node.at = move(node.at)
             for landmark in armature.landmarks:
+                landmark.at = move(landmark.at)
+        for form in self.forms:
+            for landmark in form.landmarks:
                 landmark.at = move(landmark.at)
 
     def adopt_units(self, mesh: Mesh) -> None:
@@ -292,6 +308,8 @@ class ViewerState(QObject):
             annotations=list(self.annotations),
             armature_settings=self.armature_settings,
             armatures=list(self.armatures),
+            form_settings=self.form_settings,
+            forms=list(self.forms),
         )
 
     def apply_session(self, session: Session) -> None:
@@ -307,6 +325,8 @@ class ViewerState(QObject):
         self.annotations = AnnotationStore(list(session.annotations))
         self.armature_settings = session.armature_settings
         self.armatures = ArmatureStore(list(session.armatures))
+        self.form_settings = session.form_settings
+        self.forms = FormStore(list(session.forms))
         self.bookmarks = BookmarkStore(list(session.bookmarks))
         self.history.clear()
         if session.camera:
@@ -323,6 +343,7 @@ class ViewerState(QObject):
         self.notify_measurements()
         self.notify_annotations()
         self.notify_armature()
+        self.notify_forms()
         self.notify_bookmarks()
         self.history_changed.emit()
 

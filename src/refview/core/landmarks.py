@@ -3,10 +3,13 @@
 A preset is an ordered list of surface landmarks -- bumps and hollows an artist
 can actually find on a model -- and a rule for turning them into an armature.
 The landmarks are not the armature.  Nobody can point at the centre of a femoral
-head, but everybody can find the greater trochanter beside it and the two hip
-points in front, and the joint falls out of those three.  Asking for what is
-visible and inferring what is not is both less to ask and more accurate than
-asking for a guess at the joint itself.
+head, but everybody can find the two hip points in front and the two dimples
+behind, and the joint falls out of those: it sits a fixed share of the width
+between the hip points in from each, and a little below and behind it.  Asking
+for what is visible and inferring what is not is both less to ask and more
+accurate than asking for a guess at the joint itself -- and the landmarks are
+chosen to be findable in any pose, which is why the trochanter, which a bent
+hip swallows, is not among them.
 
 Every inference here is a ratio of the figure's *own* measured spans rather than
 an absolute distance, so one rule fits a child and a heroic nude, and nothing
@@ -42,10 +45,14 @@ SPINE_FORWARD = 0.5
 SHOULDER_DOWN_ARM = 0.13
 #: ... and this far in towards the middle of the chest.
 SHOULDER_INTO_TRUNK = 0.18
-#: The femoral head lies medial to the greater trochanter, this share of the way
-#: towards the centre of the pelvis -- which carries it a little up and back as
-#: well, which is where it really is.
-HIP_TOWARD_PELVIS = 0.25
+#: The femoral head lies in from the ASIS by these shares of the width between
+#: the two ASIS: medial along the line between them, down, and back.  They are
+#: the regression gait laboratories place the joint centre with from the same
+#: markers (Bell, Pedersen and Brand, 1990), which need it off surface points
+#: as badly as an artist does.
+HIP_MEDIAL = 0.14
+HIP_DOWN = 0.30
+HIP_BACK = 0.19
 #: Head node when the mastoids were skipped: this far from C7 up to the vertex.
 HEAD_UP_FROM_NECK = 0.5
 #: A hand, a foot and the crown are ends of wire rather than joints, so they
@@ -217,7 +224,6 @@ _PAIRED: tuple[tuple[str, str, str, bool], ...] = (
     ("iliac_crest", "Iliac crest", "The highest point of the rim of the hip bone.", False),
     ("asis", "ASIS", "The front point of the hip bone, under the pocket.", True),
     ("psis", "PSIS", "The dimple above the buttock.", True),
-    ("greater_trochanter", "Greater trochanter", "The broad bump on the outside of the hip.", True),
     ("femur_lateral_epicondyle", "Lateral femoral epicondyle", "The outside of the knee.", True),
     ("femur_medial_epicondyle", "Medial femoral epicondyle", "The inside of the knee.", True),
     (
@@ -394,15 +400,27 @@ def _build_leg(build: _Build, side: str) -> None:
     if heel is not None:
         build.add(f"heel.{side}", heel[0], build.size(f"ankle.{side}", END_SHARE))
 
-    trochanter = build.at(f"greater_trochanter.{side}")
-    if trochanter is None or not build.has("pelvis"):
+    hip_points = build.at(f"asis.{side}", "asis.L", "asis.R", "psis.L", "psis.R")
+    if hip_points is None or not build.has("pelvis"):
         return
-    bump, pelvis = trochanter[0], build.points["pelvis"]
-    build.add(
-        f"hip.{side}",
-        bump + HIP_TOWARD_PELVIS * (pelvis - bump),
-        JOINT_RADIUS * _span(bump, pelvis),
-    )
+    asis, asis_left, asis_right, psis_left, psis_right = hip_points
+    width = _span(asis_left, asis_right)
+    if width <= 0.0:
+        return
+    # The pelvis's own frame: across between the hip points, back from their
+    # middle to the dimples', and down square to both.  Down is checked
+    # against the knee, or failing that the pubic symphysis, so a left and
+    # right labelled the wrong way round cannot hang the hip above the pelvis.
+    inward = ((asis_right if side == "L" else asis_left) - asis) / width
+    back = _mid(psis_left, psis_right) - _mid(asis_left, asis_right)
+    back = back - float(back @ inward) * inward
+    back = back / max(float(np.linalg.norm(back)), 1e-12)
+    down = np.cross(inward, back) * (1.0 if side == "L" else -1.0)
+    below = build.at(f"knee.{side}") or build.at("pubic_symphysis")
+    if below is not None and float((below[0] - asis) @ down) < 0.0:
+        down = -down
+    hip = asis + width * (HIP_MEDIAL * inward + HIP_DOWN * down + HIP_BACK * back)
+    build.add(f"hip.{side}", hip, JOINT_RADIUS * _span(hip, build.points["pelvis"]))
 
 
 #: Limb roles in the order the wire runs out from the trunk.

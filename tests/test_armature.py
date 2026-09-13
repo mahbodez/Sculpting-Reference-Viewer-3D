@@ -46,7 +46,6 @@ _LEFT = {
     "third_metacarpal_head": (20.0, 75.0, 0.0),
     "asis": (10.0, 100.0, 8.0),
     "psis": (8.0, 102.0, -8.0),
-    "greater_trochanter": (16.0, 96.0, 0.0),
     "femur_lateral_epicondyle": (14.0, 55.0, 0.0),
     "femur_medial_epicondyle": (8.0, 55.0, 0.0),
     "lateral_malleolus": (12.0, 10.0, 0.0),
@@ -188,8 +187,8 @@ def test_the_humanoid_preset_asks_for_every_landmark_once():
 def test_mirroring_roughly_halves_what_the_artist_is_asked_for():
     with_mirror = HUMANOID.steps(mirror=True, optional=False)
     without = HUMANOID.steps(mirror=False, optional=False)
-    assert len(with_mirror) == 19
-    assert len(without) == 33
+    assert len(with_mirror) == 18
+    assert len(without) == 31
     assert not any(entry.mirror_of for entry in with_mirror)
 
 
@@ -198,16 +197,33 @@ def test_the_knee_sits_between_the_two_epicondyles():
     assert roles["knee.L"].at == pytest.approx((11.0, 55.0, 0.0))
 
 
-def test_the_humanoid_preset_infers_the_hip_medial_to_the_trochanter():
-    """The femoral head is inside the bump you can feel, not on it."""
+def test_the_humanoid_preset_infers_the_hip_from_the_hip_points():
+    """The femoral head is in from the ASIS, below it and behind it, by shares
+    of the width between the two ASIS -- and no trochanter is asked for, since
+    a bent hip hides it."""
     roles = _roles(build_humanoid(_figure())[0])
-    hip, pelvis = roles["hip.L"].point, roles["pelvis"].point
-    trochanter = np.array(_LEFT["greater_trochanter"])
-
-    assert hip[0] < trochanter[0]  # medial
-    assert hip[1] > trochanter[1]  # and a little higher
-    assert np.linalg.norm(hip - pelvis) < np.linalg.norm(trochanter - pelvis)
+    hip = roles["hip.L"].point
+    asis = np.array(_LEFT["asis"])
+    width = 2.0 * asis[0]
+    # Medial along the line between the ASIS exactly; down and back in the
+    # pelvis's own frame, which on this figure is tilted a little, since the
+    # dimples sit higher than the hip points.
+    assert hip[0] == pytest.approx(asis[0] - 0.14 * width)
+    assert hip[1] == pytest.approx(asis[1] - 0.30 * width, abs=0.8)
+    assert hip[2] == pytest.approx(asis[2] - 0.19 * width, abs=0.8)
     assert roles["hip.R"].at[0] == pytest.approx(-roles["hip.L"].at[0])
+    assert not any(entry.key.startswith("greater_trochanter") for entry in HUMANOID_LANDMARKS)
+
+
+def test_the_hip_hangs_below_the_pelvis_however_the_sides_are_labelled():
+    swapped = _figure()
+    for key in list(swapped):
+        if key.endswith(".L"):
+            other = key[:-2] + ".R"
+            swapped[key], swapped[other] = swapped[other], swapped[key]
+    roles = _roles(build_humanoid(swapped)[0])
+    assert roles["hip.L"].point[1] == pytest.approx(100.0 - 0.30 * 20.0, abs=0.8)
+    assert roles["hip.R"].point[1] == pytest.approx(100.0 - 0.30 * 20.0, abs=0.8)
 
 
 def test_the_shoulder_sits_below_and_inside_the_acromion():
@@ -458,12 +474,12 @@ def test_a_guided_run_asks_for_the_midline_first():
 def test_mirroring_means_the_run_never_asks_for_the_right_side():
     tool, armature, settings = _run(mirror=True)
     assert all(not e.mirror_of for e in tool.remaining(armature, settings))
-    assert _walk(tool, armature, settings, _figure()) == 19
+    assert _walk(tool, armature, settings, _figure()) == 18
 
 
 def test_without_mirroring_the_run_asks_for_both_sides():
     tool, armature, settings = _run(mirror=False)
-    assert _walk(tool, armature, settings, _figure()) == 33
+    assert _walk(tool, armature, settings, _figure()) == 31
 
 
 def test_a_guided_run_builds_the_same_figure_the_preset_would():
@@ -477,7 +493,7 @@ def test_the_mirrored_half_is_marked_as_a_guess():
     tool, armature, settings = _run()
     _walk(tool, armature, settings, _figure())
     mirrored = [entry for entry in armature.landmarks if entry.mirrored]
-    assert len(mirrored) == 14
+    assert len(mirrored) == 13
     assert all(entry.key.endswith(".R") for entry in mirrored)
 
 
@@ -485,8 +501,8 @@ def test_a_skipped_landmark_is_not_asked_for_again():
     tool, armature, settings = _run()
     tool.skip(armature, settings)
     assert tool.current(armature, settings).key == "c7"
-    # 5 midline plus 18 unmirrored pairs, less the one just passed over.
-    assert tool.progress(armature, settings) == (0, 22)
+    # 5 midline plus 17 unmirrored pairs, less the one just passed over.
+    assert tool.progress(armature, settings) == (0, 21)
 
 
 def test_going_back_hands_the_last_landmark_over_to_be_placed_again():
@@ -513,10 +529,10 @@ def test_going_back_over_a_skip_un_skips_it():
 
 def test_progress_counts_what_will_actually_be_asked_for():
     tool, armature, settings = _run()
-    assert tool.progress(armature, settings) == (0, 23)
+    assert tool.progress(armature, settings) == (0, 22)
     _walk(tool, armature, settings, _figure())
     placed, wanted = tool.progress(armature, settings)
-    assert placed == wanted == 19
+    assert placed == wanted == 18
 
 
 # -- inserting into a bone ----------------------------------------------

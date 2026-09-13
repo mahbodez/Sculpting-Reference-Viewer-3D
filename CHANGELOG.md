@@ -4,6 +4,86 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.11.0]
+
+### Added
+
+- **Block the figure in with its primary forms.** A new Forms tab builds the
+  big simple masses a sculptor starts from, in clay, over the model: the
+  pelvis as a bucket with its front corner chipped off along the plane from
+  the two ASIS down to the pubic symphysis; the ribcage as an egg lofted from
+  the thoracic inlet through the widest ribs to the lowest, with the arch
+  chipped out of its front along the costal margins point by point -- the
+  corners of the rectus abdominis beside the xiphoid, where its outer edge
+  crosses the ninth rib, the corner at the tenth -- so the arch curves in
+  under the ribcage as a real one does, the margin being the bottom ring of
+  the egg itself so that its surface passes through every one of those
+  points before it is chipped along them, its front flattened to the front
+  corners of the ribcage where the cartilages turn back from the
+  breastbone, and its back bowed at the apex of the thoracic curve; the head as a wedge that is given its
+  width, the block of its cranium and its jaw in turn.  Every form is planes
+  meeting at edges, the head included, because planes are what a block-in is
+  for.
+
+  None of those masses can be pointed at on a model -- nobody can find the
+  axis of the pelvic bucket -- but every one of them is pinned down by anatomy
+  that *can* be found on the surface, so each form is a guided walk like the
+  armature's. Pick the form, press Start, and click the landmarks it asks for;
+  the form is worked out from them and grows as they go down. Place the
+  midline and one side and the other is mirrored across the plane fitted
+  through the midline.  Nothing on the lists is anatomy a pose or a body can
+  hide: the sitting bones, buried on most models, are asked for but not
+  waited for -- skip them and the bottom of the bucket is put where they
+  are, from the hip points -- and the trochanters are not asked for at all.
+
+- **A head arrives in stages, and the stages are kept.** A wedge first -- the
+  profile of the head as a thin slab, which is where a head is read from --
+  then its width from the skull, the cheekbones and the corners of the jaw,
+  then the cranium planed out over that to the bulges of the forehead, the
+  corners of the crown and of the back of the skull and the mastoids, then
+  the jaw and muzzle as one lump, and last the nose -- the first secondary
+  form, a wedge from its root to its tip and out to its wings, laid on the
+  muzzle. The landmarks are asked for a stage at a time, so the head thickens
+  under your hand as the paired points follow the midline ones, and a slider
+  in the panel scrubs back through every stage afterwards. Clay goes on and
+  does not come off: each stage is laid over the ones before it rather than
+  cut out of them, which is why the head starts as a wedge that is widened
+  rather than a ball that is sliced -- and why it is widened above the eyes
+  and below them, and not between. The eye sockets are the gap left between
+  the cranium and the jaw, and nothing is ever laid into them.
+
+- **The forms are built symmetric.** The pelvis, the ribcage and the skull
+  are bone, and bone is symmetric to within less than a click's error, so by
+  default each form is worked out from its landmarks made exactly symmetric
+  about the median plane: the midline points dropped onto it, each pair
+  averaged across it. The landmarks stay where you put them; only the clay is
+  straightened. A switch in the panel builds from the points as placed.
+
+- **A form is its landmarks.** The clay is worked out again from them
+  whenever it is drawn, so a landmark dragged in the view or nudged from the
+  panel re-forms the clay under it, every placement and every move is one
+  undo step, and a session file carries a dozen points per form rather than a
+  mesh. The forms are drawn with the model rather than in place of it, in a
+  clay colour of their own, and throw shadows and take occlusion like
+  anything else on the pedestal. Ghost the model -- the switch is in the
+  Forms tab as well as the Shading tab -- to read the clay standing inside it.
+
+- Under the hood, every primary form is a union of a few convex solids, each
+  the hull of some sampled points or such a hull with a plane cut through it.
+  That is the same family of shapes the clay modes already work in, and a
+  small hull-and-cut kit is all the geometry it takes.
+
+### Changed
+
+- **The armature's hip no longer asks for the greater trochanter.** A bent
+  hip swallows it, so it was the one landmark on the list a pose could hide.
+  The femoral head is now placed from the two hip points and the two dimples
+  alone -- a fixed share of the width between the ASIS in from each, and a
+  little below and behind it, which is the rule gait laboratories use to find
+  the joint centre from the same markers. Eighteen placements now rather than
+  nineteen. Sessions that carry a trochanter still load; it is simply no
+  longer read.
+
 ## [1.10.0]
 
 ### Added

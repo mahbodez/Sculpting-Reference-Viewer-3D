@@ -9,6 +9,7 @@ from pathlib import Path
 from .annotation import AnnotationSettings, Stroke
 from .armature import Armature, ArmatureSettings
 from .bookmark import CameraBookmark
+from .forms import FormSettings, PrimaryForm
 from .measurement import Measurement, MeasurementSettings
 from .orientation import OrientationSettings
 from .serialization import decode, encode
@@ -24,10 +25,10 @@ class Session:
 
     #: 1: the original format.  2 added the annotation layer.  3 added the
     #: cross-section, pedestal, high-quality and navigation settings, 4 the
-    #: model orientation, and 5 the armature and the landmarks behind it.
-    #: Older files still load: :func:`decode` fills anything missing from the
-    #: defaults.
-    version: int = 5
+    #: model orientation, 5 the armature and the landmarks behind it, and 6
+    #: the primary forms.  Older files still load: :func:`decode` fills
+    #: anything missing from the defaults.
+    version: int = 6
     mesh_path: str | None = None
     camera: dict = field(default_factory=dict)
     render: RenderSettings = field(default_factory=RenderSettings)
@@ -38,6 +39,8 @@ class Session:
     annotations: list[Stroke] = field(default_factory=list)
     armature_settings: ArmatureSettings = field(default_factory=ArmatureSettings)
     armatures: list[Armature] = field(default_factory=list)
+    form_settings: FormSettings = field(default_factory=FormSettings)
+    forms: list[PrimaryForm] = field(default_factory=list)
     navigation: NavigationSettings = field(default_factory=NavigationSettings)
     orientation: OrientationSettings = field(default_factory=OrientationSettings)
 

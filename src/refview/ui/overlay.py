@@ -28,6 +28,7 @@ from ..core.camera import Camera
 from ..core.measurement import Measurement, MeasurementSettings
 from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool, Handle
+from .form_tool import FormTool
 from .measure_tool import MeasureTool
 from .state import ViewerState
 
@@ -41,6 +42,10 @@ _HANDLE_OUTLINE = QColor(12, 13, 16, 220)
 _HANDLE_HOVER = QColor(255, 255, 255)
 _ERASER_COLOR = QColor(255, 120, 120)
 _LANDMARK_COLOR = QColor(255, 196, 92)
+#: A primary form's landmark, told apart from the armature's by colour: the
+#: two kinds can sit on the same bump, and which preset a cross feeds should
+#: be readable at a glance.
+_FORM_LANDMARK_COLOR = QColor(126, 220, 196)
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,9 @@ class OverlayParts:
     tools: bool = True
     #: The wire standing inside the form, its nodes and its landmarks.
     armature: bool = True
+    #: The landmarks the primary forms were built from.  The clay itself is
+    #: geometry and is drawn by the renderer whatever this says.
+    forms: bool = True
     #: The axis cross in the corner.
     gizmo: bool = True
     #: The readout: model name, triangle count, projection, tool hints.
@@ -112,6 +120,7 @@ class ViewportOverlay:
         armature: ArmatureTool | None = None,
         buried: frozenset[Handle] = frozenset(),
         parts: OverlayParts = ALL_PARTS,
+        forms: FormTool | None = None,
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
@@ -127,12 +136,14 @@ class ViewportOverlay:
             self._draw_pending(painter, state, tool, width, height)
         if parts.armature and armature is not None:
             self._draw_armature(painter, state, armature, width, height, buried)
+        if parts.forms and forms is not None:
+            self._draw_forms(painter, state, forms, width, height)
         if parts.tools:
             self._draw_annotation(painter, state, annotate, width, height)
         if parts.gizmo:
             self._draw_gizmo(painter, state.camera, width, height)
         if parts.readout:
-            self._draw_hud(painter, state, tool, annotate, armature, width, height)
+            self._draw_hud(painter, state, tool, annotate, armature, width, height, forms)
 
     def draw_caption(self, painter: QPainter, text: str, width: int, height: int) -> None:
         """Burn a line into the bottom of a frame, for an exported clip.
@@ -463,6 +474,68 @@ class ViewportOverlay:
             self._draw_point(painter, point, color, 2.4)
 
     # ------------------------------------------------------------------
+    # Primary forms
+    # ------------------------------------------------------------------
+
+    def _draw_forms(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        tool: FormTool,
+        width: int,
+        height: int,
+    ) -> None:
+        """The landmarks of the primary forms, and the point about to be placed.
+
+        The clay itself is real geometry and the renderer draws it; what
+        goes over the top is the crosses the artist put down, ringed where
+        one is being edited or can be taken hold of, exactly as the armature's
+        are.
+        """
+        settings = state.form_settings
+        camera = state.camera
+        if not settings.show_all:
+            return
+        if settings.show_landmarks:
+            active = tool.grabbed_landmark or tool.hover_landmark
+            for index, form in enumerate(state.forms):
+                if not form.visible:
+                    continue
+                for landmark in form.landmarks:
+                    at = project_visible(camera, landmark.at, width, height)
+                    if at is None:
+                        continue
+                    here = (index, landmark.key)
+                    self._draw_cross(painter, at, _FORM_LANDMARK_COLOR, landmark.mirrored)
+                    if tool.selected_landmark == here:
+                        self._draw_ring(painter, at, _PENDING_COLOR, 9.0)
+                    elif active == here:
+                        self._draw_ring(painter, at, _HANDLE_HOVER, 8.0)
+        if tool.active and tool.hover_point is not None:
+            hover = project_visible(camera, tool.hover_point, width, height)
+            if hover is not None:
+                self._draw_crosshair(painter, hover, _PENDING_COLOR)
+
+    def _forms_hud(self, state: ViewerState, tool: FormTool) -> list[str]:
+        """What the forms tool is waiting for, said in as few lines as it takes."""
+        run = tool.guide
+        if run is None or not 0 <= run.form < len(state.forms):
+            return ["Forms: start a primary form in the Forms panel to place its landmarks"]
+        form = state.forms[run.form]
+        settings = state.form_settings
+        spec = run.spec
+        placed, wanted = tool.progress(form, settings)
+        entry = tool.current(form, settings)
+        if entry is None or spec is None:
+            return [f"{form.name}: every landmark placed ({placed} of {wanted})"]
+        progress = tool.stage_progress(form, settings)
+        stage = ""
+        if progress is not None and len(spec.stages) > 1:
+            index, _, _ = progress
+            stage = f" - {spec.stages[index].name.lower()}"
+        return [f"{form.name}{stage}: landmark {placed + 1} of {wanted}, {entry.title}", entry.hint]
+
+    # ------------------------------------------------------------------
     # Annotations in progress
     # ------------------------------------------------------------------
 
@@ -661,6 +734,7 @@ class ViewportOverlay:
         armature: ArmatureTool | None,
         width: int,
         height: int,
+        forms: FormTool | None = None,
     ) -> None:
         lines = []
         if state.mesh is None:
@@ -685,6 +759,8 @@ class ViewportOverlay:
             lines.append(f"{mode.label}: {action}  (Alt+drag orbits)")
         if armature is not None and armature.active:
             lines.extend(self._armature_hud(state, armature))
+        if forms is not None and forms.active:
+            lines.extend(self._forms_hud(state, forms))
 
         font = QFont(painter.font())
         font.setPointSize(10)

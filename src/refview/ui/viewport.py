@@ -3,17 +3,18 @@
 Navigation is: left-drag orbits about the point under the cursor, right- or
 middle-drag pans, and the wheel zooms towards whatever the cursor is over.
 
-The left button does quintuple duty, resolved in this order: a drag with the
-annotate tool armed paints; a drag on a landmark's cross moves it, and the wire
-derived from it follows; a drag on an unlocked armature node moves it, or
-resizes it with Shift held; a drag on the endpoint handle of an unlocked
-measurement moves that point; anything else orbits.  A cross is offered before
-the node beside it, and within a tighter reach, which is what settles the two
-where a preset has put them on top of each other.  With the measuring or
-armature tool armed a left *click* -- as opposed to a drag -- places a point, so
-those gestures too share the button without fighting the camera.  Holding Alt
-always orbits, which is the escape hatch while painting, and holding Shift snaps
-an orbit to round angles.
+The left button does sextuple duty, resolved in this order: a drag with the
+annotate tool armed paints; a drag on a primary form's landmark moves it, and
+the clay derived from it follows; a drag on an armature landmark's cross moves
+it, and the wire derived from it follows; a drag on an unlocked armature node
+moves it, or resizes it with Shift held; a drag on the endpoint handle of an
+unlocked measurement moves that point; anything else orbits.  A cross is
+offered before the node beside it, and within a tighter reach, which is what
+settles the two where a preset has put them on top of each other.  With the
+measuring, armature or forms tool armed a left *click* -- as opposed to a drag
+-- places a point, so those gestures too share the button without fighting the
+camera.  Holding Alt always orbits, which is the escape hatch while painting,
+and holding Shift snaps an orbit to round angles.
 """
 
 from __future__ import annotations
@@ -31,7 +32,16 @@ from PySide6.QtWidgets import QApplication
 from ..core.annotation import Stroke
 from ..core.armature import ArmatureNode, Buried
 from ..core.commands import AddItem, ReplaceItems, SetAttributes
-from ..core.history import ANNOTATIONS, ARMATURE, MEASUREMENTS
+from ..core.convex import merged
+from ..core.forms import (
+    PrimaryForm,
+    build_form,
+    form_landmark_title,
+    landmark_signature,
+    shown_stages,
+    stages_mesh,
+)
+from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS
 from ..core.landmarks import landmark_title
 from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
@@ -46,6 +56,7 @@ from ..render.stroke_renderer import build_segment_vertices
 from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool
 from .film_recorder import FilmRecorder
+from .form_tool import FormTool
 from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
 from .overlay import ViewportOverlay
@@ -85,6 +96,10 @@ class Viewport(QOpenGLWidget):
     #: A landmark was clicked, as ``(armature, key)``, so the panel's list can
     #: follow the cross the artist just pointed at.
     landmark_selected = Signal(object)
+    #: A finished edit to a primary form, as ``(index, landmarks, text)``.
+    form_edited = Signal(object)
+    #: A form's landmark was clicked, as ``(form, key)``.
+    form_landmark_selected = Signal(object)
     pick_failed = Signal()
 
     def __init__(self, state: ViewerState, parent=None) -> None:
@@ -96,6 +111,7 @@ class Viewport(QOpenGLWidget):
         self.measure_tool = MeasureTool()
         self.annotate_tool = AnnotateTool()
         self.armature_tool = ArmatureTool()
+        self.form_tool = FormTool()
         self._ready = False
         self._press_position: tuple[float, float] | None = None
         self._travel = 0.0
@@ -106,6 +122,13 @@ class Viewport(QOpenGLWidget):
         #: place -- moving one re-derives the whole wire -- so the undo step has
         #: to be able to put the lists back, not one attribute of one object.
         self._landmark_previous: tuple[int, str, dict] | None = None
+        #: A form landmark drag in progress, as ``(form index, key, the
+        #: landmark list before it started)``.
+        self._form_previous: tuple[int, str, list] | None = None
+        #: The solids of each form, kept by the landmarks that built them so
+        #: that scrubbing a form's stages or recolouring the clay does not
+        #: work the hull out again.
+        self._form_solids: dict[int, tuple[tuple, list]] = {}
         #: What was selected before the current press, so that clicking a
         #: second node can join the two.
         self._join_from: tuple[int, int] | None = None
@@ -147,6 +170,7 @@ class Viewport(QOpenGLWidget):
         state.render_changed.connect(self._sync_scene)
         state.armature_changed.connect(self._armature_moved)
         state.mesh_changed.connect(self._armature_moved)
+        state.forms_changed.connect(self._forms_moved)
         for signal in (state.camera_changed, state.measurements_changed):
             signal.connect(self.update)
         state.camera_changed.connect(self._stale_buried)
@@ -164,6 +188,7 @@ class Viewport(QOpenGLWidget):
         self._upload_mesh()
         self._upload_matcap()
         self._upload_strokes()
+        self._upload_forms()
         self._sync_scene()
 
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
@@ -187,6 +212,7 @@ class Viewport(QOpenGLWidget):
             self.height(),
             self.armature_tool,
             self._buried_nodes(),
+            forms=self.form_tool,
         )
         painter.end()
 
@@ -545,6 +571,7 @@ class Viewport(QOpenGLWidget):
             self.armature_tool,
             self._buried_nodes(),
             look.parts,
+            forms=self.form_tool,
         )
         if look.caption:
             self._overlay.draw_caption(painter, look.caption_for(stage), width, height)
@@ -592,6 +619,9 @@ class Viewport(QOpenGLWidget):
     def set_armature_active(self, active: bool) -> None:
         self._arm(self.armature_tool, active)
 
+    def set_form_active(self, active: bool) -> None:
+        self._arm(self.form_tool, active)
+
     def _arm(self, tool, active: bool) -> None:
         """Arm one tool, disarming the rest.
 
@@ -600,7 +630,12 @@ class Viewport(QOpenGLWidget):
         """
         tool.set_active(active)
         if active:
-            for other in (self.measure_tool, self.annotate_tool, self.armature_tool):
+            for other in (
+                self.measure_tool,
+                self.annotate_tool,
+                self.armature_tool,
+                self.form_tool,
+            ):
                 if other is not tool:
                     other.set_active(False)
         self._refresh_cursor()
@@ -611,16 +646,18 @@ class Viewport(QOpenGLWidget):
         self.measure_tool.cancel()
         self.annotate_tool.cancel()
         self.armature_tool.cancel()
+        self.form_tool.cancel()
         self.update()
 
     def _refresh_cursor(self) -> None:
         armed = self.measure_tool.active or self.annotate_tool.active
-        if armed or self.armature_tool.active:
+        if armed or self.armature_tool.active or self.form_tool.active:
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif (
             self.measure_tool.hover_handle
             or self.armature_tool.hover_handle
             or self.armature_tool.hover_landmark
+            or self.form_tool.hover_landmark
         ):
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
@@ -648,7 +685,8 @@ class Viewport(QOpenGLWidget):
                 # thing that can still be corrected without the armature
                 # leaving its preset.
                 claimed = (
-                    self._begin_landmark_drag(x, y)
+                    self._begin_form_landmark_drag(x, y)
+                    or self._begin_landmark_drag(x, y)
                     or self._begin_node_drag(x, y, resize)
                     or self._begin_handle_drag(x, y)
                 )
@@ -670,6 +708,9 @@ class Viewport(QOpenGLWidget):
         position = event.position()
         x, y = position.x(), position.y()
 
+        if self.form_tool.grabbed_landmark is not None:
+            self._move_grabbed_form_landmark(x, y)
+            return
         if self.armature_tool.grabbed_landmark is not None:
             self._move_grabbed_landmark(x, y)
             return
@@ -701,7 +742,9 @@ class Viewport(QOpenGLWidget):
         was_click = self._travel <= self.CLICK_TOLERANCE
         position = event.position()
 
-        if self.armature_tool.grabbed_landmark is not None:
+        if self.form_tool.grabbed_landmark is not None:
+            self._commit_form_landmark_drag(was_click)
+        elif self.armature_tool.grabbed_landmark is not None:
             self._commit_landmark_drag(was_click)
         elif self.armature_tool.grabbed_handle is not None:
             joining = self.armature_tool.active or bool(
@@ -719,6 +762,8 @@ class Viewport(QOpenGLWidget):
                 self._place_measure_point(position.x(), position.y())
             elif was_click and left and self.armature_tool.active:
                 self._place_armature_node(position.x(), position.y())
+            elif was_click and left and self.form_tool.active:
+                self._place_form_landmark(position.x(), position.y())
 
         self._press_position = None
         self._travel = 0.0
@@ -1221,6 +1266,13 @@ class Viewport(QOpenGLWidget):
                 x, y, self._picker(), self._state.armature_settings
             )
             dirty = True
+        if self.form_tool.active:
+            self.form_tool.hover_point = self.form_tool.pick(
+                x, y, self._picker(), self._state.form_settings
+            )
+            dirty = True
+        if self._update_form_hover(x, y):
+            dirty = True
         if self._update_armature_hover(x, y):
             dirty = True
 
@@ -1230,6 +1282,7 @@ class Viewport(QOpenGLWidget):
             if self.annotate_tool.active
             or self.armature_tool.hover_handle is not None
             or self.armature_tool.hover_landmark is not None
+            or self.form_tool.hover_landmark is not None
             else self.measure_tool.handle_at(
                 x, y, self._state.measurements, self._picker(), self._state.measurement_settings
             )
@@ -1249,7 +1302,7 @@ class Viewport(QOpenGLWidget):
         # cursor is what taking hold would actually grab.
         landmark = (
             None
-            if self.annotate_tool.active
+            if self.annotate_tool.active or self.form_tool.hover_landmark is not None
             else tool.landmark_at(x, y, self._state.armatures, picker, settings)
         )
         handle = (
@@ -1273,6 +1326,154 @@ class Viewport(QOpenGLWidget):
             self._refresh_cursor()
         tool.hover_bone = bone
         return changed
+
+    # ------------------------------------------------------------------
+    # Primary forms
+    # ------------------------------------------------------------------
+    #
+    # A form is its landmarks and nothing else, so every edit here is a new
+    # landmark list handed to the panel to record; the clay is worked out
+    # again from the list whenever it changes.
+
+    def _form_index(self) -> int:
+        """Which form an edit lands in, counting a guided run as binding."""
+        run = self.form_tool.guide
+        if run is not None and 0 <= run.form < len(self._state.forms):
+            return run.form
+        chosen = self.form_tool.selected_landmark
+        if chosen is not None and chosen[0] < len(self._state.forms):
+            return chosen[0]
+        return len(self._state.forms) - 1
+
+    def _place_form_landmark(self, x: float, y: float) -> None:
+        """Record the landmark a guided form is asking for."""
+        index = self._form_index()
+        if index < 0 or not self.form_tool.guiding:
+            return
+        form = self._state.forms[index]
+        settings = self._state.form_settings
+        point = self.form_tool.pick(x, y, self._picker(), settings)
+        if point is None:
+            self.pick_failed.emit()
+            return
+        self.form_tool.hover_point = point
+        landmarks = self.form_tool.place(form, point, settings)
+        if landmarks is None:
+            return
+        self.form_edited.emit((index, landmarks, "Place landmark"))
+        self.update()
+
+    def _begin_form_landmark_drag(self, x: float, y: float) -> bool:
+        """Take hold of a form's landmark, to move it or just to say which one it is."""
+        found = self.form_tool.landmark_at(
+            x, y, self._state.forms, self._picker(), self._state.form_settings
+        )
+        if found is None:
+            return False
+        index, key = found
+        form = self._state.forms[index]
+        self._form_previous = (index, key, [replace(entry) for entry in form.landmarks])
+        self.form_tool.grabbed_landmark = found
+        self.form_tool.selected_landmark = found
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        return True
+
+    def _move_grabbed_form_landmark(self, x: float, y: float) -> None:
+        """Apply the drag live, so the clay re-forms under the cursor."""
+        if self._form_previous is None:
+            return
+        index, key, _ = self._form_previous
+        form = self._state.forms[index]
+        landmark = form.landmark_for(key)
+        if landmark is None:
+            return
+        settings = self._state.form_settings
+        point = self.form_tool.drag_target(x, y, self._picker(), settings, landmark.point)
+        form.landmarks = self.form_tool.derive(
+            form, form.with_landmark_at(key, tuple(float(v) for v in point)), settings
+        )
+        self._state.notify_forms()
+
+    def _commit_form_landmark_drag(self, was_click: bool = False) -> None:
+        """Record the finished drag as one step, or read a press as a selection."""
+        found = self.form_tool.grabbed_landmark
+        self.form_tool.grabbed_landmark = None
+        self._refresh_cursor()
+        if self._form_previous is None:
+            return
+        index, key, previous = self._form_previous
+        self._form_previous = None
+        form = self._state.forms[index]
+        before = next((entry for entry in previous if entry.key == key), None)
+        after = form.landmark_for(key)
+        if after is not None and (before is None or before.at != after.at):
+            self._state.do(
+                SetAttributes(
+                    form,
+                    {"landmarks": form.landmarks},
+                    text=f"Move {form_landmark_title(form, key)}",
+                    channel=FORMS,
+                    previous={"landmarks": previous},
+                ),
+                apply=False,
+            )
+            return
+        if was_click and found is not None:
+            self.form_landmark_selected.emit(found)
+        self.update()
+
+    def _update_form_hover(self, x: float, y: float) -> bool:
+        """Track the form landmark under the cursor; True when it changed."""
+        tool = self.form_tool
+        landmark = (
+            None
+            if self.annotate_tool.active
+            else tool.landmark_at(
+                x, y, self._state.forms, self._picker(), self._state.form_settings
+            )
+        )
+        if landmark == tool.hover_landmark:
+            return False
+        tool.hover_landmark = landmark
+        self._refresh_cursor()
+        return True
+
+    def _forms_moved(self) -> None:
+        """A form changed: work its clay out again and redraw."""
+        self._upload_forms()
+        self.update()
+
+    def _form_stages(self, form: PrimaryForm) -> list:
+        """The solids of a form, worked out once per set of landmarks."""
+        symmetric = self._state.form_settings.symmetric
+        signature = (landmark_signature(form), symmetric)
+        held = self._form_solids.get(id(form))
+        if held is None or held[0] != signature:
+            held = (signature, build_form(form, symmetric))
+            self._form_solids[id(form)] = held
+        return held[1]
+
+    def _upload_forms(self) -> None:
+        """Hand the renderer the clay of every visible form, or nothing."""
+        if not self._ready:
+            return
+        settings = self._state.form_settings
+        live = {id(form) for form in self._state.forms}
+        for stale in [key for key in self._form_solids if key not in live]:
+            del self._form_solids[stale]
+        meshes = []
+        if settings.show_all:
+            for form in self._state.forms:
+                if not form.visible:
+                    continue
+                mesh = stages_mesh(
+                    shown_stages(form, self._form_stages(form)), settings.smooth, form.name
+                )
+                if mesh is not None:
+                    meshes.append(mesh)
+        self.makeCurrent()
+        self._renderer.set_forms(merged(meshes) if meshes else None, settings.color)
+        self.doneCurrent()
 
     def _place_measure_point(self, x: float, y: float) -> None:
         point = self.measure_tool.pick(x, y, self._picker(), self._state.measurement_settings)

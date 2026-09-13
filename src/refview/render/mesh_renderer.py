@@ -128,6 +128,11 @@ class SceneRenderer:
         #: of the time, and never anything the model is measured or picked
         #: against -- see :mod:`refview.core.plane_solids`.
         self._sculpt: MeshBuffers | None = None
+        #: The primary forms -- the bucket, the egg, the wedge -- drawn as clay
+        #: alongside the model rather than in place of it.  Nothing is picked
+        #: or measured against them either.
+        self._forms: MeshBuffers | None = None
+        self._forms_color: tuple[float, float, float] = (0.8, 0.6, 0.46)
         self._pedestal: MeshBuffers | None = None
         self._strokes: StrokeBuffers | None = None
         self._contour: StrokeBuffers | None = None
@@ -170,6 +175,7 @@ class SceneRenderer:
         }
         self._buffers = MeshBuffers()
         self._sculpt = MeshBuffers()
+        self._forms = MeshBuffers()
         self._pedestal = MeshBuffers()
         self._strokes = StrokeBuffers()
         self._contour = StrokeBuffers()
@@ -189,6 +195,7 @@ class SceneRenderer:
         for buffers in (
             self._buffers,
             self._sculpt,
+            self._forms,
             self._pedestal,
             self._strokes,
             self._contour,
@@ -237,6 +244,17 @@ class SceneRenderer:
     def set_pedestal(self, mesh: Mesh | None) -> None:
         """Replace the ground disc; pass ``None`` to hide it."""
         self._set_geometry(self._pedestal, mesh)
+
+    def set_forms(self, mesh: Mesh | None, color: tuple[float, float, float]) -> None:
+        """Replace the clay of the primary forms; pass ``None`` to hide it.
+
+        The forms are drawn with the model, not instead of it: they are laid
+        over the reference, and it is the reference that is ghosted when the
+        artist wants to see them inside it.  They throw shadows and take
+        occlusion like anything else standing on the pedestal.
+        """
+        self._forms_color = tuple(float(value) for value in color)
+        self._set_geometry(self._forms, mesh)
 
     @property
     def _model(self) -> MeshBuffers | None:
@@ -586,6 +604,22 @@ class SceneRenderer:
                     program.set_bool("uPlaneShading", False)
                 self._pedestal.draw()
                 program.set_bool("uPlaneShading", shades)
+            if self._forms is not None and not self._forms.is_empty:
+                # Clay, in its own colour: under a matcap the tint is what
+                # carries a colour, elsewhere the diffuse term does.  Drawn
+                # solid before the model so that a ghosted model composites
+                # over it and the forms show through.  Already flats, so the
+                # planes filter has nothing to add to them.
+                program.set_vec3("uDiffuseColor", self._forms_color)
+                program.set_vec3(
+                    "uMatcapTint",
+                    tuple(t * c for t, c in zip(matcap.tint, self._forms_color, strict=True)),
+                )
+                program.set_bool("uPlaneShading", False)
+                program.set_float("uOpacity", 1.0)
+                self._forms.draw()
+                program.set_vec3("uMatcapTint", matcap.tint)
+                program.set_bool("uPlaneShading", shades)
             if model is not None:
                 program.set_vec3("uDiffuseColor", surface.diffuse_color)
                 if ghost_opacity is not None:
@@ -668,7 +702,7 @@ class SceneRenderer:
 
     @property
     def _flat_targets(self) -> tuple[MeshBuffers, ...]:
-        return tuple(b for b in (self._model, self._pedestal) if b is not None)
+        return tuple(b for b in (self._model, self._forms, self._pedestal) if b is not None)
 
     def _draw_contour(
         self,

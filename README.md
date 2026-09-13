@@ -29,7 +29,8 @@ Built with PySide6 and OpenGL 3.3.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
 - A **Ghost** mode with a solidity slider, which draws the model see-through so
   you can read what is inside it: the far side of a form, the cut of a
-  cross-section, or the armature standing in it.  Every surface along the view
+  cross-section, the armature standing in it, or the clay of the primary
+  forms.  Every surface along the view
   is summed rather than sorted, so a limb crossing a torso reads the same from
   any angle instead of coming apart where the form folds over itself.
 - A **Planes** filter that breaks the surface into the flat planes a
@@ -117,11 +118,13 @@ length, and to tell the clay mode where the masses of a figure belong.
 Or let a **guided preset** work the figure out for you. It walks a list of
 anatomical landmarks — the C7 bump, the jugular notch, the two hip points, the
 epicondyles either side of a knee — and never asks for a joint centre, because
-nobody can point at the middle of a femoral head. The hip is placed a quarter
-of the way from the trochanter you *can* feel towards the centre of the pelvis,
-which carries it medial and a little up and back, where it really is. Asking
-for what is visible and inferring the rest is both less to point at and more
-accurate than asking for the guess directly.
+nobody can point at the middle of a femoral head. The hip is placed from the
+two hip points and the two dimples alone: a fixed share of the width between
+the hip points in from each, and a little below and behind it, which is the
+rule gait laboratories use to find the joint from the same markers. Nothing on
+the list is anatomy a pose can hide — the trochanter, which a bent hip
+swallows, is not asked for. Asking for what is visible and inferring the rest
+is both less to point at and more accurate than asking for the guess directly.
 
 Every rule is a ratio of the figure's own measured spans, so one preset fits a
 child and a heroic nude and nothing drifts when the pose changes. The paired
@@ -130,7 +133,7 @@ width of the elbow, so every joint arrives already sized and you are never
 asked for a thickness at all.
 
 Place the midline and one side and the other is reflected across a plane fitted
-through the midline landmarks — nineteen placements instead of thirty-three. A
+through the midline landmarks — eighteen placements instead of thirty-one. A
 mirrored point is drawn hollow, so a guess reads as a guess; correct one and it
 is yours, because the mirror never writes over a point you have taken hold of.
 
@@ -154,6 +157,61 @@ Deleting a landmark takes any guess mirrored from it along with it. An armature
 you have taken over by hand keeps the nodes you made — its landmarks stay an
 editable record of where the anatomy is, and **Rebuild Nodes** is how you hand
 it back to the preset, keeping your names and whatever you locked.
+
+**Forms**
+
+The big simple masses a figure is blocked in with, built in clay over the
+model: the pelvis as a bucket with its front corner chipped off, the ribcage
+as an egg with the thoracic arch chipped out of its front, and the head as a
+wedge that is then given its width, the block of its cranium and its jaw. None
+of those masses can be measured off a model directly, but every one is pinned
+down by anatomy you can find on its surface, so each is a guided walk like the
+armature's.
+
+- Pick a form in the Forms tab, press `Start`, and click the landmarks it asks
+  for — the crests of the hips and the two points at the front of them, the
+  notch at the top of the breastbone and the bottom of it, the widest point of
+  the skull. Nothing on the lists is anatomy a pose or a body can hide: the
+  sitting bones are asked for but not waited for, and the trochanters are not
+  asked for at all. The form is worked out from the points and grows as they
+  go down: the bucket closes over the pelvis as its last point is placed.
+  Place the midline and one side and the other side is mirrored, as it is for
+  the armature.
+- The thoracic arch is chipped out along the costal margins point by point —
+  the corners of the rectus abdominis beside the xiphoid, where its outer edge
+  crosses the ninth rib, the corner at the tenth — so the arch curves in under
+  the ribcage as a real one does, rather than being one flat cut a side. The
+  margin is the bottom ring of the egg itself, so the surface passes through
+  every one of those points before it is chipped along them; and the front
+  corners of the ribcage, where the cartilages turn back from the breastbone,
+  can be placed to flatten the front of the egg to the real ribs.
+- Every form is planes meeting at edges, the head included: the cranium is a
+  block planed out to the bulges of the forehead, the corners of the crown and
+  the mastoids, not a ball. Planes are what a block-in is for.
+- The forms are bone, and bone is symmetric, so by default each is built from
+  its landmarks made exactly symmetric about the median plane — the midline
+  dropped onto it, each pair averaged across it. The landmarks stay where you
+  put them; only the clay is straightened. Switch it off in the panel to build
+  from the points exactly as placed.
+- The head arrives in stages — the wedge, its width, the cranium, the jaw and
+  muzzle, and last the nose, the first of the secondary forms — and the
+  landmarks are asked for a stage at a time. Every stage is
+  kept and a slider scrubs back through them, so what you can look at is not
+  only the finished block-in but the order it was built in.
+- Clay goes on and does not come off. Each stage is laid over the ones before
+  it rather than cut out of them, which is why the head starts as a wedge that
+  is widened rather than a ball that is sliced — and why it is widened above
+  the eyes and below them, and not between: the eye sockets are the gap left
+  between the cranium and the jaw, and nothing is ever laid into them.
+- The landmarks stay editable afterwards, listed in the panel with their
+  positions. Drag a cross in the view or type a number and the clay re-forms
+  under it. Every placement and every move is one undo step.
+- The forms are drawn with the model rather than in place of it, in their own
+  clay colour, and take shadows and occlusion like anything else. Ghost the
+  model — the switch is in the Forms tab as well as the Shading tab — to read
+  the clay standing inside it.
+- A form is its landmarks: a session file carries a dozen points per form, and
+  the solids are worked out again from them whenever they are drawn.
 
 **Cross-section**
 
@@ -606,13 +664,13 @@ src/refview/
   core/      pure Python, no Qt: mesh, the OBJ/STL/glTF loaders, the picking
              index, camera, raycasting, cross-sections, the pedestal,
              measurements, annotations, the armature and its landmark
-             presets, bookmarks, undo commands, settings, session
-             persistence
+             presets, the primary forms and the convex solids they are built
+             from, bookmarks, undo commands, settings, session persistence
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
-  ui/        Qt: viewport widget, navigation, the measuring, annotating and
-             armature tools, the 2D overlay, the observable document, panels
-             and the main window
+  ui/        Qt: viewport widget, navigation, the measuring, annotating,
+             armature and forms tools, the 2D overlay, the observable
+             document, panels and the main window
 tools/       the matcap generator
 tests/       pytest suite for the core layer
 ```
@@ -631,7 +689,7 @@ Three rules keep the pieces apart:
 - **Every document edit is a command.** Four generic commands — set attributes,
   add, remove, replace — cover measurements, annotations, armatures and
   bookmarks alike, so undo needs no new code when a new kind of object turns
-  up. The armature was added without a fifth.
+  up. The armature was added without a fifth, and so were the forms.
 
 Measurements are drawn in screen space with `QPainter` rather than as 3D
 geometry. That gives reliable line thickness and antialiasing on every driver,

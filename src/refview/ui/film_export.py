@@ -172,6 +172,7 @@ class ExportLook:
             measurements=self.measurements,
             tools=False,  # nothing is being drawn while an export runs
             armature=self.armature,
+            forms=self.armature,  # the same helper marks, by the same switch
             gizmo=self.gizmo,
             readout=self.readout,
         )
