@@ -321,3 +321,9 @@ class MeasurePanel(Panel):
             return
         setattr(self.state.measurement_settings, field, value)
         self.state.notify_measurements()
+
+    def shown(self) -> bool | None:
+        return self.state.measurement_settings.show_all
+
+    def set_shown(self, on: bool) -> None:
+        self._show_all.setChecked(bool(on))

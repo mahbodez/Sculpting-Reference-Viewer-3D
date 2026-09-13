@@ -1,11 +1,15 @@
-"""Placing the landmarks of a primary form, led by a preset, and correcting them.
+"""Placing the landmarks of a form, led by a preset or by the artist, and correcting them.
 
 The armature tool's guided walk, with the nodes and bones taken out of it: a
-primary form is nothing but its landmarks, so a click records the landmark
-the panel is asking for and the form is rebuilt from everything placed so far.
-The artist sees the bucket close over the pelvis as the last of its points
-goes down, and the head thicken from a wedge to a block as the paired points
+form is nothing but its landmarks, so a click records the landmark the panel
+is asking for and the form is rebuilt from everything placed so far.  The
+artist sees the bucket close over the pelvis as the last of its points goes
+down, and the head thicken from a wedge to a block as the paired points
 follow the midline ones.
+
+A freeform has no list to walk.  The panel keeps a landmark pending -- the
+name the artist typed and the side they chose -- and each click lays that one
+down and readies the next, on the same side, until the artist says otherwise.
 
 A landmark already placed is grabbable, which is the only way to correct one:
 the form is derived from the landmarks and has no other handle to take.
@@ -24,9 +28,10 @@ import numpy as np
 from ..core.armature import PlacedLandmark
 from ..core.forms import (
     FORM_PRESETS,
-    FormPreset,
+    FREEFORM,
     FormSettings,
     PrimaryForm,
+    form_spec,
     median_plane_ready,
     mirror_form_landmarks,
 )
@@ -39,17 +44,20 @@ FormLandmarkRef = tuple[int, str]
 
 @dataclass
 class FormRun:
-    """A guided primary form part-way through."""
+    """A guided form part-way through."""
 
     preset: str
     #: Which form in the store the run is building into.
     form: int = -1
     #: Landmarks the artist chose to pass over.
     skipped: set[str] = field(default_factory=set)
+    #: Freeform only: the landmark the next click lays down, as the panel
+    #: has named and sided it.
+    pending: Landmark | None = None
 
     @property
-    def spec(self) -> FormPreset | None:
-        return FORM_PRESETS.get(self.preset)
+    def freeform(self) -> bool:
+        return self.preset == FREEFORM
 
 
 class FormTool:
@@ -94,8 +102,8 @@ class FormTool:
     # -- the guided walk -------------------------------------------------
 
     def start_guide(self, preset: str, form: int) -> FormRun | None:
-        """Begin a preset run against a form already in the store."""
-        if preset not in FORM_PRESETS:
+        """Begin a run against a form already in the store."""
+        if preset not in FORM_PRESETS and preset != FREEFORM:
             return None
         self.guide = FormRun(preset=preset, form=form)
         return self.guide
@@ -109,7 +117,7 @@ class FormTool:
         after all rather than never arriving.
         """
         run = self.guide
-        spec = run.spec if run is not None else None
+        spec = form_spec(form) if run is not None else None
         if run is None or spec is None:
             return []
         mirrored = settings.mirror and median_plane_ready(form)
@@ -125,12 +133,26 @@ class FormTool:
         return [entry for entry in self._asked(form, settings) if entry.key not in done]
 
     def current(self, form: PrimaryForm, settings: FormSettings) -> Landmark | None:
-        """The landmark the artist is being asked for right now."""
+        """The landmark the artist is being asked for right now.
+
+        For a freeform, the one the panel has pending: there is no list to
+        work down, only the next point the artist has named.
+        """
+        run = self.guide
+        if run is not None and run.freeform:
+            return run.pending
         remaining = self.remaining(form, settings)
         return remaining[0] if remaining else None
 
     def progress(self, form: PrimaryForm, settings: FormSettings) -> tuple[int, int]:
-        """How many landmarks are placed, out of how many will be asked for."""
+        """How many landmarks are placed, out of how many will be asked for.
+
+        A freeform asks for nothing in advance, so both numbers are simply
+        how many are down.
+        """
+        run = self.guide
+        if run is not None and run.freeform:
+            return (len(form.landmarks), len(form.landmarks))
         wanted = self._asked(form, settings)
         done = {entry.key for entry in form.landmarks}
         return (sum(1 for entry in wanted if entry.key in done), len(wanted))
@@ -143,9 +165,9 @@ class FormTool:
         ``None`` once every landmark is placed.
         """
         run = self.guide
-        spec = run.spec if run is not None else None
+        spec = form_spec(form) if run is not None else None
         entry = self.current(form, settings)
-        if run is None or spec is None or entry is None:
+        if run is None or spec is None or entry is None or run.freeform:
             return None
         stage = spec.stage_of(entry.key)
         done = {held.key for held in form.landmarks}
@@ -165,8 +187,8 @@ class FormTool:
         the form within the same undo step.
         """
         run = self.guide
-        spec = run.spec if run is not None else None
-        if run is None or spec is None:
+        spec = form_spec(form) if run is not None else None
+        if run is None or spec is None or run.freeform:
             return None
         current = self.current(form, settings)
         mirrored = settings.mirror and median_plane_ready(form)
@@ -187,10 +209,31 @@ class FormTool:
 
     # -- picking --------------------------------------------------------
 
+    @staticmethod
+    def free_points(form: PrimaryForm, settings: FormSettings) -> bool:
+        """Whether this form's landmarks go anywhere in space rather than on the skin.
+
+        Only a freeform's ever do: a preset's landmarks are surface anatomy
+        by definition, however the switch is set.
+        """
+        return settings.free_placement and form.freeform
+
     def pick(
-        self, x: float, y: float, picker: SurfacePicker, settings: FormSettings
+        self,
+        x: float,
+        y: float,
+        picker: SurfacePicker,
+        settings: FormSettings,
+        free: bool = False,
     ) -> np.ndarray | None:
-        """Where a click at ``(x, y)`` would put a landmark: on the surface, or nowhere."""
+        """Where a click at ``(x, y)`` would put a landmark: on the surface, or nowhere.
+
+        With ``free`` the point lands on the camera-facing plane through the
+        object centre instead, as the measure tool's free points do, so a
+        landmark can be put inside the model as easily as on it.
+        """
+        if free:
+            return picker.plane_point(x, y, picker.camera.scene_center)
         return picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
 
     def drag_target(
@@ -200,16 +243,20 @@ class FormTool:
         picker: SurfacePicker,
         settings: FormSettings,
         current: np.ndarray,
+        free: bool = False,
     ) -> np.ndarray:
         """Where a grabbed landmark should move to.
 
-        A drag that wanders off the model slides the point across the plane
-        it already sits on, so it never jumps to a surface the artist did not
-        aim at.
+        Free placement -- and a drag that wanders off the model -- slides the
+        point across the plane it already sits on, so it never jumps to a
+        surface the artist did not aim at.
         """
-        point = picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
-        if point is not None:
-            return point
+        if not free:
+            point = picker.point(
+                x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels
+            )
+            if point is not None:
+                return point
         return picker.plane_point(x, y, current)
 
     def landmark_at(
@@ -255,18 +302,30 @@ class FormTool:
             return None
         landmarks = [existing for existing in form.landmarks if existing.key != entry.key]
         landmarks.append(PlacedLandmark(key=entry.key, at=tuple(float(v) for v in point)))
-        return self.derive(form, landmarks, settings)
+        points = form.with_point(entry) if form.freeform else None
+        return self.derive(form, landmarks, settings, points)
 
     def derive(
-        self, form: PrimaryForm, landmarks: list[PlacedLandmark], settings: FormSettings
+        self,
+        form: PrimaryForm,
+        landmarks: list[PlacedLandmark],
+        settings: FormSettings,
+        points: list[Landmark] | None = None,
     ) -> list[PlacedLandmark]:
         """Mirror what is missing, on a copy of the list handed in.
 
         Copied for the reason the armature copies: the mirror moves an
         existing guess in place, and the list is usually built out of the
         document's own entries, which the undo history still points at.
+        ``points`` is the freeform's named landmarks as they will be once
+        this edit lands, when the edit changes them.
         """
-        proxy = PrimaryForm(preset=form.preset, landmarks=[replace(entry) for entry in landmarks])
+        proxy = PrimaryForm(
+            preset=form.preset,
+            landmarks=[replace(entry) for entry in landmarks],
+            points=list(form.points if points is None else points),
+            fill=form.fill,
+        )
         if settings.mirror:
             return mirror_form_landmarks(proxy)
         return proxy.landmarks

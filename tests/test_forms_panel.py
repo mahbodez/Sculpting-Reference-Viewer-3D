@@ -13,7 +13,16 @@ import numpy as np
 import pytest
 
 from refview.core.armature import PlacedLandmark
-from refview.core.forms import HEAD, PrimaryForm, build_form, built_count
+from refview.core.forms import (
+    FREEFORM,
+    HEAD,
+    FormFill,
+    PrimaryForm,
+    build_form,
+    built_count,
+    form_landmark_title,
+)
+from refview.core.landmarks import Side
 from refview.core.mesh import Mesh
 from refview.core.orientation import OrientationSettings, UpAxis
 
@@ -234,3 +243,223 @@ def test_selecting_a_form_row_enables_the_buttons_and_does_not_raise(panel):
     panel._tree.setCurrentItem(panel._tree.topLevelItem(1))
     panel.update_enabled()
     assert panel._delete.isEnabled() and not panel._center.isEnabled()
+
+
+# -- the freeform ---------------------------------------------------------------
+
+
+def _pending(panel: FormsPanel, name: str, side: str | None = None) -> None:
+    """Type a name for the next landmark and, if given, pick its side."""
+    panel._point_name.setText(name)
+    panel._point_name.textEdited.emit(name)
+    if side is not None:
+        panel._point_side.setCurrentIndex(panel._point_side.findData(side))
+
+
+def _click(panel: FormsPanel, at: tuple) -> None:
+    """What the viewport does when a freeform run gets a click."""
+    tool, state = panel._tool, panel.state
+    form = state.forms[tool.guide.form]
+    landmarks = tool.place(form, np.array(at, dtype=np.float64), state.form_settings)
+    panel.apply_edit((tool.guide.form, landmarks, "Place landmark"))
+
+
+def test_a_freeform_is_named_and_started_from_the_panel(panel):
+    _pick(panel, FREEFORM)
+    panel.update_enabled()
+    assert panel._guide_form.isRowVisible(panel._form_name)
+    assert panel._guide_form.isRowVisible(panel._fill)
+    panel._form_name.setText("Left hand")
+    panel._fill.setCurrentIndex(panel._fill.findData(FormFill.SMOOTH.value))
+    panel.start_guide()
+    form = panel.state.forms[0]
+    assert form.name == "Left hand" and form.freeform and form.fill is FormFill.SMOOTH
+    assert panel._tool.guiding and panel._tool.guide.freeform
+    # The run asks for nothing: the panel offers a name and a side instead.
+    assert panel._guide_form.isRowVisible(panel._point_name)
+    assert panel._guide_form.isRowVisible(panel._point_side)
+    assert not panel._guide_form.isRowVisible(panel._prompt)
+    assert not panel._skip.isVisibleTo(panel)
+    assert panel._point_name.text() == "Point 1"
+    assert panel._tool.guide.pending.key == "point_1"
+    assert panel._form_name.text() == ""
+    # A blank name is numbered like the presets'.
+    panel.end_guide()
+    panel.start_guide()
+    assert panel.state.forms[1].name == "Form"
+
+
+def test_each_click_lays_the_pending_landmark_down_and_the_side_carries_over(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    steps = len(panel.state.history._undo)
+    _pending(panel, "Wrist")
+    _click(panel, (20, 80, 0))
+    assert [entry.key for entry in form.points] == ["wrist"]
+    assert form.point_for("wrist").side is Side.CENTRE
+    assert form.landmark_for("wrist").at == (20.0, 80.0, 0.0)
+    # The next one is numbered and readied, on the same side.
+    assert panel._point_name.text() == "Point 2"
+    _pending(panel, "Thumb", Side.LEFT.value)
+    _click(panel, (24, 76, 4))
+    assert form.point_for("thumb.L").side is Side.LEFT
+    # Left stays left until it is changed.
+    assert panel._point_side.currentData() == Side.LEFT.value
+    _click(panel, (16, 70, -1))
+    assert form.points[-1].key == "point_3.L" and form.points[-1].side is Side.LEFT
+    _click(panel, (21, 72, 2))
+    assert built_count(build_form(form)) == 1
+    # One undo step a landmark, and undo takes the point off the list too.
+    assert len(panel.state.history._undo) - steps == 4
+    panel.state.undo()
+    assert len(form.points) == 3 and form.landmark_for("point_4.L") is None
+    panel.state.redo()
+    assert len(form.points) == 4
+    assert panel._tool.progress(form, panel.state.form_settings) == (4, 4)
+
+
+def test_a_freeform_mirrors_a_side_once_the_midline_gives_a_plane(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    for name, at in (("Notch", (0, 148, 6)), ("Xiphoid", (0, 128, 9)), ("C7", (0, 152, -7))):
+        _pending(panel, name)
+        _click(panel, at)
+    _pending(panel, "Nipple", Side.LEFT.value)
+    _click(panel, (10, 135, 8))
+    guess = form.landmark_for("nipple.R")
+    assert guess is not None and guess.mirrored
+    assert np.allclose(guess.point, (-10, 135, 8), atol=1e-6)
+    # The guess is listed under the form, named for its source, and is not
+    # one of the artist's own points.
+    assert form.point_for("nipple.R") is None
+    top = panel._tree.topLevelItem(0)
+    titles = [top.child(i).text(0) for i in range(top.childCount())]
+    assert "Nipple (left)" in titles and "Nipple (right)" in titles
+    # Placing the right by hand makes it the artist's, and a pair.
+    _pending(panel, "Nipple", Side.RIGHT.value)
+    assert panel._tool.guide.pending.key == "nipple.R"
+    _click(panel, (-11, 135, 8))
+    assert form.point_for("nipple.R") is not None
+    assert not form.landmark_for("nipple.R").mirrored
+
+
+def test_back_takes_a_freeform_point_off_with_its_guess(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    for name, at in (("Notch", (0, 148, 6)), ("Xiphoid", (0, 128, 9)), ("C7", (0, 152, -7))):
+        _pending(panel, name)
+        _click(panel, at)
+    _pending(panel, "Nipple", Side.LEFT.value)
+    _click(panel, (10, 135, 8))
+    assert form.landmark_for("nipple.R") is not None
+    panel._back_landmark()
+    assert form.point_for("nipple.L") is None
+    assert form.landmark_for("nipple.L") is None and form.landmark_for("nipple.R") is None
+    assert len(form.points) == 3
+    panel.state.undo()
+    assert form.point_for("nipple.L") is not None and form.landmark_for("nipple.R") is not None
+    # Delete does the same for a chosen row, guess and all.
+    panel.refresh_list()
+    panel.select_landmark((0, "nipple.L"))
+    panel._delete_selected()
+    assert form.point_for("nipple.L") is None and form.landmark_for("nipple.R") is None
+
+
+def test_a_freeform_landmark_can_be_renamed_in_the_list(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    _pending(panel, "Wrist", Side.LEFT.value)
+    _click(panel, (20, 80, 0))
+    panel.end_guide()
+    row = panel._tree.topLevelItem(0).child(0)
+    assert row.text(0) == "Wrist (left)"
+    assert row.flags() & QtCore.Qt.ItemFlag.ItemIsEditable
+    row.setText(0, "Radial styloid (left)")
+    QtCore.QCoreApplication.processEvents()  # the rename commits after the signal
+    assert form.point_for("wrist.L").name == "Radial styloid"
+    assert form_landmark_title(form, "wrist.L") == "Radial styloid (left)"
+    assert panel._tree.topLevelItem(0).child(0).text(0) == "Radial styloid (left)"
+    panel.state.undo()
+    assert form.point_for("wrist.L").name == "Wrist"
+
+
+def test_the_fill_refits_the_focused_freeform_through_the_history(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    assert form.fill is FormFill.FACETED
+    panel._fill.setCurrentIndex(panel._fill.findData(FormFill.SMOOTH.value))
+    assert form.fill is FormFill.SMOOTH
+    panel.state.undo()
+    assert form.fill is FormFill.FACETED
+    panel.end_guide()
+    # Off the run, the picked form is the one the fill speaks for.
+    panel._tree.setCurrentItem(panel._tree.topLevelItem(0))
+    panel.update_enabled()
+    assert panel._guide_form.isRowVisible(panel._fill)
+    assert panel._fill.currentData() == FormFill.FACETED.value
+    panel._fill.setCurrentIndex(panel._fill.findData(FormFill.SMOOTH.value))
+    assert form.fill is FormFill.SMOOTH
+
+
+def test_free_points_write_through_and_a_freeform_reads_them(panel):
+    panel._free.setChecked(True)
+    assert panel.state.form_settings.free_placement is True
+    tool = panel._tool
+    assert tool.free_points(PrimaryForm(preset=FREEFORM), panel.state.form_settings)
+    assert not tool.free_points(PrimaryForm(preset="pelvis"), panel.state.form_settings)
+
+
+def test_the_tab_switch_reads_and_writes_the_forms_visibility(panel):
+    assert panel.shown() is True
+    panel.set_shown(False)
+    assert panel.state.form_settings.show_all is False and panel.shown() is False
+    panel.set_shown(True)
+    assert panel.state.form_settings.show_all is True
+
+
+def test_append_takes_a_finished_freeform_up_again(panel):
+    _pick(panel, FREEFORM)
+    panel.start_guide()
+    form = panel.state.forms[0]
+    _pending(panel, "Wrist", Side.LEFT.value)
+    _click(panel, (20, 80, 0))
+    panel.end_guide()
+    assert not panel._tool.guiding
+    # Nothing selected: nothing to append to.
+    panel._tree.clearSelection()
+    panel.update_enabled()
+    assert not panel._append.isEnabled()
+    panel.append_landmarks()
+    assert not panel._tool.guiding
+    # The form's row, or one of its landmarks, offers the button.
+    armed = []
+    panel.form_toggled.connect(armed.append)
+    panel.select_landmark((0, "wrist.L"))
+    assert panel._append.isEnabled()
+    panel.append_landmarks()
+    assert panel._tool.guiding and panel._tool.guide.form == 0
+    assert armed == [True]
+    assert panel._point_name.text() == "Point 2"
+    assert panel._point_side.currentData() == Side.LEFT.value
+    _click(panel, (24, 76, 4))
+    assert [entry.key for entry in form.points] == ["wrist.L", "point_2.L"]
+    assert len(panel.state.forms) == 1
+    # While a run is on, there is nothing further to append to.
+    assert not panel._append.isEnabled()
+    panel.end_guide()
+
+
+def test_a_preset_cannot_be_appended_to(panel):
+    _pick(panel, "pelvis")
+    panel.start_guide()
+    panel.end_guide()
+    panel._tree.setCurrentItem(panel._tree.topLevelItem(0))
+    panel.update_enabled()
+    assert not panel._append.isEnabled()
+    panel.append_landmarks()
+    assert not panel._tool.guiding

@@ -138,3 +138,9 @@ class AnnotatePanel(Panel):
             return
         setattr(self.state.annotation_settings, field, value)
         self.state.notify_annotations()
+
+    def shown(self) -> bool | None:
+        return self.state.annotation_settings.visible
+
+    def set_shown(self, on: bool) -> None:
+        self._visible.setChecked(bool(on))

@@ -122,6 +122,12 @@ class SectionPanel(Panel):
         with self._suppressed():
             self._enabled.setChecked(self._settings.enabled)
 
+    def shown(self) -> bool | None:
+        return self._settings.enabled
+
+    def set_shown(self, on: bool) -> None:
+        self._enabled.setChecked(bool(on))
+
     def set_plane_from_view(self) -> None:
         """Face the plane along the camera, so the cut squares up with the view."""
         direction = self.state.camera.forward

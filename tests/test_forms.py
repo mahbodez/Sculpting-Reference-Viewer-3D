@@ -1,4 +1,4 @@
-"""The primary forms: convex solids, the landmarks that build them, and the walk."""
+"""The forms: convex solids, the landmarks that build them, the walk, and the freeform."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from refview.core.armature import PlacedLandmark
-from refview.core.convex import DegenerateHullError, Solid, convex_hull, merged
+from refview.core.convex import DegenerateHullError, Solid, convex_hull, merged, rounded_hull
 from refview.core.form_shapes import (
     blend_rings,
     build_head,
@@ -18,9 +18,11 @@ from refview.core.form_shapes import (
 )
 from refview.core.forms import (
     FORM_PRESETS,
+    FREEFORM,
     HEAD,
     PELVIS,
     RIBCAGE,
+    FormFill,
     FormSettings,
     FormStore,
     PrimaryForm,
@@ -28,12 +30,19 @@ from refview.core.forms import (
     built_count,
     form_landmark_title,
     form_mesh,
+    form_spec,
+    freeform_landmark,
+    landmark_key,
+    landmark_signature,
     median_plane_ready,
     mirror_form_landmarks,
+    paired_landmarks,
     shown_stages,
     stages_mesh,
     symmetrised_points,
+    twin_key,
 )
+from refview.core.landmarks import Side
 from refview.core.session import Session
 from refview.ui.form_tool import FormTool
 
@@ -805,3 +814,185 @@ def test_an_older_session_loads_without_forms():
     loaded = Session.from_dict({"version": 5, "armatures": []})
     assert loaded.forms == []
     assert loaded.form_settings == FormSettings()
+
+
+# -- the rounded hull ----------------------------------------------------------
+
+
+def test_a_rounded_hull_bows_out_between_its_points_and_keeps_them():
+    cube = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], dtype=np.float64)
+    flat = Solid.from_points(cube)
+    rounded = Solid.rounded(cube)
+    # Still convex and closed, and bigger: the faces swell outward.
+    assert _closed(rounded)
+    assert rounded.volume() > flat.volume() * 1.3
+    assert rounded.contains([0.5, 0.5, 1.05]) and not flat.contains([0.5, 0.5, 1.05])
+    # Every original corner is still a corner of the clay.
+    for corner in cube:
+        assert any(np.allclose(corner, vertex) for vertex in rounded.vertices)
+    # And nothing has gone inward: the flat hull sits inside the rounded one.
+    for vertex in flat.vertices:
+        assert rounded.contains(vertex, slack=1e-9)
+
+
+def test_a_rounded_hull_refuses_what_a_flat_one_refuses():
+    with pytest.raises(DegenerateHullError):
+        rounded_hull([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
+
+
+# -- the freeform --------------------------------------------------------------
+
+#: A left hand's worth of points: enough to hold a volume, none on a midline.
+HAND = {
+    "wrist": (20.0, 80.0, 0.0),
+    "thumb": (24.0, 76.0, 4.0),
+    "little": (16.0, 70.0, -1.0),
+    "knuckle": (21.0, 72.0, 2.0),
+    "palm": (20.0, 75.0, -3.0),
+}
+
+
+def _freeform(points: dict[str, tuple], side: Side = Side.CENTRE, **kwargs) -> PrimaryForm:
+    form = PrimaryForm(name="Hand", preset=FREEFORM, **kwargs)
+    for name, at in points.items():
+        entry = freeform_landmark(name, side, (held.key for held in form.points))
+        form.points = form.with_point(entry)
+        form.landmarks.append(PlacedLandmark(key=entry.key, at=at))
+    return form
+
+
+def test_freeform_landmarks_are_keyed_by_name_and_side_and_never_collide():
+    assert landmark_key("Nipple", Side.LEFT) == ("nipple.L", "Nipple")
+    assert landmark_key("Top of the crest", Side.CENTRE) == ("top_of_the_crest", "Top of the crest")
+    assert landmark_key("", Side.RIGHT) == ("point.R", "Point")
+    # The same name on the same side is numbered, in the key and the name.
+    assert landmark_key("Nipple", Side.LEFT, ["nipple.L"]) == ("nipple_2.L", "Nipple 2")
+    assert landmark_key("Nipple", Side.LEFT, ["nipple.L", "nipple_2.L"]) == (
+        "nipple_3.L",
+        "Nipple 3",
+    )
+    # The other side is not a collision: it is the pair.
+    assert landmark_key("Nipple", Side.RIGHT, ["nipple.L"]) == ("nipple.R", "Nipple")
+    assert twin_key("nipple.L") == "nipple.R" and twin_key("nipple.R") == "nipple.L"
+    assert twin_key("sternum") == ""
+
+
+def test_a_freeform_is_its_own_recipe_and_pairs_its_sides():
+    left = freeform_landmark("Nipple", Side.LEFT)
+    centre = freeform_landmark("Sternum", Side.CENTRE)
+    spec = form_spec(PrimaryForm(preset=FREEFORM, points=[centre, left]))
+    assert spec is not None and spec.key == FREEFORM and len(spec.stages) == 1
+    keys = [(entry.key, entry.mirror_of) for entry in spec.landmarks]
+    # The left is followed by a right for the mirror to guess at.
+    assert keys == [("sternum", ""), ("nipple.L", ""), ("nipple.R", "nipple.L")]
+    guess = spec.landmark("nipple.R")
+    assert guess.side is Side.RIGHT and guess.name == "Nipple" and guess.title == "Nipple (right)"
+    # Placed on both sides by hand, they are a pair and the right mirrors the left.
+    right = freeform_landmark("Nipple", Side.RIGHT, ["nipple.L"])
+    paired = paired_landmarks([left, right])
+    assert [(entry.key, entry.mirror_of) for entry in paired] == [
+        ("nipple.L", ""),
+        ("nipple.R", "nipple.L"),
+    ]
+    # Placed on the right first, the left is the guess.
+    paired = paired_landmarks([right])
+    assert [(entry.key, entry.mirror_of) for entry in paired] == [
+        ("nipple.R", ""),
+        ("nipple.L", "nipple.R"),
+    ]
+
+
+def test_a_freeform_builds_the_hull_of_its_points_once_they_hold_a_volume():
+    form = _freeform(HAND)
+    stages = build_form(form)
+    assert built_count(stages) == 1
+    hull = stages[0][0]
+    for at in HAND.values():
+        assert hull.contains(at, slack=1e-9)
+    assert form_mesh(form, smooth=40.0) is not None
+    # Fewer points, or flat ones, are not a form yet -- and not an error.
+    flat = _freeform({"a": (0, 0, 0), "b": (1, 0, 0), "c": (0, 1, 0), "d": (1, 1, 0)})
+    assert built_count(build_form(flat)) == 0
+    few = _freeform({"a": (0, 0, 0), "b": (1, 0, 0), "c": (0, 1, 0)})
+    assert built_count(build_form(few)) == 0 and form_mesh(few, smooth=40.0) is None
+
+
+def test_a_freeform_can_be_smooth_and_the_fill_is_part_of_its_signature():
+    faceted = _freeform(HAND, fill=FormFill.FACETED)
+    smooth = _freeform(HAND, fill=FormFill.SMOOTH)
+    assert build_form(smooth)[0][0].volume() > build_form(faceted)[0][0].volume()
+    assert landmark_signature(faceted) != landmark_signature(smooth)
+    # Which side a point is on is part of it too: it decides what is paired.
+    assert landmark_signature(_freeform(HAND)) != landmark_signature(_freeform(HAND, Side.LEFT))
+
+
+def test_a_freeform_with_no_pair_is_left_alone_by_the_symmetric_build():
+    # A hand marked "centre" throughout is a hand, not a slab: nothing is
+    # dropped onto a plane.
+    form = _freeform(HAND)
+    straight = symmetrised_points(form)
+    for key, at in form.placed_points().items():
+        assert np.allclose(straight[key], at)
+    assert built_count(build_form(form, symmetric=True)) == 1
+
+
+def test_a_freeform_with_pairs_is_mirrored_and_symmetrised_like_a_preset():
+    # A midline of three points opened out into a plane, and one side of a chest.
+    form = _freeform({"Notch": (0, 148, 6), "Xiphoid": (0, 128, 9), "C7": (0, 152, -7)})
+    assert median_plane_ready(form)
+    for name, at in (("Nipple", (10.0, 135.0, 8.0)), ("Widest rib", (15.0, 130.0, 0.0))):
+        entry = freeform_landmark(name, Side.LEFT, (held.key for held in form.points))
+        form.points = form.with_point(entry)
+        form.landmarks.append(PlacedLandmark(key=entry.key, at=at))
+    form.landmarks = mirror_form_landmarks(form)
+    guess = form.landmark_for("nipple.R")
+    assert guess is not None and guess.mirrored
+    assert np.allclose(guess.point, (-10.0, 135.0, 8.0), atol=1e-6)
+    assert form_landmark_title(form, "nipple.R") == "Nipple (right)"
+    # Knock the left out of true and the symmetric build averages the pair.
+    form.landmarks = form.with_landmark_at("nipple.L", (12.0, 135.0, 8.0))
+    straight = symmetrised_points(form)
+    assert straight["nipple.L"][0] == pytest.approx(11.0, abs=1e-6)
+    assert straight["nipple.R"][0] == pytest.approx(-11.0, abs=1e-6)
+    assert built_count(build_form(form, symmetric=True)) == 1
+
+
+def test_the_freeform_walk_lays_down_whatever_is_pending():
+    settings = FormSettings(mirror=False)
+    tool = FormTool()
+    form = PrimaryForm(name="Knee", preset=FREEFORM)
+    run = tool.start_guide(FREEFORM, 0)
+    assert run is not None and run.freeform
+    # Nothing pending, nothing placed.
+    assert tool.current(form, settings) is None
+    assert tool.place(form, np.zeros(3), settings) is None
+    run.pending = freeform_landmark("Patella", Side.LEFT)
+    assert tool.current(form, settings) is run.pending
+    landmarks = tool.place(form, np.array([5.0, 50.0, 8.0]), settings)
+    assert [entry.key for entry in landmarks] == ["patella.L"]
+    form.landmarks = landmarks
+    form.points = form.with_point(run.pending)
+    assert tool.progress(form, settings) == (1, 1)
+    assert tool.stage_progress(form, settings) is None
+    assert tool.back(form, settings) is None  # the panel takes a freeform's points back
+    # Free points are a freeform's alone.
+    assert tool.free_points(form, FormSettings(free_placement=True))
+    assert not tool.free_points(PrimaryForm(preset="pelvis"), FormSettings(free_placement=True))
+    assert not tool.free_points(form, FormSettings(free_placement=False))
+
+
+def test_a_freeform_survives_a_session_round_trip(tmp_path):
+    form = _freeform(HAND, Side.LEFT, fill=FormFill.SMOOTH)
+    form.points = form.with_point_named("thumb.L", "Thumb tip")
+    session = Session(forms=[form, PrimaryForm(name="Pelvis", preset="pelvis")])
+    loaded = Session.load(session.save(tmp_path / "hand.refview.json"))
+    back = loaded.forms[0]
+    assert back.preset == FREEFORM and back.freeform
+    assert back.fill is FormFill.SMOOTH
+    assert [entry.key for entry in back.points] == [entry.key for entry in form.points]
+    assert back.point_for("thumb.L").name == "Thumb tip"
+    assert back.point_for("thumb.L").side is Side.LEFT
+    assert built_count(build_form(back)) == 1
+    # A preset carries the new fields at their defaults.
+    pelvis = loaded.forms[1]
+    assert not pelvis.freeform and pelvis.points == [] and pelvis.fill is FormFill.FACETED

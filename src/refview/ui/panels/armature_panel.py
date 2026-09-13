@@ -1037,3 +1037,9 @@ class ArmaturePanel(Panel):
             return
         setattr(self.state.armature_settings, field, value)
         self.state.notify_armature()
+
+    def shown(self) -> bool | None:
+        return self.state.armature_settings.show_all
+
+    def set_shown(self, on: bool) -> None:
+        self._show_all.setChecked(bool(on))

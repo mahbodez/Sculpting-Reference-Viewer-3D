@@ -29,8 +29,8 @@ Built with PySide6 and OpenGL 3.3.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
 - A **Ghost** mode with a solidity slider, which draws the model see-through so
   you can read what is inside it: the far side of a form, the cut of a
-  cross-section, the armature standing in it, or the clay of the primary
-  forms.  Every surface along the view
+  cross-section, the armature standing in it, or the clay of the forms.
+  Every surface along the view
   is summed rather than sorted, so a limb crossing a torso reads the same from
   any angle instead of coming apart where the form folds over itself.
 - A **Planes** filter that breaks the surface into the flat planes a
@@ -160,13 +160,43 @@ it back to the preset, keeping your names and whatever you locked.
 
 **Forms**
 
-The big simple masses a figure is blocked in with, built in clay over the
-model: the pelvis as a bucket with its front corner chipped off, the ribcage
-as an egg with the thoracic arch chipped out of its front, and the head as a
-wedge that is then given its width, the block of its cranium and its jaw. None
-of those masses can be measured off a model directly, but every one is pinned
-down by anatomy you can find on its surface, so each is a guided walk like the
-armature's.
+The simple masses a figure is blocked in with, built in clay over the model.
+Three come as presets: the pelvis as a bucket with its front corner chipped
+off, the ribcage as an egg with the thoracic arch chipped out of its front,
+and the head as a wedge that is then given its width, the block of its
+cranium and its jaw. None of those masses can be measured off a model
+directly, but every one is pinned down by anatomy you can find on its
+surface, so each is a guided walk like the armature's. The rest of the figure
+-- and the presets are only special cases of this -- is a **freeform**: put
+down whatever landmarks you choose, name them as you go, and the form is the
+hull of them.
+
+- Pick `Freeform` in the Forms tab, give it a name if you like, and press
+  `Start`. Type a name for the next landmark, say whether it is on the
+  midline or the left or the right, and click; the side carries over from
+  one landmark to the next until you change it, and the names are numbered
+  for you if you do not type any. A hand, a knee, a breast, a nose, a
+  clavicle, a scapula, a muscle, the fat over a hip: any of them is a few
+  points and a hull. The clay appears once four points span a volume and
+  re-forms as each further point goes down.
+- The fill is yours: **Faceted** is the convex hull of the points as it
+  comes, planes meeting at edges, which is right for bone; **Smooth** bows
+  each face of that hull out into a cubic patch between the points, for
+  muscle and fat. Either way the clay passes through every landmark, and the
+  fill can be changed after the fact.
+- A freeform's landmarks can go inside the model as well as on it: tick
+  `Free points` in the Placement group and they land on the plane facing the
+  camera, as the measure tool's do -- for a mass the skin only hints at.
+  The presets ignore the switch, since their landmarks are anatomy on the
+  skin.
+- A left or right landmark is mirrored to the other side once enough of the
+  midline is down to fit a plane through, exactly as a preset's are; place
+  both sides by hand and they are a pair, which the symmetric build
+  averages. A freeform with no pair at all is left as placed, so a hand
+  marked "centre" throughout stays a hand rather than being pressed flat
+  onto a plane. Landmarks can be renamed in the list, and `Back` takes the
+  last one off again. A finished freeform is never closed for good: select
+  it in the list and press `Append` to take it up again and add landmarks.
 
 - Pick a form in the Forms tab, press `Start`, and click the landmarks it asks
   for — the crests of the hips and the two points at the front of them, the
@@ -664,8 +694,8 @@ src/refview/
   core/      pure Python, no Qt: mesh, the OBJ/STL/glTF loaders, the picking
              index, camera, raycasting, cross-sections, the pedestal,
              measurements, annotations, the armature and its landmark
-             presets, the primary forms and the convex solids they are built
-             from, bookmarks, undo commands, settings, session persistence
+             presets, the forms and the convex solids they are built from,
+             bookmarks, undo commands, settings, session persistence
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
   ui/        Qt: viewport widget, navigation, the measuring, annotating,

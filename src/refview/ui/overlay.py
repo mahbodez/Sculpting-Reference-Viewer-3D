@@ -25,6 +25,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, 
 from ..core.annotation import AnnotateMode, Stroke
 from ..core.armature import Armature, ArmatureSettings, BoneLabels
 from ..core.camera import Camera
+from ..core.forms import form_spec
 from ..core.measurement import Measurement, MeasurementSettings
 from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool, Handle
@@ -42,7 +43,7 @@ _HANDLE_OUTLINE = QColor(12, 13, 16, 220)
 _HANDLE_HOVER = QColor(255, 255, 255)
 _ERASER_COLOR = QColor(255, 120, 120)
 _LANDMARK_COLOR = QColor(255, 196, 92)
-#: A primary form's landmark, told apart from the armature's by colour: the
+#: A form's landmark, told apart from the armature's by colour: the
 #: two kinds can sit on the same bump, and which preset a cross feeds should
 #: be readable at a glance.
 _FORM_LANDMARK_COLOR = QColor(126, 220, 196)
@@ -73,7 +74,7 @@ class OverlayParts:
     tools: bool = True
     #: The wire standing inside the form, its nodes and its landmarks.
     armature: bool = True
-    #: The landmarks the primary forms were built from.  The clay itself is
+    #: The landmarks the forms were built from.  The clay itself is
     #: geometry and is drawn by the renderer whatever this says.
     forms: bool = True
     #: The axis cross in the corner.
@@ -474,7 +475,7 @@ class ViewportOverlay:
             self._draw_point(painter, point, color, 2.4)
 
     # ------------------------------------------------------------------
-    # Primary forms
+    # Forms
     # ------------------------------------------------------------------
 
     def _draw_forms(
@@ -485,7 +486,7 @@ class ViewportOverlay:
         width: int,
         height: int,
     ) -> None:
-        """The landmarks of the primary forms, and the point about to be placed.
+        """The landmarks of the forms, and the point about to be placed.
 
         The clay itself is real geometry and the renderer draws it; what
         goes over the top is the crosses the artist put down, ringed where
@@ -520,12 +521,19 @@ class ViewportOverlay:
         """What the forms tool is waiting for, said in as few lines as it takes."""
         run = tool.guide
         if run is None or not 0 <= run.form < len(state.forms):
-            return ["Forms: start a primary form in the Forms panel to place its landmarks"]
+            return ["Forms: start a form in the Forms panel to place its landmarks"]
         form = state.forms[run.form]
         settings = state.form_settings
-        spec = run.spec
+        spec = form_spec(form)
         placed, wanted = tool.progress(form, settings)
         entry = tool.current(form, settings)
+        if run.freeform:
+            if entry is None:
+                return [f"{form.name}: {placed} landmarks placed"]
+            return [
+                f"{form.name}: {placed} placed, next {entry.title}",
+                "Click to place it; name it and pick its side in the Forms panel",
+            ]
         if entry is None or spec is None:
             return [f"{form.name}: every landmark placed ({placed} of {wanted})"]
         progress = tool.stage_progress(form, settings)

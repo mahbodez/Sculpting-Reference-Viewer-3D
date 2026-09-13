@@ -794,6 +794,12 @@ class PlanesPanel(Panel):
         self.state.notify_render()
         self.update_enabled()
 
+    def shown(self) -> bool | None:
+        return self.state.render.planes.enabled
+
+    def set_shown(self, on: bool) -> None:
+        self._enabled.setChecked(bool(on))
+
     # -- the armature the clay is built on -------------------------------
 
     def _chosen_armature(self):

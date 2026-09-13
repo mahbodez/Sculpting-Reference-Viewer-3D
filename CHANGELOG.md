@@ -4,6 +4,50 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [1.12.0]
+
+### Added
+
+- **Freeform forms.** The Forms tab now offers `Freeform` beside the pelvis,
+  the ribcage and the head, and those three turn out to be special cases of
+  it: put down whatever landmarks you choose, name them as you go, and the
+  form is the convex hull of them. A hand, a knee, a breast, a nose, a
+  clavicle, a scapula, a muscle, the fat over a hip -- any of them is a few
+  points and a hull. Each landmark is placed as centre, left or right, and
+  the side carries over from one to the next until you change it; the names
+  are numbered for you if you do not type any, and can be changed in the
+  list afterwards. The fill is yours: **Faceted** is the hull as it comes,
+  planes meeting at edges, for bone; **Smooth** bows each face of that hull
+  out into a cubic patch between the points -- a point-normal triangle,
+  tangent at each corner to the surface there -- and hulls the result, for
+  muscle and fat. Either way the clay passes through every landmark. A left
+  or right landmark is mirrored across the median plane as a preset's is
+  once enough of the midline is down; placed on both sides by hand, the two
+  are a pair and the symmetric build averages them. A freeform with no pair
+  at all is left as placed rather than pressed onto a plane. `Back` takes
+  the last landmark off again, and every placement, rename and refit is one
+  undo step. A finished freeform can be taken up again: select it in the
+  list and press `Append` to add landmarks to it.
+
+- **Free points for freeforms.** A `Free points` switch in the Placement
+  group puts a freeform's landmarks anywhere in space -- inside the model,
+  for a mass the skin only hints at -- on the plane facing the camera, as the
+  measure tool's free points go. The presets ignore it: their landmarks are
+  anatomy on the skin.
+
+- **A switch on every tab that draws something.** The Planes, Section,
+  Measure, Annotate, Armature and Forms tabs each carry a checkbox in the tab
+  itself that shows or hides what that tab puts on the model, so the clay,
+  the cut, the measurements, the strokes, the wire and the forms can be taken
+  off the model without opening the tab. It is the same switch as the one in
+  each panel's Display group, and the two always agree.
+
+### Changed
+
+- The Forms panel's `Primary forms` group is now `Build`, and the menu's
+  `Start Primary Form` is `Start Form`: with the freeform in it, the panel
+  builds every form of the figure, primary or not.
+
 ## [1.11.0]
 
 ### Added

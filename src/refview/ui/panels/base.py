@@ -42,6 +42,19 @@ class Panel(QWidget):
     def refresh(self) -> None:
         """Pull current values out of the state and into the widgets."""
 
+    def shown(self) -> bool | None:
+        """Whether what this panel draws is on screen, or ``None`` if it draws nothing.
+
+        The switch on the panel's tab reads this and writes :meth:`set_shown`,
+        so the forms, the armature, the measurements can be shown or hidden
+        without opening the tab.  A panel that only sets things -- the camera,
+        the matcap -- leaves it at ``None`` and gets no switch.
+        """
+        return None
+
+    def set_shown(self, on: bool) -> None:
+        """Show or hide what this panel draws; see :meth:`shown`."""
+
     # -- helpers --------------------------------------------------------
 
     @property

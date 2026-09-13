@@ -4,7 +4,7 @@ Navigation is: left-drag orbits about the point under the cursor, right- or
 middle-drag pans, and the wheel zooms towards whatever the cursor is over.
 
 The left button does sextuple duty, resolved in this order: a drag with the
-annotate tool armed paints; a drag on a primary form's landmark moves it, and
+annotate tool armed paints; a drag on a form's landmark moves it, and
 the clay derived from it follows; a drag on an armature landmark's cross moves
 it, and the wire derived from it follows; a drag on an unlocked armature node
 moves it, or resizes it with Shift held; a drag on the endpoint handle of an
@@ -96,7 +96,7 @@ class Viewport(QOpenGLWidget):
     #: A landmark was clicked, as ``(armature, key)``, so the panel's list can
     #: follow the cross the artist just pointed at.
     landmark_selected = Signal(object)
-    #: A finished edit to a primary form, as ``(index, landmarks, text)``.
+    #: A finished edit to a form, as ``(index, landmarks, text)``.
     form_edited = Signal(object)
     #: A form's landmark was clicked, as ``(form, key)``.
     form_landmark_selected = Signal(object)
@@ -1328,7 +1328,7 @@ class Viewport(QOpenGLWidget):
         return changed
 
     # ------------------------------------------------------------------
-    # Primary forms
+    # Forms
     # ------------------------------------------------------------------
     #
     # A form is its landmarks and nothing else, so every edit here is a new
@@ -1352,7 +1352,8 @@ class Viewport(QOpenGLWidget):
             return
         form = self._state.forms[index]
         settings = self._state.form_settings
-        point = self.form_tool.pick(x, y, self._picker(), settings)
+        free = self.form_tool.free_points(form, settings)
+        point = self.form_tool.pick(x, y, self._picker(), settings, free)
         if point is None:
             self.pick_failed.emit()
             return
@@ -1388,7 +1389,8 @@ class Viewport(QOpenGLWidget):
         if landmark is None:
             return
         settings = self._state.form_settings
-        point = self.form_tool.drag_target(x, y, self._picker(), settings, landmark.point)
+        free = self.form_tool.free_points(form, settings)
+        point = self.form_tool.drag_target(x, y, self._picker(), settings, landmark.point, free)
         form.landmarks = self.form_tool.derive(
             form, form.with_landmark_at(key, tuple(float(v) for v in point)), settings
         )

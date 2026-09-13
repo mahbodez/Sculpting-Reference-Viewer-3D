@@ -1,13 +1,22 @@
-"""Primary forms: the big simple masses a figure is blocked in with.
+"""Forms: the simple masses a figure is blocked in with, worked out from landmarks.
 
-A primary form is not a mesh the artist has to keep; it is a set of surface
-landmarks and a rule.  The pelvis is the bucket the hip points, the crests,
-the sitting bones and the pubic symphysis describe; the ribcage is the egg the
-breastbone, the spine and the widest ribs describe; the head is a wedge the
-profile describes, and then whatever the paired landmarks add to it.  The
-document holds the landmarks, and the form is worked out from them whenever
-it is drawn -- so a landmark nudged is a form re-formed, and a session file
-carries a dozen points rather than a dozen thousand triangles.
+A form is not a mesh the artist has to keep; it is a set of landmarks and a
+rule.  The pelvis is the bucket the hip points, the crests, the sitting bones
+and the pubic symphysis describe; the ribcage is the egg the breastbone, the
+spine and the widest ribs describe; the head is a wedge the profile
+describes, and then whatever the paired landmarks add to it.  The document
+holds the landmarks, and the form is worked out from them whenever it is
+drawn -- so a landmark nudged is a form re-formed, and a session file carries
+a dozen points rather than a dozen thousand triangles.
+
+Those three are presets: the landmarks are named in advance and the rule is
+particular to the mass.  They are special cases of the general one, the
+freeform, whose landmarks the artist names as they go and whose rule is the
+convex hull of the points -- planes meeting at edges for bone, or bowed out
+between the points for muscle and fat.  A ribcage, a skull, a hand, a knee,
+a breast, a nose, a clavicle, a scapula, a muscle: any of them is a few
+points and a hull, and the freeform is how the ones without a preset are
+blocked in.
 
 The forms are bone, and bone is symmetric to within less than a click's
 error, so by default every form is worked out from its landmarks made
@@ -32,13 +41,16 @@ records where the artist put each one.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
+from enum import Enum
+from functools import partial
 
 import numpy as np
 
 from .armature import PlacedLandmark
-from .convex import Solid, merged
+from .convex import DegenerateHullError, Solid, merged
 from .form_shapes import build_head, build_pelvis, build_ribcage
 from .landmarks import Landmark, Side, median_plane, mirror_point
 from .mesh import Mesh, auto_smooth
@@ -67,7 +79,7 @@ class FormStage:
 
 @dataclass(frozen=True)
 class FormPreset:
-    """A primary form: its stages, in order, and the rule that builds them."""
+    """A form's recipe: its stages, in order, and the rule that builds them."""
 
     key: str
     name: str
@@ -427,8 +439,153 @@ HEAD = FormPreset(
     builder=build_head,
 )
 
-#: Every primary form the Forms panel offers, in the order it lists them.
+#: Every preset form the Forms panel offers, in the order it lists them.  The
+#: freeform, :data:`FREEFORM`, is offered after them and is not a preset: its
+#: landmarks are the form's own, so its recipe is made per form by
+#: :func:`freeform_preset`.
 FORM_PRESETS: dict[str, FormPreset] = {preset.key: preset for preset in (PELVIS, RIBCAGE, HEAD)}
+
+
+# ----------------------------------------------------------------------
+# The freeform
+# ----------------------------------------------------------------------
+
+#: The :attr:`PrimaryForm.preset` of a form the artist lays out point by point.
+FREEFORM = "freeform"
+FREEFORM_NAME = "Freeform"
+
+FREEFORM_DESCRIPTION = (
+    "The convex hull of whatever landmarks are down: as flat planes meeting "
+    "at edges, or bowed out between the points."
+)
+
+
+class FormFill(str, Enum):
+    """How a freeform's clay is fitted to its landmarks."""
+
+    #: The convex hull of the points as it comes: planes meeting at edges.
+    FACETED = "faceted"
+    #: Each face of that hull bowed out into a cubic patch tangent to the
+    #: surface at its corners, and the patches hulled again.  The points are
+    #: still on the clay; the clay swells between them.
+    SMOOTH = "smooth"
+
+    @property
+    def label(self) -> str:
+        return {FormFill.FACETED: "Faceted (planes)", FormFill.SMOOTH: "Smooth (cubic)"}[self]
+
+
+_SIDE_SUFFIX = {Side.CENTRE: "", Side.LEFT: ".L", Side.RIGHT: ".R"}
+
+
+def side_of_key(key: str) -> Side:
+    """The side a landmark key ends in."""
+    if key.endswith(".L"):
+        return Side.LEFT
+    if key.endswith(".R"):
+        return Side.RIGHT
+    return Side.CENTRE
+
+
+def twin_key(key: str) -> str:
+    """The key of the landmark across the midline from this one; empty on the midline."""
+    side = side_of_key(key)
+    if side is Side.CENTRE:
+        return ""
+    other = Side.RIGHT if side is Side.LEFT else Side.LEFT
+    return key[:-2] + _SIDE_SUFFIX[other]
+
+
+def landmark_key(name: str, side: Side, taken: Iterable[str] = ()) -> tuple[str, str]:
+    """A key for a freshly named landmark, and the name it will go by.
+
+    The key is the name in lower case with the side on the end, the way the
+    presets' are, so that ``nipple.L`` and ``nipple.R`` are a pair whichever
+    was placed first.  A name already in use on that side is numbered, in
+    the key and in the name both, so two landmarks never share a row.
+    """
+    shown = name.strip() or "Point"
+    slug = re.sub(r"[^a-z0-9]+", "_", shown.lower()).strip("_") or "point"
+    suffix = _SIDE_SUFFIX[side]
+    held = set(taken)
+    key = f"{slug}{suffix}"
+    number = 2
+    while key in held:
+        key = f"{slug}_{number}{suffix}"
+        shown = f"{name.strip() or 'Point'} {number}"
+        number += 1
+    return key, shown
+
+
+def freeform_landmark(name: str, side: Side, taken: Iterable[str] = ()) -> Landmark:
+    """A landmark the artist has just named, keyed so it does not collide."""
+    key, shown = landmark_key(name, side, taken)
+    return Landmark(key=key, name=shown, hint="", side=side, required=False)
+
+
+def paired_landmarks(points: Sequence[Landmark]) -> tuple[Landmark, ...]:
+    """A freeform's landmarks with each side's twin worked in.
+
+    A point placed on the left is followed by a right one that mirrors it,
+    for the mirror to guess at, unless the artist has placed that one too --
+    then the two are a pair and the right is marked as the left's mirror,
+    which is what lets the symmetric build average them, while the mirror
+    itself never touches a point the artist placed.
+    """
+    keys = {entry.key for entry in points}
+    out: list[Landmark] = []
+    for entry in points:
+        twin = twin_key(entry.key)
+        if entry.side is Side.RIGHT and twin in keys:
+            out.append(replace(entry, mirror_of=twin))
+            continue
+        out.append(replace(entry, mirror_of=""))
+        if twin and twin not in keys:
+            out.append(
+                Landmark(
+                    key=twin,
+                    name=entry.name,
+                    hint=entry.hint,
+                    side=side_of_key(twin),
+                    required=False,
+                    mirror_of=entry.key,
+                )
+            )
+    return tuple(out)
+
+
+def build_freeform(placed: dict[str, np.ndarray], fill: FormFill) -> list[list[Solid]]:
+    """The hull of every landmark that is down, as the freeform's one stage.
+
+    Nothing until four points span a volume: a flat set of landmarks is not a
+    form yet, and drawing a sliver for it would be worse than drawing nothing.
+    """
+    cloud = [np.asarray(point, dtype=np.float64) for point in placed.values()]
+    if len(cloud) < 4:
+        return [[]]
+    try:
+        if fill is FormFill.SMOOTH:
+            return [[Solid.rounded(cloud)]]
+        return [[Solid.from_points(cloud)]]
+    except DegenerateHullError:
+        return [[]]
+
+
+def freeform_preset(points: Sequence[Landmark], fill: FormFill) -> FormPreset:
+    """The recipe a freeform is its own: its named landmarks, and the hull."""
+    return FormPreset(
+        key=FREEFORM,
+        name=FREEFORM_NAME,
+        stages=(
+            FormStage(
+                key="hull",
+                name="The hull",
+                description=FREEFORM_DESCRIPTION,
+                landmarks=paired_landmarks(points),
+            ),
+        ),
+        builder=partial(build_freeform, fill=fill),
+    )
 
 
 # ----------------------------------------------------------------------
@@ -438,7 +595,7 @@ FORM_PRESETS: dict[str, FormPreset] = {preset.key: preset for preset in (PELVIS,
 
 @dataclass
 class PrimaryForm:
-    """One primary form in the document: which preset, and where its landmarks are.
+    """One form in the document: which recipe, and where its landmarks are.
 
     The solids are never stored.  They are worked out from the landmarks by
     :func:`build_form` whenever the form is drawn, which is what keeps a
@@ -446,7 +603,7 @@ class PrimaryForm:
     """
 
     name: str = "Form"
-    #: Key into :data:`FORM_PRESETS`.
+    #: Key into :data:`FORM_PRESETS`, or :data:`FREEFORM`.
     preset: str = ""
     landmarks: list[PlacedLandmark] = field(default_factory=list)
     #: Which stage of the making is shown, counting from zero.  Negative shows
@@ -454,12 +611,42 @@ class PrimaryForm:
     #: placed wants: it grows as the landmarks go down.
     stage: int = -1
     visible: bool = True
+    #: A freeform's own landmarks, in the order they were placed: what the
+    #: artist called each and which side it is on.  Empty for a preset, whose
+    #: landmarks are named in advance.
+    points: list[Landmark] = field(default_factory=list)
+    #: How a freeform's clay is fitted to its points.
+    fill: FormFill = FormFill.FACETED
+
+    @property
+    def freeform(self) -> bool:
+        return self.preset == FREEFORM
 
     def landmark_for(self, key: str) -> PlacedLandmark | None:
         for landmark in self.landmarks:
             if landmark.key == key:
                 return landmark
         return None
+
+    def point_for(self, key: str) -> Landmark | None:
+        """The freeform landmark the artist named with this key, if any."""
+        for entry in self.points:
+            if entry.key == key:
+                return entry
+        return None
+
+    def with_point(self, entry: Landmark) -> list[Landmark]:
+        """The named landmarks with one more, or the same one re-described."""
+        if self.point_for(entry.key) is None:
+            return [*self.points, entry]
+        return [entry if held.key == entry.key else held for held in self.points]
+
+    def with_point_named(self, key: str, name: str) -> list[Landmark]:
+        return [replace(held, name=name) if held.key == key else held for held in self.points]
+
+    def without_points(self, *keys: str) -> list[Landmark]:
+        dropped = set(keys)
+        return [held for held in self.points if held.key not in dropped]
 
     def placed_points(self) -> dict[str, np.ndarray]:
         """The landmarks as a mapping a builder can read."""
@@ -506,10 +693,15 @@ class FormSettings:
     snap_to_vertex: bool = False
     #: Pixel radius within which a click snaps to the nearest triangle corner.
     snap_pixels: float = 12.0
+    #: Place and drag a freeform's landmarks anywhere in space rather than on
+    #: the surface -- inside the model, for a mass the skin only hints at, or
+    #: off it.  The presets ignore this: their landmarks are anatomy on the
+    #: skin by definition.
+    free_placement: bool = False
 
 
 class FormStore:
-    """An ordered, named collection of primary forms, like the other stores."""
+    """An ordered, named collection of forms, like the other stores."""
 
     def __init__(self, items: list[PrimaryForm] | None = None) -> None:
         self._items: list[PrimaryForm] = list(items or [])
@@ -533,9 +725,15 @@ class FormStore:
         return form
 
     def next_name(self, preset: str) -> str:
-        """A name for a new form of this preset, numbered past any it already has."""
+        """A name for a new form of this recipe, numbered past any it already has.
+
+        A form the artist renamed -- a freeform called "Left hand" -- does
+        not count: the numbers are for the ones still going by the default.
+        """
         base = FORM_PRESETS[preset].name if preset in FORM_PRESETS else "Form"
-        taken = sum(1 for form in self._items if form.preset == preset)
+        taken = sum(
+            1 for form in self._items if form.preset == preset and form.name.startswith(base)
+        )
         return base if taken == 0 else f"{base} {taken + 1}"
 
     def clear(self) -> None:
@@ -547,9 +745,16 @@ class FormStore:
 # ----------------------------------------------------------------------
 
 
+def form_spec(form: PrimaryForm) -> FormPreset | None:
+    """The recipe a form is built by: its preset, or a freeform's own."""
+    if form.preset == FREEFORM:
+        return freeform_preset(form.points, form.fill)
+    return FORM_PRESETS.get(form.preset)
+
+
 def form_landmark_title(form: PrimaryForm, key: str) -> str:
     """What to call a landmark in a list or an undo step."""
-    preset = FORM_PRESETS.get(form.preset)
+    preset = form_spec(form)
     entry = preset.landmark(key) if preset is not None else None
     return entry.title if entry is not None else key
 
@@ -562,7 +767,7 @@ def mirror_form_landmarks(form: PrimaryForm) -> list[PlacedLandmark]:
     rewritten.  Without a median plane -- too few midline points down yet --
     nothing is guessed.
     """
-    preset = FORM_PRESETS.get(form.preset)
+    preset = form_spec(form)
     if preset is None:
         return list(form.landmarks)
     existing = {entry.key: entry for entry in form.landmarks}
@@ -590,7 +795,7 @@ def mirror_form_landmarks(form: PrimaryForm) -> list[PlacedLandmark]:
 
 def median_plane_ready(form: PrimaryForm) -> bool:
     """Whether enough of the midline is down for the mirror to have a plane."""
-    preset = FORM_PRESETS.get(form.preset)
+    preset = form_spec(form)
     if preset is None:
         return False
     placed = form.placed_points()
@@ -605,10 +810,17 @@ def symmetrised_points(form: PrimaryForm) -> dict[str, np.ndarray]:
     one that is down, reflected, when only one is.  Without a plane nothing
     can be said and the points come back as they are.  Only the builder sees
     these; the landmarks the artist placed are not moved.
+
+    A freeform without a single paired landmark is left alone too.  Its
+    points are on the midline only by default, not by anatomy -- a hand laid
+    out as "centre" throughout is a hand, not a slab -- and there is nothing
+    to make it symmetric about.
     """
-    preset = FORM_PRESETS.get(form.preset)
+    preset = form_spec(form)
     placed = form.placed_points()
     if preset is None:
+        return placed
+    if form.freeform and not any(entry.mirror_of for entry in preset.landmarks):
         return placed
     plane = median_plane([placed[key] for key in preset.centre_keys() if key in placed])
     if plane is None:
@@ -647,7 +859,7 @@ def build_form(form: PrimaryForm, symmetric: bool = False) -> list[list[Solid]]:
     nothing to lay it over yet.  ``symmetric`` builds from the landmarks
     straightened by :func:`symmetrised_points`.
     """
-    preset = FORM_PRESETS.get(form.preset)
+    preset = form_spec(form)
     if preset is None:
         return []
     return preset.build(symmetrised_points(form) if symmetric else form.placed_points())
@@ -673,8 +885,17 @@ def shown_stages(form: PrimaryForm, stages: list[list[Solid]]) -> list[list[Soli
 
 
 def landmark_signature(form: PrimaryForm) -> tuple:
-    """What a cache compares to know the landmarks have not moved."""
-    return (form.preset, tuple((entry.key, entry.at) for entry in form.landmarks))
+    """What a cache compares to know the landmarks have not moved.
+
+    A freeform's recipe is part of it: which side each point is on decides
+    what is paired, and the fill decides the clay.
+    """
+    return (
+        form.preset,
+        form.fill,
+        tuple((entry.key, entry.side) for entry in form.points),
+        tuple((entry.key, entry.at) for entry in form.landmarks),
+    )
 
 
 def stages_mesh(stages: list[list[Solid]], smooth: float, name: str = "form") -> Mesh | None:

@@ -7,10 +7,12 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QTabBar,
     QTabWidget,
 )
 
@@ -29,6 +31,7 @@ from ..wakelock import WakeLock
 from .film_export import ExportVideoDialog
 from .panels.annotate_panel import AnnotatePanel
 from .panels.armature_panel import ArmaturePanel
+from .panels.base import Panel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.forms_panel import FormsPanel
 from .panels.matcap_panel import MatcapPanel
@@ -88,14 +91,24 @@ CONTROLS_TEXT = """
 <tr><td><b>Double-click a row</b></td><td>Rename a node or an armature</td></tr>
 <tr><td><b>Esc</b></td><td>Drop the chain without disarming the tool</td></tr>
 </table>
-<h3>Primary forms</h3>
+<h3>Forms</h3>
 <table cellpadding='3'>
 <tr><td><b>G</b></td><td>Arm the forms tool</td></tr>
-<tr><td><b>Forms panel</b></td><td>Pick a form -- pelvis, ribcage, head -- and press Start</td></tr>
-<tr><td><b>Left click</b></td><td>Place the landmark being asked for</td></tr>
+<tr><td><b>Forms panel</b></td><td>Pick a form -- pelvis, ribcage, head, or a freeform --
+and press Start</td></tr>
+<tr><td><b>Left click</b></td><td>Place the landmark being asked for, or the one you named</td></tr>
+<tr><td><b>Landmark / Side</b></td><td>Name a freeform's next landmark and say which side
+it is on</td></tr>
+<tr><td><b>Fill</b></td><td>A freeform's clay as flat planes, or bowed out between the
+points</td></tr>
+<tr><td><b>Free points</b></td><td>Put a freeform's landmarks inside the model, or off it</td></tr>
 <tr><td><b>Left drag a landmark</b></td><td>Move it; the clay follows</td></tr>
+<tr><td><b>Double-click a row</b></td><td>Rename a form, or a freeform's landmark</td></tr>
+<tr><td><b>Append</b></td><td>Take up the selected freeform again and add landmarks to it</td></tr>
 <tr><td><b>Stage slider</b></td><td>Scrub back through the stages of a head</td></tr>
 <tr><td><b>Symmetrical forms</b></td><td>Build the clay from the landmarks made symmetric</td></tr>
+<tr><td><b>Tab checkbox</b></td><td>Show or hide what a tab puts on the model, from the tab
+itself</td></tr>
 </table>
 <h3>Cross-section</h3>
 <table cellpadding='3'>
@@ -119,7 +132,7 @@ the bottom or a slice</td></tr>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+Z</b> / <b>Ctrl+Shift+Z</b></td><td>Undo / redo</td></tr>
 </table>
-<p>Undo covers measurements, annotations, the armature, the primary forms and
+<p>Undo covers measurements, annotations, the armature, the forms and
 saved views.
 Camera moves are not recorded, so a hundred orbits never bury the edit you
 wanted back.</p>
@@ -238,6 +251,8 @@ class MainWindow(QMainWindow):
         # laptop screen.  The matcap panel is the exception: it manages its own
         # scrolling so that its gallery can take the space the artist drags it.
         tabs.addTab(self._matcap_panel, "Matcap")
+        #: The switch on each tab that draws something, with the panel it speaks for.
+        self._tab_switches: list[tuple[QCheckBox, Panel]] = []
         for panel, title in (
             (self._model_panel, "Model"),
             (self._shading_panel, "Shading"),
@@ -249,7 +264,9 @@ class MainWindow(QMainWindow):
             (self._forms_panel, "Forms"),
             (self._camera_panel, "Camera"),
         ):
-            tabs.addTab(scrollable(panel), title)
+            index = tabs.addTab(scrollable(panel), title)
+            if panel.shown() is not None:
+                self._add_tab_switch(tabs, index, title, panel)
 
         dock = QDockWidget("Controls", self)
         dock.setObjectName("controls_dock")
@@ -260,6 +277,28 @@ class MainWindow(QMainWindow):
         dock.setMinimumWidth(_DOCK_MIN_WIDTH)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._dock = dock
+
+    def _add_tab_switch(self, tabs: QTabWidget, index: int, title: str, panel: Panel) -> None:
+        """A checkbox on the tab that shows or hides what the panel draws.
+
+        The same switch the panel keeps in its Display group, brought out to
+        where it can be reached without opening the tab: the planes, the cut,
+        the measurements, the annotations, the armature and the forms can each
+        be taken off the model from the row of tabs.
+        """
+        switch = QCheckBox()
+        switch.setToolTip(f"Show or hide what the {title} tab puts on the model")
+        switch.setChecked(bool(panel.shown()))
+        switch.toggled.connect(panel.set_shown)
+        tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.LeftSide, switch)
+        self._tab_switches.append((switch, panel))
+
+    def _sync_tab_switches(self) -> None:
+        """Keep every tab's switch agreeing with the panel it speaks for."""
+        for switch, panel in self._tab_switches:
+            switch.blockSignals(True)
+            switch.setChecked(bool(panel.shown()))
+            switch.blockSignals(False)
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -327,7 +366,8 @@ class MainWindow(QMainWindow):
             forms_menu, "F&orms Tool  (G)", self._toggle_forms, checkable=True
         )
         forms_menu.addSeparator()
-        self._menu_action(forms_menu, "&Start Primary Form", self._forms_panel.start_guide)
+        self._menu_action(forms_menu, "&Start Form", self._forms_panel.start_guide)
+        self._menu_action(forms_menu, "&Append Landmarks", self._forms_panel.append_landmarks)
         self._menu_action(forms_menu, "&Finish Form", self._forms_panel.end_guide)
         forms_menu.addSeparator()
         self._menu_action(forms_menu, "Clear &All", self._forms_panel.clear_all)
@@ -426,6 +466,14 @@ class MainWindow(QMainWindow):
         self._state.history_changed.connect(self._update_history_actions)
         self._state.render_changed.connect(self._sync_section_action)
         self._state.mesh_changed.connect(self._model_panel.refresh)
+        for signal in (
+            self._state.render_changed,
+            self._state.measurements_changed,
+            self._state.annotations_changed,
+            self._state.armature_changed,
+            self._state.forms_changed,
+        ):
+            signal.connect(self._sync_tab_switches)
 
         self._viewport.measurement_created.connect(self._on_measurement_created)
         self._viewport.pick_failed.connect(

@@ -11,7 +11,9 @@ front of the ribcage, is two cut pieces of one egg laid over each other.
 
 So this is deliberately small.  A hull, built one point at a time; a cut,
 which is the hull of what survives the plane plus where the edges crossed it;
-a test for whether a point is inside; and a flat-shaded mesh.  Nothing here
+a test for whether a point is inside; a flat-shaded mesh; and a rounded hull,
+which bows each face of the flat one out into a cubic patch and hulls the
+result, for the forms that are muscle and fat rather than bone.  Nothing here
 knows what a pelvis is.
 
 The hull is the plain incremental algorithm: each point in turn is either
@@ -37,6 +39,12 @@ _ABOVE_SHARE = 1e-7
 
 #: Fewer points than this cannot enclose a volume.
 _MIN_POINTS = 4
+
+#: How many spans each edge of a hull face is split into when the hull is
+#: rounded: four gives fifteen samples a face, enough that the bow between
+#: two landmarks turns in steps of well under ten degrees and reads as a
+#: curve once the facets are smoothed.
+ROUND_SAMPLES = 4
 
 
 class DegenerateHullError(ValueError):
@@ -131,6 +139,84 @@ def convex_hull(points) -> tuple[np.ndarray, np.ndarray]:
     return cloud, face[area > 0.0]
 
 
+def vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """The outward unit normal at each vertex: the area-weighted mean of its faces'.
+
+    A vertex no face references -- a point that ended up inside the hull --
+    gets a zero normal, which is the honest answer.
+    """
+    corners = vertices[faces]
+    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    out = np.zeros_like(vertices, dtype=np.float64)
+    for corner in range(3):
+        np.add.at(out, faces[:, corner], normals)
+    return out / np.maximum(np.linalg.norm(out, axis=1), 1e-300)[:, None]
+
+
+def _patch_samples(samples: int) -> np.ndarray:
+    """The barycentric ``(w, u, v)`` of an even grid over a triangle."""
+    grid = [
+        (i / samples, j / samples, (samples - i - j) / samples)
+        for i in range(samples + 1)
+        for j in range(samples + 1 - i)
+    ]
+    return np.asarray(grid, dtype=np.float64)
+
+
+def rounded_hull(points, samples: int = ROUND_SAMPLES) -> tuple[np.ndarray, np.ndarray]:
+    """The hull of the points with every face bowed out into a cubic patch.
+
+    A flat hull is planes meeting at edges, which is right for bone and wrong
+    for a muscle or a breast.  So each face of it is replaced by a curved
+    triangle -- Vlachos's point-normal triangle: the cubic Bezier patch that
+    passes through the face's three corners and lies tangent at each to the
+    surface's normal there, the normal being the mean of the faces that meet
+    at the corner.  The patches are sampled and the samples hulled again, so
+    the result is still convex and still passes through every corner of the
+    flat hull: the landmarks stay on the clay, and the clay swells between
+    them instead of running straight.
+
+    Raises :class:`DegenerateHullError` as :func:`convex_hull` does.
+    """
+    vertices, faces = convex_hull(points)
+    normals = vertex_normals(vertices, faces)
+    corner = vertices[faces]  # (faces, 3, 3)
+    normal = normals[faces]
+
+    def toward(a: int, b: int) -> np.ndarray:
+        """The control point a third of the way from ``a`` to ``b``, in ``a``'s tangent plane."""
+        step = corner[:, b] - corner[:, a]
+        lean = np.einsum("ij,ij->i", step, normal[:, a])[:, None] * normal[:, a]
+        return (2.0 * corner[:, a] + corner[:, b] - lean) / 3.0
+
+    b300, b030, b003 = corner[:, 0], corner[:, 1], corner[:, 2]
+    b210, b120 = toward(0, 1), toward(1, 0)
+    b021, b012 = toward(1, 2), toward(2, 1)
+    b102, b201 = toward(2, 0), toward(0, 2)
+    edge_mean = (b210 + b120 + b021 + b012 + b102 + b201) / 6.0
+    b111 = edge_mean + (edge_mean - (b300 + b030 + b003) / 3.0) * 0.5
+
+    w, u, v = _patch_samples(samples).T
+    basis = np.stack(
+        [
+            w**3,
+            u**3,
+            v**3,
+            3.0 * w * w * u,
+            3.0 * w * u * u,
+            3.0 * u * u * v,
+            3.0 * u * v * v,
+            3.0 * w * v * v,
+            3.0 * w * w * v,
+            6.0 * w * u * v,
+        ],
+        axis=1,
+    )
+    control = np.stack([b300, b030, b003, b210, b120, b021, b012, b102, b201, b111], axis=1)
+    patched = np.einsum("sc,fcd->fsd", basis, control).reshape(-1, 3)
+    return convex_hull(np.concatenate([vertices, patched]))
+
+
 @dataclass(frozen=True)
 class Solid:
     """One convex piece of a form: its hull vertices and outward-wound faces."""
@@ -141,6 +227,12 @@ class Solid:
     @classmethod
     def from_points(cls, points) -> Solid:
         vertices, faces = convex_hull(points)
+        return cls(vertices, faces)
+
+    @classmethod
+    def rounded(cls, points, samples: int = ROUND_SAMPLES) -> Solid:
+        """The hull of the points with its faces bowed out; see :func:`rounded_hull`."""
+        vertices, faces = rounded_hull(points, samples)
         return cls(vertices, faces)
 
     @property

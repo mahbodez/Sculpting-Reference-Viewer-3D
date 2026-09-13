@@ -1,4 +1,4 @@
-"""The primary forms: the guided presets that build them, their stages, and the clay."""
+"""The forms: the presets and the freeform that build them, their stages, and the clay."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSlider,
     QTreeWidget,
@@ -18,8 +19,18 @@ from PySide6.QtWidgets import (
 
 from ...core.armature import PlacedLandmark
 from ...core.commands import AddItem, RemoveItem, ReplaceItems, SetAttributes
-from ...core.forms import FORM_PRESETS, PrimaryForm, form_landmark_title
+from ...core.forms import (
+    FORM_PRESETS,
+    FREEFORM,
+    FREEFORM_NAME,
+    FormFill,
+    PrimaryForm,
+    form_landmark_title,
+    form_spec,
+    freeform_landmark,
+)
 from ...core.history import FORMS
+from ...core.landmarks import Landmark, Side
 from ..widgets import ColorButton, PointEdit, SliderSpin, form_group
 from .base import Panel
 
@@ -29,17 +40,50 @@ _NAME_COLUMN = 0
 _MARK_COLUMN = 1
 
 _TOGGLE_TIP = (
-    "Build the big simple masses of a figure in clay, over the model.\n"
-    "Pick a primary form, press Start, and point at the landmarks it asks for;\n"
-    "the form is worked out from them and grows as they go down.  Left drag on\n"
-    "a landmark moves it and the clay follows.  Alt+drag still orbits."
+    "Build the simple masses of a figure in clay, over the model.\n"
+    "Pick a form, press Start, and point at the landmarks it asks for -- or,\n"
+    "for a freeform, at whatever landmarks you choose; the form is worked out\n"
+    "from them and grows as they go down.  Left drag on a landmark moves it\n"
+    "and the clay follows.  Alt+drag still orbits."
 )
 
 _PRESET_TIP = (
-    "Which primary form to build.\n"
+    "Which form to build.\n"
     "The pelvis is a bucket with its front corner chipped off, the ribcage an\n"
     "egg with the arch chipped out of its front, and the head a wedge that is\n"
-    "given its width, its cranium and its jaw in turn."
+    "given its width, its cranium and its jaw in turn.  A freeform is the hull\n"
+    "of any landmarks you care to put down, named as you go: a hand, a knee, a\n"
+    "breast, a scapula, a muscle -- the presets are special cases of it."
+)
+
+_FORM_NAME_TIP = "What to call the freeform.  Leave it blank for a numbered one."
+
+_FILL_TIP = (
+    "How a freeform's clay is fitted to its landmarks.\n"
+    "Faceted is the convex hull of the points as it comes, planes meeting at\n"
+    "edges, which is right for bone.  Smooth bows each face of that hull out\n"
+    "into a cubic patch between the points, for muscle and fat.  Either way\n"
+    "the clay passes through every landmark."
+)
+
+_POINT_NAME_TIP = (
+    "What to call the landmark the next click lays down.  A name already used\n"
+    "on that side is numbered.  Landmarks can be renamed in the list below."
+)
+
+_SIDE_TIP = (
+    "Which side of the figure the next landmark is on.  It stays as set from\n"
+    "one landmark to the next until you change it.  A left or right landmark\n"
+    "is mirrored to the other side when the mirror is on and enough of the\n"
+    "midline is down to fit a plane through; a landmark placed on both sides\n"
+    "by hand is a pair, and the symmetric build averages the two."
+)
+
+_FREE_TIP = (
+    "Place and drag a freeform's landmarks anywhere in space rather than on\n"
+    "the model -- inside it, for a mass the skin only hints at.  They land on\n"
+    "the plane facing the camera through the object centre.  The presets\n"
+    "ignore this: their landmarks are anatomy on the skin."
 )
 
 _MIRROR_TIP = (
@@ -121,12 +165,20 @@ class FormsPanel(Panel):
         self._connect()
 
     def _build_guide(self) -> None:
-        box, form = form_group("Primary forms")
+        box, form = form_group("Build")
         self._guide_form = form
         self._preset = QComboBox()
         for preset in FORM_PRESETS.values():
             self._preset.addItem(preset.name, preset.key)
+        self._preset.addItem(FREEFORM_NAME, FREEFORM)
         self._preset.setToolTip(_PRESET_TIP)
+        self._form_name = QLineEdit()
+        self._form_name.setPlaceholderText("Form")
+        self._form_name.setToolTip(_FORM_NAME_TIP)
+        self._fill = QComboBox()
+        for fill in FormFill:
+            self._fill.addItem(fill.label, fill.value)
+        self._fill.setToolTip(_FILL_TIP)
         self._mirror = QCheckBox("Mirror paired landmarks")
         self._mirror.setToolTip(_MIRROR_TIP)
         self._symmetric = QCheckBox("Symmetrical forms")
@@ -138,6 +190,15 @@ class FormsPanel(Panel):
         self._finish = QPushButton("Finish")
         self._running = _row(self._skip, self._back, self._finish)
 
+        # A freeform run asks for nothing; these say what the next click
+        # lays down.
+        self._point_name = QLineEdit()
+        self._point_name.setToolTip(_POINT_NAME_TIP)
+        self._point_side = QComboBox()
+        for side, label in ((Side.CENTRE, "Centre"), (Side.LEFT, "Left"), (Side.RIGHT, "Right")):
+            self._point_side.addItem(label, side.value)
+        self._point_side.setToolTip(_SIDE_TIP)
+
         self._prompt = QLabel()
         self._prompt.setWordWrap(True)
         self._progress = QLabel()
@@ -145,10 +206,14 @@ class FormsPanel(Panel):
         self._progress.setStyleSheet("color: #8f939b;")
 
         form.addRow("Form", self._preset)
+        form.addRow("Name", self._form_name)
+        form.addRow("Fill", self._fill)
         form.addRow("", self._mirror)
         form.addRow("", self._symmetric)
         form.addRow("", self._start)
         form.addRow("", self._running)
+        form.addRow("Landmark", self._point_name)
+        form.addRow("Side", self._point_side)
         form.addRow("", self._prompt)
         form.addRow("", self._progress)
         self._add(box)
@@ -190,8 +255,15 @@ class FormsPanel(Panel):
             "Take the selected landmark back off the model, along with any guess\n"
             "mirrored from it -- or delete the whole form when its row is selected."
         )
+        self._append = QPushButton("Append Landmarks")
+        self._append.setToolTip(
+            "Take up the selected freeform again and add landmarks to it: the\n"
+            "next click lays down whatever is named above, as when it was started.\n"
+            "A preset's landmarks are fixed, so only a freeform can be appended to."
+        )
         self._center = QPushButton("Centre View")
         self._clear = QPushButton("Clear All")
+        self._add(self._append)
         self._add(_row(self._delete, self._center, self._clear))
 
         box, form = form_group("Selected landmark")
@@ -204,7 +276,10 @@ class FormsPanel(Panel):
     def _build_placement(self) -> None:
         box, form = form_group("Placement")
         self._snap = QCheckBox("Snap to nearest vertex")
+        self._free = QCheckBox("Free points (ignore the surface)")
+        self._free.setToolTip(_FREE_TIP)
         form.addRow("", self._snap)
+        form.addRow("", self._free)
         self._add(box)
 
     def _build_display(self) -> None:
@@ -227,16 +302,22 @@ class FormsPanel(Panel):
         self._skip.clicked.connect(self._skip_landmark)
         self._back.clicked.connect(self._back_landmark)
         self._finish.clicked.connect(self.end_guide)
+        self._preset.currentIndexChanged.connect(lambda _: self.update_enabled())
+        self._fill.currentIndexChanged.connect(self._on_fill)
+        self._point_name.textEdited.connect(lambda _: self._set_pending())
+        self._point_side.currentIndexChanged.connect(lambda _: self._set_pending())
         self._mirror.toggled.connect(lambda v: self._apply("mirror", v))
         self._symmetric.toggled.connect(lambda v: self._apply("symmetric", v))
         self._stage.valueChanged.connect(self._scrub)
 
+        self._append.clicked.connect(self.append_landmarks)
         self._delete.clicked.connect(self._delete_selected)
         self._center.clicked.connect(self._center_selected)
         self._clear.clicked.connect(self.clear_all)
         self._landmark_point.valueChanged.connect(self._move_landmark)
 
         self._snap.toggled.connect(lambda v: self._apply("snap_to_vertex", v))
+        self._free.toggled.connect(lambda v: self._apply("free_placement", v))
         self._show_all.toggled.connect(lambda v: self._apply("show_all", v))
         self._show_landmarks.toggled.connect(lambda v: self._apply("show_landmarks", v))
         self._ghost.toggled.connect(self._set_ghost)
@@ -264,15 +345,23 @@ class FormsPanel(Panel):
     # -- the guided walk -------------------------------------------------
 
     def start_guide(self) -> None:
-        """Begin a preset run against a fresh form."""
+        """Begin a run against a fresh form: a preset's walk, or a freeform's."""
         if self._tool is None:
             return
         preset = self._preset.currentData() or ""
-        if preset not in FORM_PRESETS:
+        if preset not in FORM_PRESETS and preset != FREEFORM:
             return
-        form = PrimaryForm(name=self.state.forms.next_name(preset), preset=preset)
+        if preset == FREEFORM:
+            name = self._form_name.text().strip() or self.state.forms.next_name(preset)
+            form = PrimaryForm(name=name, preset=preset, fill=self._fill_choice())
+        else:
+            form = PrimaryForm(name=self.state.forms.next_name(preset), preset=preset)
         self.state.do(AddItem(self.state.forms.items, form, text=f"Add {form.name}", channel=FORMS))
         self._tool.start_guide(preset, len(self.state.forms) - 1)
+        if preset == FREEFORM:
+            with self._suppressed():
+                self._form_name.clear()
+            self._advance_pending(form)
         self.form_toggled.emit(True)
         self.state.notify_forms()
 
@@ -281,6 +370,33 @@ class FormsPanel(Panel):
             return
         self._tool.end_guide()
         self.state.notify_forms()
+
+    def append_landmarks(self) -> None:
+        """Take up the selected freeform again, so more landmarks can go on it.
+
+        The same run Start begins, against a form already in the store: the
+        panel names the next landmark and each click lays it down.  A preset
+        has nothing to append -- its landmarks are named in advance -- so
+        the button only answers for a freeform.
+        """
+        found = self._appendable_form()
+        if found is None or self._tool is None:
+            return
+        index, form = found
+        self._tool.start_guide(FREEFORM, index)
+        self._advance_pending(form)
+        self.form_toggled.emit(True)
+        self.state.notify_forms()
+
+    def _appendable_form(self) -> tuple[int, PrimaryForm] | None:
+        """The freeform the highlighted row belongs to, when no run is on."""
+        if self._tool is None or self._tool.guiding:
+            return None
+        found = self._row_data()
+        if found is None:
+            return None
+        form = self.state.forms[found[0]]
+        return (found[0], form) if form.freeform else None
 
     def _skip_landmark(self) -> None:
         form = self._guided_form()
@@ -294,6 +410,9 @@ class FormsPanel(Panel):
         form = self._guided_form()
         if self._tool is None or form is None:
             return
+        if form.freeform:
+            self._back_point(form)
+            return
         settings = self.state.form_settings
         key = self._tool.back(form, settings)
         if key is None:
@@ -306,28 +425,123 @@ class FormsPanel(Panel):
             )
         )
 
+    def _back_point(self, form: PrimaryForm) -> None:
+        """Take back the last landmark a freeform was given, guess and all."""
+        if not form.points:
+            self.state.notify_forms()
+            return
+        last = form.points[-1]
+        points = form.without_points(last.key)
+        landmarks = self._tool.derive(
+            form,
+            form.without_landmarks(last.key, *self._guesses_from(form, last.key)),
+            self.state.form_settings,
+            points,
+        )
+        self.state.do(
+            SetAttributes(
+                form,
+                {"landmarks": landmarks, "points": points},
+                text=f"Take back {last.title}",
+                channel=FORMS,
+            )
+        )
+
     def _guided_form(self) -> PrimaryForm | None:
         run = self._tool.guide if self._tool is not None else None
         if run is None or not 0 <= run.form < len(self.state.forms):
             return None
         return self.state.forms[run.form]
 
+    # -- the freeform's next landmark -----------------------------------
+
+    def _fill_choice(self) -> FormFill:
+        return FormFill(self._fill.currentData() or FormFill.FACETED.value)
+
+    def _side_choice(self) -> Side:
+        return Side(self._point_side.currentData() or Side.CENTRE.value)
+
+    def _set_pending(self) -> None:
+        """Ready the landmark the next click lays down, from the name and side boxes."""
+        if self._busy:
+            return
+        run = self._tool.guide if self._tool is not None else None
+        form = self._guided_form()
+        if run is None or form is None or not run.freeform:
+            return
+        run.pending = freeform_landmark(
+            self._point_name.text(), self._side_choice(), (entry.key for entry in form.points)
+        )
+        self.repaint_requested.emit()
+
+    def _advance_pending(self, form: PrimaryForm) -> None:
+        """After a landmark goes down: a fresh numbered name, the same side."""
+        run = self._tool.guide if self._tool is not None else None
+        if run is None or not run.freeform:
+            return
+        with self._suppressed():
+            self._point_name.setText(f"Point {len(form.points) + 1}")
+        run.pending = freeform_landmark(
+            self._point_name.text(), self._side_choice(), (entry.key for entry in form.points)
+        )
+
+    def _on_fill(self, _index: int) -> None:
+        """Refit the focused freeform's clay; for a new one, remember the choice."""
+        if self._busy:
+            return
+        found = self._focused_form()
+        if found is None or not found[1].freeform:
+            return
+        fill = self._fill_choice()
+        form = found[1]
+        if fill is form.fill:
+            return
+        self.state.do(SetAttributes(form, {"fill": fill}, text=f"Refit {form.name}", channel=FORMS))
+
     # -- edits ----------------------------------------------------------
 
     def apply_edit(self, edit) -> None:
-        """Record an edit the viewport's tool worked out."""
+        """Record an edit the viewport's tool worked out.
+
+        A freeform's placed landmark is new to the form's own list as well,
+        so the two go into the document in the one step, and the next
+        landmark is readied.
+        """
         index, landmarks, text = edit
         if not 0 <= index < len(self.state.forms):
             return
         form = self.state.forms[index]
-        self.state.do(SetAttributes(form, {"landmarks": landmarks}, text=text, channel=FORMS))
+        changes = {"landmarks": landmarks}
+        pending = self._pending_for(index)
+        placed = pending is not None and any(entry.key == pending.key for entry in landmarks)
+        if placed and form.point_for(pending.key) is None:
+            changes["points"] = form.with_point(pending)
+        self.state.do(SetAttributes(form, changes, text=text, channel=FORMS))
+        if placed:
+            self._advance_pending(form)
+            self.update_enabled()
 
-    def _write_landmarks(self, index: int, landmarks: list[PlacedLandmark], text: str) -> None:
+    def _pending_for(self, index: int) -> Landmark | None:
+        run = self._tool.guide if self._tool is not None else None
+        if run is None or run.form != index or not run.freeform:
+            return None
+        return run.pending
+
+    def _write_landmarks(
+        self,
+        index: int,
+        landmarks: list[PlacedLandmark],
+        text: str,
+        points: list[Landmark] | None = None,
+    ) -> None:
         """Record an edited landmark list, mirrored where the mirror is on."""
         form = self.state.forms[index]
         if self._tool is not None:
-            landmarks = self._tool.derive(form, landmarks, self.state.form_settings)
-        self.state.do(SetAttributes(form, {"landmarks": landmarks}, text=text, channel=FORMS))
+            landmarks = self._tool.derive(form, landmarks, self.state.form_settings, points)
+        changes = {"landmarks": landmarks}
+        if points is not None:
+            changes["points"] = points
+        self.state.do(SetAttributes(form, changes, text=text, channel=FORMS))
 
     def _move_landmark(self, at: tuple[float, float, float]) -> None:
         if self._busy:
@@ -354,10 +568,12 @@ class FormsPanel(Panel):
             form = self.state.forms[index]
             if self._tool is not None:
                 self._tool.selected_landmark = None
+            points = form.without_points(landmark.key) if form.freeform else None
             self._write_landmarks(
                 index,
                 form.without_landmarks(landmark.key, *self._guesses_from(form, landmark.key)),
                 f"Delete {form_landmark_title(form, landmark.key)}",
+                points,
             )
             return
         whole = self._selected_form()
@@ -375,9 +591,7 @@ class FormsPanel(Panel):
         if not len(self.state.forms):
             return
         self.end_guide()
-        self.state.do(
-            ReplaceItems(self.state.forms.items, [], text="Clear primary forms", channel=FORMS)
-        )
+        self.state.do(ReplaceItems(self.state.forms.items, [], text="Clear forms", channel=FORMS))
 
     def _center_selected(self) -> None:
         found = self._selected_landmark()
@@ -397,7 +611,8 @@ class FormsPanel(Panel):
         if found is None:
             return
         _, form = found
-        stages = len(FORM_PRESETS[form.preset].stages) if form.preset in FORM_PRESETS else 1
+        spec = form_spec(form)
+        stages = len(spec.stages) if spec is not None else 1
         # The right-hand end means "everything there is", including stages
         # still to come, so it is stored as the open-ended value.
         form.stage = -1 if int(value) >= stages - 1 else int(value)
@@ -406,7 +621,7 @@ class FormsPanel(Panel):
     @staticmethod
     def _guesses_from(form: PrimaryForm, key: str) -> list[str]:
         """The mirrored landmarks reflected from ``key``, which it anchors."""
-        preset = FORM_PRESETS.get(form.preset)
+        preset = form_spec(form)
         if preset is None:
             return []
         return [
@@ -419,8 +634,8 @@ class FormsPanel(Panel):
 
     @staticmethod
     def _ordered(form: PrimaryForm) -> list[PlacedLandmark]:
-        """The landmarks in the preset's own order, stage by stage."""
-        preset = FORM_PRESETS.get(form.preset)
+        """The landmarks in the recipe's own order, stage by stage."""
+        preset = form_spec(form)
         if preset is None:
             return list(form.landmarks)
         order = {entry.key: position for position, entry in enumerate(preset.landmarks)}
@@ -440,6 +655,7 @@ class FormsPanel(Panel):
             self._mirror.setChecked(settings.mirror)
             self._symmetric.setChecked(settings.symmetric)
             self._snap.setChecked(settings.snap_to_vertex)
+            self._free.setChecked(settings.free_placement)
             self._show_all.setChecked(settings.show_all)
             self._show_landmarks.setChecked(settings.show_landmarks)
             self._ghost.setChecked(self.state.render.ghost)
@@ -471,7 +687,7 @@ class FormsPanel(Panel):
         with self._suppressed():
             self._tree.clear()
             for index, form in enumerate(self.state.forms):
-                preset = FORM_PRESETS.get(form.preset)
+                preset = form_spec(form)
                 parent = QTreeWidgetItem([form.name, ""])
                 parent.setFlags(
                     parent.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsUserCheckable
@@ -495,7 +711,11 @@ class FormsPanel(Panel):
                         ]
                     )
                     child.setData(_NAME_COLUMN, Qt.ItemDataRole.UserRole, (index, landmark.key))
-                    if entry is not None:
+                    if form.freeform and form.point_for(landmark.key) is not None:
+                        # The artist's own landmark: theirs to rename.
+                        child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
+                        child.setToolTip(_NAME_COLUMN, "Double-click to rename.")
+                    elif entry is not None:
                         child.setToolTip(_NAME_COLUMN, entry.hint)
                     if landmark.mirrored:
                         child.setToolTip(
@@ -515,16 +735,31 @@ class FormsPanel(Panel):
     def update_enabled(self) -> None:
         """Take off the panel whatever does not apply right now."""
         guiding = self._tool is not None and self._tool.guiding
-        for widget in (self._running, self._prompt, self._progress):
+        guided = self._guided_form()
+        freeform_run = guiding and guided is not None and guided.freeform
+        freeform_pick = not guiding and self._preset.currentData() == FREEFORM
+        focused = self._focused_form()
+        freeform_focus = focused is not None and focused[1].freeform
+        for widget in (self._running, self._progress):
             self._guide_form.setRowVisible(widget, guiding)
+        self._guide_form.setRowVisible(self._prompt, guiding and not freeform_run)
+        for widget in (self._point_name, self._point_side):
+            self._guide_form.setRowVisible(widget, freeform_run)
+        self._skip.setVisible(not freeform_run)
         for widget in (self._preset, self._mirror, self._start):
             self._guide_form.setRowVisible(widget, not guiding)
+        self._guide_form.setRowVisible(self._form_name, freeform_pick)
+        self._guide_form.setRowVisible(self._fill, freeform_pick or freeform_focus)
+        if freeform_focus:
+            with self._suppressed():
+                self._fill.setCurrentIndex(self._fill.findData(focused[1].fill.value))
         if guiding:
             self._refresh_prompt()
 
         landmark = self._selected_landmark()
         whole = self._selected_form()
         self._landmark_box.setVisible(landmark is not None)
+        self._append.setEnabled(self._appendable_form() is not None)
         self._delete.setEnabled(landmark is not None or whole is not None)
         self._center.setEnabled(
             landmark is not None or (whole is not None and bool(whole[1].landmarks))
@@ -538,7 +773,7 @@ class FormsPanel(Panel):
     def _refresh_stages(self) -> None:
         """Size the stage slider to the focused form, and hide it for a one-stage form."""
         found = self._focused_form()
-        preset = FORM_PRESETS.get(found[1].preset) if found is not None else None
+        preset = form_spec(found[1]) if found is not None else None
         if found is None or preset is None or len(preset.stages) <= 1:
             self._stage_box.setVisible(False)
             return
@@ -559,13 +794,20 @@ class FormsPanel(Panel):
         settings = self.state.form_settings
         placed, wanted = self._tool.progress(form, settings)
         entry = self._tool.current(form, settings)
+        if form.freeform:
+            held = "landmark" if placed == 1 else "landmarks"
+            self._progress.setText(
+                f"{placed} {held} placed.  Click to place the next; the clay is the hull "
+                "of them once four span a volume.  Press Finish to keep the form."
+            )
+            return
         if entry is None:
             self._prompt.setText("Every landmark is placed.")
             self._progress.setText(f"{placed} of {wanted}. Press Finish to keep the form.")
             return
         self._prompt.setText(f"<b>{entry.title}</b><br/>{entry.hint}")
         progress = self._tool.stage_progress(form, settings)
-        spec = FORM_PRESETS.get(form.preset)
+        spec = form_spec(form)
         if progress is not None and spec is not None and len(spec.stages) > 1:
             index, done, asked = progress
             self._progress.setText(
@@ -638,13 +880,16 @@ class FormsPanel(Panel):
         self.update_enabled()
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        """Commit a renamed or re-checked form, if anything actually changed."""
+        """Commit a renamed or re-checked form, or a renamed landmark, if anything changed."""
         if self._busy:
             return
         found = item.data(_NAME_COLUMN, Qt.ItemDataRole.UserRole)
-        if not found or found[1] or not 0 <= found[0] < len(self.state.forms):
+        if not found or not 0 <= found[0] < len(self.state.forms):
             return
         form = self.state.forms[found[0]]
+        if found[1]:
+            self._rename_point(form, found[1], item.text(_NAME_COLUMN))
+            return
         name = item.text(_NAME_COLUMN)
         visible = item.checkState(_NAME_COLUMN) == Qt.CheckState.Checked
         changes = {}
@@ -657,6 +902,30 @@ class FormsPanel(Panel):
         verb = "Rename" if "name" in changes else ("Show" if visible else "Hide")
         self._commit_later(
             form, SetAttributes(form, changes, text=f"{verb} {form.name}", channel=FORMS)
+        )
+
+    def _rename_point(self, form: PrimaryForm, key: str, text: str) -> None:
+        """Give a freeform's own landmark the name typed into its row."""
+        held = form.point_for(key)
+        if held is None:
+            return
+        # The row shows the title, name and side; what was typed is the name,
+        # with the side the artist may have left on the end taken back off.
+        name = text.strip()
+        suffix = f" ({held.side.label})" if held.side.label else ""
+        if suffix and name.endswith(suffix):
+            name = name[: -len(suffix)].strip()
+        if not name or name == held.name:
+            self.refresh_list()
+            return
+        self._commit_later(
+            form,
+            SetAttributes(
+                form,
+                {"points": form.with_point_named(key, name)},
+                text=f"Rename {held.title}",
+                channel=FORMS,
+            ),
         )
 
     def _commit_later(self, owner, command: SetAttributes) -> None:
@@ -679,6 +948,14 @@ class FormsPanel(Panel):
             return
         setattr(self.state.form_settings, field, value)
         self.state.notify_forms()
+
+    # -- the tab's switch -----------------------------------------------
+
+    def shown(self) -> bool | None:
+        return self.state.form_settings.show_all
+
+    def set_shown(self, on: bool) -> None:
+        self._show_all.setChecked(bool(on))
 
     def _set_ghost(self, on: bool) -> None:
         if self._busy:
