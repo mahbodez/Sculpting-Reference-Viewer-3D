@@ -60,10 +60,18 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: Create release
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
           # The job never checks the repository out, so point gh at it directly
           # instead of letting it look for a git remote that is not there.
           GH_REPO: ${{ github.repository }}
-        run: gh release create "${{ github.ref_name }}" release-assets/* --generate-notes --verify-tag
+        # Re-pushing an existing tag rebuilds the same version; replace its
+        # assets rather than failing because the release is already there.
+        run: |
+          tag="${{ github.ref_name }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+          else
+            gh release create "$tag" release-assets/* --generate-notes --verify-tag
+          fi
