@@ -61,7 +61,6 @@ def window(app):
 
 
 PANELS = (
-    "matcap",
     "model",
     "shading",
     "planes",
@@ -111,7 +110,7 @@ def test_the_switch_on_a_dock_bar_is_the_panels_own_visibility(window, key, read
         assert read(window.state) is on
 
 
-@pytest.mark.parametrize("key", ["camera", "shading", "matcap", "model"])
+@pytest.mark.parametrize("key", ["camera", "shading", "model"])
 def test_a_panel_that_draws_nothing_has_no_switch(window, key):
     dock = next(d for d in window._workspace.docks() if d.key() == key)
     assert dock.bar().switch() is None

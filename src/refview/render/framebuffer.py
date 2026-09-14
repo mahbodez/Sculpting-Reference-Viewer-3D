@@ -1,9 +1,10 @@
-"""Offscreen render targets used by the high-quality and ghost passes.
+"""Offscreen render targets used by the high-quality, ghost and smoothing passes.
 
-Four of them are needed: a depth map rendered from the light for shadows, a
+Five of them are needed: a depth map rendered from the light for shadows, a
 depth-and-normal buffer rendered from the camera for ambient occlusion, a pair
-of single-channel colour buffers the occlusion is computed and blurred in, and
-the two-attachment buffer a see-through model is summed into.
+of single-channel colour buffers the occlusion is computed and blurred in, the
+two-attachment buffer a see-through model is summed into, and the whole frame
+itself when it is to be smoothed before it reaches the screen.
 
 Qt draws a :class:`QOpenGLWidget` into a framebuffer of its own, so the
 "default" framebuffer is rarely object zero.  Callers capture whatever was
@@ -288,6 +289,61 @@ class AccumTarget(_Target):
         if self._reveal:
             GL.glDeleteTextures(1, [self._reveal])
             self._reveal = 0
+        if self._depth:
+            GL.glDeleteRenderbuffers(1, [self._depth])
+            self._depth = 0
+        super().dispose()
+
+
+class FrameTarget(_Target):
+    """The whole frame, drawn offscreen so it can be smoothed on the way out.
+
+    A colour texture with a depth buffer behind it: everything the widget's
+    own framebuffer offers, except that the result can be read back through a
+    shader.  That is what the anti-aliasing passes need -- FXAA reads the
+    neighbours of every pixel, and supersampling draws the frame at twice the
+    size and reads it down.  The texture filters linearly, so that reading a
+    double-size frame at the screen's own pixel centres averages each block of
+    four for free.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self._width, self._height
+
+    def _allocate(self, width: int, height: int) -> None:
+        if not self._depth:
+            self._depth = int(GL.glGenRenderbuffers(1))
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture)
+        GL.glTexImage2D(
+            GL.GL_TEXTURE_2D, 0, GL.GL_RGBA8, width, height, 0, GL.GL_RGBA,
+            GL.GL_UNSIGNED_BYTE, None,
+        )
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
+
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self._depth)
+        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24, width, height)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, 0)
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self._fbo)
+        GL.glFramebufferTexture2D(
+            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self._texture, 0
+        )
+        GL.glFramebufferRenderbuffer(
+            GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self._depth
+        )
+        _require_complete("frame")
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+
+    def dispose(self) -> None:
         if self._depth:
             GL.glDeleteRenderbuffers(1, [self._depth])
             self._depth = 0

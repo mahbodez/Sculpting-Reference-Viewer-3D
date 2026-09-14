@@ -42,11 +42,12 @@ panel, and that has to keep working here like everywhere else.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QImage, QPainter, QPen
-from PySide6.QtWidgets import QSizePolicy, QWidget
+from PySide6.QtWidgets import QFileDialog, QMenu, QSizePolicy, QWidget
 
 from ..core.settings import MatcapSettings
 from ..render.texture import default_matcap_pixels
@@ -107,14 +108,18 @@ def grade(rgb: np.ndarray, settings: MatcapSettings) -> np.ndarray:
     return np.maximum(out * settings.brightness * tint, 0.0)
 
 
-def sample(pixels: np.ndarray, settings: MatcapSettings, size: int) -> np.ndarray:
+def sample(
+    pixels: np.ndarray, settings: MatcapSettings, size: int, square: bool = False
+) -> np.ndarray:
     """Draw the matcap onto a sphere of ``size`` pixels, graded.
 
     Returns ``(size, size, 4)`` uint8 with the corners outside the sphere left
-    transparent.  ``pixels`` is the array the renderer uploads -- rows running
-    from the bottom of the picture up, because that is the way round OpenGL
-    samples -- and is read here in exactly that orientation, so that the disc
-    is never accidentally the other way up from the model.
+    transparent -- or, with ``square``, filled in from the edge of the picture
+    the way a matcap file keeps them, so the result can be loaded back as one.
+    ``pixels`` is the array the renderer uploads -- rows running from the
+    bottom of the picture up, because that is the way round OpenGL samples --
+    and is read here in exactly that orientation, so that the disc is never
+    accidentally the other way up from the model.
     """
     axis = (np.arange(size, dtype=np.float32) + 0.5) / size * 2.0 - 1.0
     across = axis[None, :]
@@ -135,12 +140,13 @@ def sample(pixels: np.ndarray, settings: MatcapSettings, size: int) -> np.ndarra
     height, width = pixels.shape[:2]
     columns = np.clip((u * width).astype(np.int32), 0, width - 1)
     rows = np.clip((v * height).astype(np.int32), 0, height - 1)
-    rgb = pixels[rows, columns, :3].astype(np.float32) / 255.0
+    scale = np.iinfo(pixels.dtype).max if np.issubdtype(pixels.dtype, np.integer) else 1.0
+    rgb = pixels[rows, columns, :3].astype(np.float32) / scale
 
     graded = np.clip(grade(rgb, settings), 0.0, 1.0)
     out = np.zeros((size, size, 4), dtype=np.uint8)
     out[..., :3] = (graded * 255.0 + 0.5).astype(np.uint8)
-    out[..., 3] = np.where(inside, 255, 0).astype(np.uint8)
+    out[..., 3] = 255 if square else np.where(inside, 255, 0).astype(np.uint8)
     return out
 
 
@@ -253,6 +259,69 @@ class MatcapPreview(QWidget):
         self.update()
         self.committed.emit()
         event.accept()
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 - Qt contract
+        self.save_menu().exec(event.globalPos())
+        event.accept()
+
+    def save_menu(self) -> QMenu:
+        """Offer the picture back as a file: as graded here, or as it came.
+
+        A grading arrived at by hand is worth keeping, and the one place it
+        can be kept that every other application understands is the matcap
+        image itself.  The original is offered beside it, because the bundled
+        ones have no file the artist can otherwise get at.
+        """
+        menu = QMenu(self)
+        menu.addAction("Save Graded Matcap as Image...", lambda: self._ask_to_save(True))
+        menu.addAction("Save Original Matcap as Image...", lambda: self._ask_to_save(False))
+        return menu
+
+    def _ask_to_save(self, graded: bool) -> None:
+        name = "matcap-graded.png" if graded else "matcap.png"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Matcap", name, "PNG image (*.png);;All files (*)"
+        )
+        if path:
+            self.save_image(path, graded=graded)
+
+    def image(self, graded: bool = True) -> QImage:
+        """The matcap as a picture, at its own resolution.
+
+        Square and opaque, with the grading applied or not, in the orientation
+        a file keeps it -- so what is written can be read back in as a matcap
+        and shades the same as the disc did.
+        """
+        source = self._pixels
+        if source is None:
+            source = default_matcap_pixels()
+        height, width = source.shape[:2]
+        side = max(int(height), int(width), 1)
+        if graded:
+            pixels = sample(source, self._settings, side, square=True)
+        else:
+            scale = (
+                np.iinfo(source.dtype).max
+                if np.issubdtype(source.dtype, np.integer)
+                else 1.0
+            )
+            rgb = np.clip(source[..., :3].astype(np.float32) / scale, 0.0, 1.0)
+            pixels = np.zeros((height, width, 4), dtype=np.uint8)
+            pixels[..., :3] = (rgb * 255.0 + 0.5).astype(np.uint8)
+            pixels[..., 3] = 255
+            # Rows run bottom-up for the renderer; a file wants them top-down.
+            pixels = pixels[::-1]
+        pixels = np.ascontiguousarray(pixels)
+        rows, columns = pixels.shape[:2]
+        return QImage(
+            pixels.data, columns, rows, columns * 4, QImage.Format.Format_RGBA8888
+        ).copy()
+
+    def save_image(self, path: str | Path, graded: bool = True) -> Path:
+        path = Path(path)
+        if not self.image(graded).save(str(path)):
+            raise OSError(f"Could not write the matcap to {path}")
+        return path
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt contract
         """Put the grading back, which is the one thing a disc cannot show."""

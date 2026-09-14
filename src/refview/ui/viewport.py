@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import typing
 from dataclasses import astuple, replace
+from time import perf_counter
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
@@ -57,10 +58,12 @@ from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool
 from .film_recorder import FilmRecorder
 from .form_tool import FormTool
+from .markers import DepthDrag
 from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
 from .overlay import ViewportOverlay
 from .picking import SurfacePicker
+from .section_gizmo import SectionGizmo
 from .state import ViewerState
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
@@ -120,6 +123,16 @@ class Viewport(QOpenGLWidget):
         self.armature_tool = ArmatureTool()
         self.form_tool = FormTool()
         self._ready = False
+        self._depth_drag = None
+        self._guide_shown = False
+        self._section_gizmo = SectionGizmo()
+        self._show_fps = False
+        self._fps_corner = "bottom-right"
+        self._antialiasing = "off"
+        self._fps_start = perf_counter()
+        self._fps_frames = 0
+        self._fps = 0.0
+        self.frameSwapped.connect(self._frame_presented)
         self._press_position: tuple[float, float] | None = None
         self._travel = 0.0
         self._grab_previous: tuple[Measurement, str, tuple] | None = None
@@ -139,12 +152,6 @@ class Viewport(QOpenGLWidget):
         #: What was selected before the current press, so that clicking a
         #: second node can join the two.
         self._join_from: tuple[int, int] | None = None
-        #: Which nodes are standing behind the surface.  Ray-casting a
-        #: handful of nodes is cheap, but not cheap enough to repeat on
-        #: every frame of an orbit, so the answer is kept until the camera
-        #: or the armature moves.
-        self._buried: frozenset[tuple[int, int]] = frozenset()
-        self._buried_stale = True
         self._erase_previous: list[Stroke] | None = None
         # Signatures of the generated scene geometry, so a light-slider tweak
         # does not re-cut the model or rebuild the pedestal.
@@ -198,7 +205,27 @@ class Viewport(QOpenGLWidget):
         self._upload_forms()
         self._sync_scene()
 
+    #: How the depth grid is drawn: the depth cue's own blue, a hair over a
+    #: pixel wide so it reads at any zoom without competing with the model.
+    GUIDE_COLOR = (120 / 255, 200 / 255, 255 / 255)
+    GUIDE_WIDTH = 1.2
+
+    def _sync_guide(self) -> None:
+        """Hand the renderer the depth grid, or take it away, before a frame."""
+        drag = self._depth_drag
+        if drag is None:
+            if self._guide_shown:
+                self._renderer.set_guide(build_segment_vertices(np.zeros((0, 2, 3)), (0, 0, 0), 1.0))
+                self._guide_shown = False
+            return
+        segments, centre, reach = drag.grid(self._state.camera)
+        self._renderer.set_guide(
+            build_segment_vertices(segments, self.GUIDE_COLOR, self.GUIDE_WIDTH), centre, reach
+        )
+        self._guide_shown = True
+
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
+        self._sync_guide()
         painter = QPainter(self)
         painter.beginNativePainting()
         ratio = self.devicePixelRatioF()
@@ -208,6 +235,7 @@ class Viewport(QOpenGLWidget):
             int(self.width() * ratio),
             int(self.height() * ratio),
             ratio,
+            self._antialiasing,
         )
         painter.endNativePainting()
         self._overlay.draw(
@@ -221,6 +249,13 @@ class Viewport(QOpenGLWidget):
             self._buried_nodes(),
             forms=self.form_tool,
         )
+        self._section_gizmo.draw(painter, self._picker(), self._state.render.section)
+        if self._depth_drag is not None:
+            self._depth_drag.draw(painter, self._state.camera, self.width(), self.height())
+        if self._show_fps:
+            self._overlay.draw_caption(
+                painter, f"{self._fps:.1f} FPS", self.width(), self.height(), self._fps_corner
+            )
         painter.end()
 
     def _upload_mesh(self) -> None:
@@ -576,7 +611,9 @@ class Viewport(QOpenGLWidget):
         kept = current_framebuffer()
         surface.bind()
         try:
-            self._renderer.render(self._state.camera, settings, width, height, ratio)
+            self._renderer.render(
+                self._state.camera, settings, width, height, ratio, self._antialiasing
+            )
         finally:
             # Not `release`, which binds framebuffer zero: in a widget the
             # default framebuffer is Qt's own, and leaving zero bound behind
@@ -665,6 +702,7 @@ class Viewport(QOpenGLWidget):
         Only one gesture can own the left button, so arming is written once
         here rather than as a pairwise dance between every two tools.
         """
+        self.cancel_tools()
         tool.set_active(active)
         if active:
             for other in (
@@ -680,10 +718,45 @@ class Viewport(QOpenGLWidget):
 
     def cancel_tools(self) -> None:
         """Drop whatever gesture is half-finished, without disarming the tool."""
+        if self._section_gizmo.drag is not None:
+            self._state.render.section.offset = self._section_gizmo.drag[1]
+            self._section_gizmo.drag = None
+            self._state.notify_render()
+        if self._grab_previous is not None:
+            target, field, value = self._grab_previous
+            setattr(target, field, value)
+            self._grab_previous = None
+            self.measure_tool.grabbed_handle = None
+            self._state.notify_measurements()
+        if self._node_previous is not None:
+            target, field, value = self._node_previous
+            setattr(target, field, value)
+            self._node_previous = None
+            self.armature_tool.grabbed_handle = None
+            self.armature_tool.resizing = False
+            self._state.notify_armature()
+        if self._landmark_previous is not None:
+            index, _, previous = self._landmark_previous
+            for field, value in previous.items():
+                setattr(self._state.armatures[index], field, value)
+            self._landmark_previous = None
+            self.armature_tool.grabbed_landmark = None
+            self._state.notify_armature()
+        if self._form_previous is not None:
+            index, _, previous = self._form_previous
+            self._state.forms[index].landmarks = previous
+            self._form_previous = None
+            self.form_tool.grabbed_landmark = None
+            self._state.notify_forms()
+        self._depth_drag = None
+        self._press_position = None
+        self._join_from = None
+        self._navigation.end()
         self.measure_tool.cancel()
         self.annotate_tool.cancel()
         self.armature_tool.cancel()
         self.form_tool.cancel()
+        self._refresh_cursor()
         self.update()
 
     def _refresh_cursor(self) -> None:
@@ -695,6 +768,7 @@ class Viewport(QOpenGLWidget):
             or self.armature_tool.hover_handle
             or self.armature_tool.hover_landmark
             or self.form_tool.hover_landmark
+            or self._section_gizmo.hover
         ):
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
@@ -704,6 +778,58 @@ class Viewport(QOpenGLWidget):
     # Interaction
     # ------------------------------------------------------------------
 
+    def set_show_fps(self, enabled: bool) -> None:
+        if self._show_fps == enabled:
+            return
+        self._show_fps = enabled
+        self._fps_start = perf_counter()
+        self._fps_frames = 0
+        self.update()
+
+    def set_antialiasing(self, mode: str) -> None:
+        """One of the renderer's :data:`~refview.render.mesh_renderer.ANTIALIASING_MODES`."""
+        if self._antialiasing == mode:
+            return
+        self._antialiasing = mode
+        self.update()
+
+    def set_fps_corner(self, corner: str) -> None:
+        if self._fps_corner == corner:
+            return
+        self._fps_corner = corner
+        self.update()
+
+    def _frame_presented(self) -> None:
+        if not self._show_fps or not self.isVisible():
+            return
+        self._fps_frames += 1
+        elapsed = perf_counter() - self._fps_start
+        if elapsed >= 0.5:
+            self._fps = self._fps_frames / elapsed
+            self._fps_frames = 0
+            self._fps_start = perf_counter()
+        self.update()
+
+    def select_measurement(self, measurement) -> None:
+        self.measure_tool.selected = measurement
+        self.update()
+
+    def _begin_depth_drag(self, y):
+        point = None
+        if self._form_previous is not None:
+            index, key, _ = self._form_previous
+            point = self._state.forms[index].landmark_for(key).point
+        elif self._landmark_previous is not None:
+            index, key, _ = self._landmark_previous
+            point = self._state.armatures[index].landmark_for(key).point
+        elif self._node_previous is not None:
+            point = self._node_previous[0].point
+        elif self._grab_previous is not None:
+            point = self._grab_previous[2]
+        if point is not None:
+            self._depth_drag = DepthDrag.begin(point, y, self._picker())
+            self.update()
+
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         position = event.position()
         x, y = position.x(), position.y()
@@ -711,12 +837,16 @@ class Viewport(QOpenGLWidget):
         self._travel = 0.0
 
         if event.button() == Qt.MouseButton.LeftButton and not self._orbit_override(event):
+            depth = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            if self._section_gizmo.begin(x, y, self._picker(), self._state.render.section):
+                self.update()
+                return
             # Painting owns the button outright; otherwise a press that lands on
             # an unlocked endpoint moves it instead of turning the camera.
-            if self.annotate_tool.active:
+            if self.annotate_tool.active and not depth:
                 claimed = self._begin_annotation(x, y)
             else:
-                resize = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                resize = not depth and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
                 # Landmarks are offered first, within a tighter reach: a node
                 # derived from one sits right beside it, and the landmark is the
                 # thing that can still be corrected without the armature
@@ -728,6 +858,8 @@ class Viewport(QOpenGLWidget):
                     or self._begin_handle_drag(x, y)
                 )
             if claimed:
+                if depth:
+                    self._begin_depth_drag(y)
                 return
         elif event.button() not in (
             Qt.MouseButton.LeftButton,
@@ -745,6 +877,13 @@ class Viewport(QOpenGLWidget):
         position = event.position()
         x, y = position.x(), position.y()
 
+        if self._press_position is not None:
+            self._travel = max(self._travel, abs(x - self._press_position[0])
+                               + abs(y - self._press_position[1]))
+        if self._section_gizmo.drag is not None:
+            self._state.render.section.offset = self._section_gizmo.move(x, y)
+            self._state.notify_render()
+            return
         if self.form_tool.grabbed_landmark is not None:
             self._move_grabbed_form_landmark(x, y)
             return
@@ -776,10 +915,24 @@ class Viewport(QOpenGLWidget):
         self._update_hover(x, y)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._press_position is None:
+            return
         was_click = self._travel <= self.CLICK_TOLERANCE
         position = event.position()
 
-        if self.form_tool.grabbed_landmark is not None:
+        if event.button() != Qt.MouseButton.LeftButton and (
+            self._depth_drag is not None or self._section_gizmo.drag is not None
+        ):
+            return
+        if self._section_gizmo.drag is not None:
+            previous = self._section_gizmo.drag[1]
+            self._section_gizmo.drag = None
+            section = self._state.render.section
+            if section.offset != previous:
+                self._state.do(SetAttributes(section, {"offset": section.offset},
+                    text="Move cutting plane", channel="render", previous={"offset": previous}),
+                    apply=False)
+        elif self.form_tool.grabbed_landmark is not None:
             self._commit_form_landmark_drag(was_click)
         elif self.armature_tool.grabbed_landmark is not None:
             self._commit_landmark_drag(was_click)
@@ -802,10 +955,14 @@ class Viewport(QOpenGLWidget):
             elif was_click and left and self.form_tool.active:
                 self._place_form_landmark(position.x(), position.y())
 
+        self._depth_drag = None
         self._press_position = None
         self._travel = 0.0
+        self.update()
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._press_position is not None:
+            return
         notches = event.angleDelta().y() / 120.0
         if notches == 0.0:
             return
@@ -906,7 +1063,9 @@ class Viewport(QOpenGLWidget):
         if self._erase_previous is not None:
             previous, self._erase_previous = self._erase_previous, None
             current = self._state.annotations.items
-            if len(current) != len(previous) or any(a is not b for a, b in zip(current, previous)):
+            if len(current) != len(previous) or any(
+                a is not b for a, b in zip(current, previous, strict=True)
+            ):
                 self._state.do(
                     ReplaceItems(
                         current,
@@ -1231,39 +1390,14 @@ class Viewport(QOpenGLWidget):
         self.update()
 
     def _stale_buried(self) -> None:
-        self._buried_stale = True
+        self._overlay.invalidate_visibility()
 
     def _buried_nodes(self) -> frozenset[tuple[int, int]]:
-        """The nodes the model is standing in front of, worked out at most once.
-
-        A node is buried when the surface under it is nearer the eye than the
-        node itself.  That is one ray per node, which is nothing for a figure
-        and everything if it were done per frame of an orbit -- hence the
-        cache, invalidated when the camera or the armature moves.
-        """
+        """Use the same cached visibility test for bones and all point markers."""
         settings = self._state.armature_settings
         if settings.buried is Buried.SHOW or not settings.show_all:
             return frozenset()
-        if not self._buried_stale:
-            return self._buried
-
-        picker = self._picker()
-        eye = self._state.camera.eye
-        sunk: set[tuple[int, int]] = set()
-        if picker.mesh is not None:
-            for index, armature in enumerate(self._state.armatures):
-                if not armature.visible:
-                    continue
-                for position, node in enumerate(armature.nodes):
-                    screen = self._state.camera.project(node.point, self.width(), self.height())
-                    hit = picker.hit(screen[0], screen[1])
-                    if hit is None:
-                        continue
-                    if hit.distance < float(np.linalg.norm(node.point - eye)):
-                        sunk.add((index, position))
-        self._buried = frozenset(sunk)
-        self._buried_stale = False
-        return self._buried
+        return self._overlay.buried_nodes(self._state, self.width(), self.height())
 
     def center_on_point(self, point) -> None:
         """Slide the view so a point sits at the centre, keeping the angle."""
@@ -1279,7 +1413,8 @@ class Viewport(QOpenGLWidget):
         return self._state.navigation.snap_angle_deg if shift else 0.0
 
     def _picker(self) -> SurfacePicker:
-        return SurfacePicker(self._state.camera, self._state.mesh, self.width(), self.height())
+        return SurfacePicker(self._state.camera, self._state.mesh, self.width(), self.height(),
+                             self._depth_drag)
 
     def _scene_center(self) -> np.ndarray | None:
         """Object centre, which anchors the plane the orbit pivot lies on."""
@@ -1289,6 +1424,12 @@ class Viewport(QOpenGLWidget):
     def _update_hover(self, x: float, y: float) -> None:
         """Track whatever the cursor is over, so the overlay can respond."""
         dirty = False
+        # The rail takes the press before any tool does, so it is offered first.
+        over_rail = self._section_gizmo.hit(x, y, self._picker(), self._state.render.section)
+        if over_rail != self._section_gizmo.hover:
+            self._section_gizmo.hover = over_rail
+            self._refresh_cursor()
+            dirty = True
         if self.annotate_tool.active:
             self.annotate_tool.cursor = (x, y)
             dirty = True

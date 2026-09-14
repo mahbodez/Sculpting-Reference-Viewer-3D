@@ -21,6 +21,7 @@ class MeasureTool:
     """
 
     def __init__(self) -> None:
+        self.selected: Measurement | None = None
         self.active = False
         self.pending_start: np.ndarray | None = None
         self.hover_point: np.ndarray | None = None
@@ -62,7 +63,8 @@ class MeasureTool:
         """
         if settings.free_placement:
             return picker.plane_point(x, y, picker.camera.scene_center)
-        return picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
+        point = picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
+        return point if point is not None else picker.plane_point(x, y, picker.camera.scene_center)
 
     def drag_target(
         self,
@@ -78,6 +80,8 @@ class MeasureTool:
         point across the plane it already sits on, so it never jumps to a
         surface the artist did not aim at.
         """
+        if picker.depth_drag is not None:
+            return picker.depth_drag.target(y)
         if not settings.free_placement:
             point = picker.point(
                 x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels

@@ -79,13 +79,6 @@ _SIDE_TIP = (
     "by hand is a pair, and the symmetric build averages the two."
 )
 
-_FREE_TIP = (
-    "Place and drag a freeform's landmarks anywhere in space rather than on\n"
-    "the model -- inside it, for a mass the skin only hints at.  They land on\n"
-    "the plane facing the camera through the object centre.  The presets\n"
-    "ignore this: their landmarks are anatomy on the skin."
-)
-
 _MIRROR_TIP = (
     "Place the midline and one side; the other is reflected across the plane\n"
     "fitted through the midline landmarks.  A mirrored point is drawn hollow,\n"
@@ -276,10 +269,10 @@ class FormsPanel(Panel):
     def _build_placement(self) -> None:
         box, form = form_group("Placement")
         self._snap = QCheckBox("Snap to nearest vertex")
-        self._free = QCheckBox("Free points (ignore the surface)")
-        self._free.setToolTip(_FREE_TIP)
         form.addRow("", self._snap)
-        form.addRow("", self._free)
+        depth_hint = QLabel("Ctrl/Cmd-drag a marker up/down to move it in depth.")
+        depth_hint.setWordWrap(True)
+        form.addRow(depth_hint)
         self._add(box)
 
     def _build_display(self) -> None:
@@ -317,7 +310,6 @@ class FormsPanel(Panel):
         self._landmark_point.valueChanged.connect(self._move_landmark)
 
         self._snap.toggled.connect(lambda v: self._apply("snap_to_vertex", v))
-        self._free.toggled.connect(lambda v: self._apply("free_placement", v))
         self._show_all.toggled.connect(lambda v: self._apply("show_all", v))
         self._show_landmarks.toggled.connect(lambda v: self._apply("show_landmarks", v))
         self._ghost.toggled.connect(self._set_ghost)
@@ -655,7 +647,6 @@ class FormsPanel(Panel):
             self._mirror.setChecked(settings.mirror)
             self._symmetric.setChecked(settings.symmetric)
             self._snap.setChecked(settings.snap_to_vertex)
-            self._free.setChecked(settings.free_placement)
             self._show_all.setChecked(settings.show_all)
             self._show_landmarks.setChecked(settings.show_landmarks)
             self._ghost.setChecked(self.state.render.ghost)

@@ -162,12 +162,15 @@ def test_a_group_the_mode_does_not_answer_leaves_no_room_behind(app):
     panel = ShadingPanel(ViewerState())
     panel.state.render.shading_mode = ShadingMode.LAMBERT
     panel.update_enabled()
-    lit = panel.heightForWidth(COLUMN_WIDTH)
 
     panel.state.render.shading_mode = ShadingMode.MATCAP
     panel.update_enabled()
     assert not panel._light_box.isVisibleTo(panel)
-    assert panel.heightForWidth(COLUMN_WIDTH) < lit
+    without_light = panel.heightForWidth(COLUMN_WIDTH)
+    # Matcap now brings its own gallery and preview into this panel. Compare
+    # the same mode with and without Light, not two different sets of controls.
+    panel._light_box.show()
+    assert panel.heightForWidth(COLUMN_WIDTH) > without_light
 
 
 def test_a_folded_group_is_only_as_tall_as_its_bar(app):

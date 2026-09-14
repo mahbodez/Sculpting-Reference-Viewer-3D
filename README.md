@@ -21,11 +21,23 @@ Built with PySide6 and OpenGL 3.3.
   unit — metres — and the measurement panel adopts it; OBJ and STL declare
   nothing, so nothing is guessed.
 - Matcap shading with adjustable rotation, contrast, gamma, brightness,
-  saturation, tint and vertical flip.
+  saturation, tint and vertical flip, inside the **Shading** panel when Matcap
+  is selected. High-precision textures and subtle dithering reduce colour banding.
 - Analytic shading modes: Lambert, Phong, Blinn-Phong, Cook-Torrance PBR and a
   normals view — each with key/fill/ambient lights and a full surface material
   (diffuse, specular colour and level, shininess, metalness, roughness,
   reflection colour).
+- A **Contour** shading mode that cuts the form with a stack of evenly spaced
+  planes and draws the cuts, the way a contour map reads land: the lines crowd
+  where the surface turns across the planes and spread where it runs along
+  them, and a flat facing them has none at all, so the curves and the flats of
+  a form read at a glance. The planes follow the camera by default — depth
+  slices, the sculptor's sighting across the form — or face X, Y or Z, or
+  whichever way the camera happened to face when you pinned them.
+- Anti-aliasing you can change without a restart — FXAA, or supersampling at
+  twice the size — beside the multisampling that is fixed when the window is
+  made, and an optional FPS counter in whichever corner you want it. All under
+  **Settings > Preferences > Viewport**.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
 - A **Ghost** mode with a solidity slider, which draws the model see-through so
   you can read what is inside it: the far side of a form, the cut of a
@@ -184,11 +196,15 @@ hull of them.
   each face of that hull out into a cubic patch between the points, for
   muscle and fat. Either way the clay passes through every landmark, and the
   fill can be changed after the fact.
-- A freeform's landmarks can go inside the model as well as on it: tick
-  `Free points` in the Placement group and they land on the plane facing the
-  camera, as the measure tool's do -- for a mass the skin only hints at.
-  The presets ignore the switch, since their landmarks are anatomy on the
-  skin.
+- Landmarks can go inside the model as well as on it: **Ctrl/Cmd-drag** a
+  marker up to move deeper, or down to move toward the camera. A fading depth
+  ruler shows the signed movement, and a grid facing the camera is laid
+  through the point in the scene itself, where the model stands in front of
+  it or behind it and says which; Escape restores the starting position.
+  The gesture works for measurements, armature nodes, and all landmarks.
+  A click off the model places a point on the view plane through its centre.
+- Markers have a small shadow for contrast. Markers behind the model surface
+  are faded and surrounded by a dashed ring.
 - A left or right landmark is mirrored to the other side once enough of the
   midline is down to fit a plane through, exactly as a preset's are; place
   both sides by hand and they are a pair, which the symmetric build
@@ -577,6 +593,12 @@ choose, with adjustable diameter, thickness and colour. It is ordinary
 geometry, so it catches the cast shadow — which is what makes contact and
 height readable.
 
+While a section is on, a rail stands at the right edge of the viewport in the
+contour's colour, spanning the same range as the panel's offset slider. Drag
+its handle — or the rail itself — to slide the plane along its normal; Escape
+cancels and Undo restores the cut. It is the same cue as the depth ruler,
+and like it stays put while the view turns.
+
 **Measuring**
 
 - Press `M`, then click two points on the surface. Dragging still orbits, so
@@ -587,7 +609,8 @@ height readable.
   hidden individually, and stays drawn in the scene as a thick labelled line.
 - Measurements start locked. Click the padlock on a row to unlock one, and its
   endpoints turn into square handles you can drag in the view — on the surface,
-  or anywhere in space with free placement on.
+  or along the view depth axis with **Ctrl/Cmd-drag**. Selecting a measurement
+  in the list highlights its line and endpoints in the viewport.
 - Set a unit label and a scale factor once per model — an OBJ carries no units,
   so the viewer does not guess.
 
@@ -634,7 +657,9 @@ saturation and gamma; double-click puts the grading back. What is drawn is
 exactly what the shader will do, because for a sphere facing the camera the
 renderer's reflection lookup collapses to the matcap image itself, turned. The
 five numbers are still underneath, folded away, for typing an exact rotation
-into or copying out into a panel of your own.
+into or copying out into a panel of your own. Right-click the sphere to save
+the matcap as an image, graded as you have it or as it came, so a grading
+arrived at by hand can be kept and used anywhere else.
 
 **Preferences**
 
@@ -643,8 +668,9 @@ of work — the matcap, the section, the planes — travels in the session file;
 what belongs to you stays on the machine and follows you from model to model:
 the accent colour and type size, how fast the orbit turns and which way round,
 the splash screen, the release check, whether the machine is kept awake,
-whether to carry on from whatever was last open, and a folder of your own to
-read matcaps from. Every change applies as you make it,
+whether to carry on from whatever was last open, the anti-aliasing and the
+frame counter, and a folder of your own to read matcaps from. Every change
+applies as you make it — multisampling alone waits for a restart, and says so —
 and the window is built out of the same folding groups and sliders the panels
 are, so a control in it can be Alt-dragged into a panel like any other.
 

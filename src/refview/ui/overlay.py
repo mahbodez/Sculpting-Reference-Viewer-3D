@@ -30,14 +30,15 @@ from ..core.measurement import Measurement, MeasurementSettings
 from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool, Handle
 from .form_tool import FormTool
+from .markers import MarkerVisibility, VisualMarker, draw_text
 from .measure_tool import MeasureTool
+from .picking import SurfacePicker
 from .state import ViewerState
 
 _AXIS_COLORS = (QColor(226, 92, 92), QColor(126, 200, 108), QColor(96, 152, 228))
 _AXIS_LABELS = ("X", "Y", "Z")
 _HUD_TEXT = QColor(226, 228, 232)
 _HUD_BACKDROP = QColor(16, 17, 20, 190)
-_TEXT_HALO = QColor(0, 0, 0, 215)
 _PENDING_COLOR = QColor(120, 200, 255)
 _HANDLE_OUTLINE = QColor(12, 13, 16, 220)
 _HANDLE_HOVER = QColor(255, 255, 255)
@@ -110,6 +111,12 @@ class ViewportOverlay:
     MARGIN = 12.0
     GIZMO_RADIUS = 26.0
 
+    def __init__(self):
+        self._visibility = MarkerVisibility()
+        # Where this frame's readout box ended up, so a caption asked to
+        # share its corner can sit under it rather than on it.
+        self._hud_rect: QRectF | None = None
+
     def draw(
         self,
         painter: QPainter,
@@ -125,7 +132,10 @@ class ViewportOverlay:
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        self._hud_rect = None
 
+        self._visibility.prepare(SurfacePicker(state.camera, state.mesh, width, height),
+                                 state.render.section)
         settings = state.measurement_settings
         if parts.measurements and settings.show_all:
             for index, measurement in enumerate(state.measurements):
@@ -146,14 +156,39 @@ class ViewportOverlay:
         if parts.readout:
             self._draw_hud(painter, state, tool, annotate, armature, width, height, forms)
 
-    def draw_caption(self, painter: QPainter, text: str, width: int, height: int) -> None:
-        """Burn a line into the bottom of a frame, for an exported clip.
+    def invalidate_visibility(self) -> None:
+        self._visibility = MarkerVisibility()
 
-        Which stage of the making this is, and what to set the sliders to in
-        order to come back to it.  In the viewport that belongs under the
-        scrub handle where it can be read at leisure; in a clip, where there
-        is no panel and no handle, it has to be in the picture or it is
-        nowhere.
+    def buried_nodes(self, state, width, height):
+        self._visibility.prepare(SurfacePicker(state.camera, state.mesh, width, height),
+                                 state.render.section)
+        return frozenset(
+            (index, position)
+            for index, armature in enumerate(state.armatures) if armature.visible
+            for position, node in enumerate(armature.nodes)
+            if self._visibility.buried(node.at)
+        )
+
+    def draw_caption(
+        self,
+        painter: QPainter,
+        text: str,
+        width: int,
+        height: int,
+        corner: str = "bottom-right",
+    ) -> QRectF:
+        """A short line in one corner of the frame; returns where it went.
+
+        For an exported clip that is which stage of the making this is, and
+        what to set the sliders to in order to come back to it.  In the
+        viewport that belongs under the scrub handle where it can be read at
+        leisure; in a clip, where there is no panel and no handle, it has to
+        be in the picture or it is nowhere.  In the viewport it is the frame
+        counter, in whichever corner the artist asked for.
+
+        The default is bottom right because bottom left is where the gizmo
+        stands and top left is the readout's; a caption sent to either of
+        those is moved along so the two are not on top of one another.
         """
         font = QFont(painter.font())
         font.setPointSize(10)
@@ -162,13 +197,19 @@ class ViewportOverlay:
         padding = 9.0
         rect = QRectF(
             self.MARGIN,
-            height - self.MARGIN - metrics.height() - padding,
+            self.MARGIN,
             metrics.horizontalAdvance(text) + padding * 2.0,
             metrics.height() + padding,
         )
-        # Bottom right, because bottom left is where the gizmo stands and an
-        # export that kept both would have them on top of one another.
-        rect.moveLeft(width - self.MARGIN - rect.width())
+        vertical, _, horizontal = corner.partition("-")
+        if horizontal == "right":
+            rect.moveLeft(width - self.MARGIN - rect.width())
+        elif vertical == "bottom":
+            rect.moveLeft(self.MARGIN + self.GIZMO_RADIUS * 2.0 + 24.0)
+        if vertical == "bottom":
+            rect.moveTop(height - self.MARGIN - rect.height())
+        elif horizontal == "left" and self._hud_rect is not None:
+            rect.moveTop(self._hud_rect.bottom() + 6.0)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(_HUD_BACKDROP)
         painter.drawRoundedRect(rect, 5.0, 5.0)
@@ -180,6 +221,7 @@ class ViewportOverlay:
             font,
             _HUD_TEXT,
         )
+        return rect
 
     # ------------------------------------------------------------------
     # Measurements
@@ -200,13 +242,21 @@ class ViewportOverlay:
         end = project_visible(camera, measurement.endpoint(1), width, height)
         if start is None or end is None:
             return
-        color = to_qcolor(measurement.color)
-        self._stroke_segment(painter, start, end, color, settings, points=measurement.locked)
+        selected = tool.selected is measurement
+        color = _PENDING_COLOR if selected else to_qcolor(measurement.color)
+        if selected:
+            self._stroke(painter, start, end, QColor(120, 200, 255, 130), settings.line_width + 5)
+        self._stroke_segment(painter, start, end, color, settings, points=False)
+        if measurement.locked:
+            for handle, position in enumerate((start, end)):
+                self._draw_point(painter, position, color, settings.point_radius,
+                                 self._visibility.buried(measurement.endpoint(handle)))
         if not measurement.locked:
             active = tool.grabbed_handle or tool.hover_handle
             for handle, position in enumerate((start, end)):
-                highlighted = active == (index, handle)
-                self._draw_handle(painter, position, color, settings.handle_radius, highlighted)
+                highlighted = selected or active == (index, handle)
+                self._draw_handle(painter, position, color, settings.handle_radius, highlighted,
+                                  self._visibility.buried(measurement.endpoint(handle)))
         if settings.show_labels:
             label = f"{measurement.name}  {settings.format_length(measurement.length)}"
             self._draw_label(painter, (start + end) * 0.5, label, settings.label_size, color)
@@ -289,26 +339,11 @@ class ViewportOverlay:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(point, radius, radius)
 
-    def _draw_point(self, painter: QPainter, point: QPointF, color: QColor, radius: float) -> None:
-        painter.setPen(QPen(QColor(0, 0, 0, 180), 1.5))
-        painter.setBrush(color)
-        painter.drawEllipse(point, radius, radius)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+    def _draw_point(self, painter, point, color, radius, buried=False) -> None:
+        VisualMarker(point, color, radius, buried=buried).draw(painter)
 
-    def _draw_handle(
-        self,
-        painter: QPainter,
-        point: QPointF,
-        color: QColor,
-        radius: float,
-        highlighted: bool,
-    ) -> None:
-        """A square grip, so an editable end reads differently from a fixed one."""
-        size = radius + (2.0 if highlighted else 0.0)
-        painter.setPen(QPen(_HANDLE_HOVER if highlighted else _HANDLE_OUTLINE, 1.6))
-        painter.setBrush(color.lighter(130) if highlighted else color)
-        painter.drawRect(QRectF(point.x() - size, point.y() - size, size * 2.0, size * 2.0))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+    def _draw_handle(self, painter, point, color, radius, highlighted, buried=False) -> None:
+        VisualMarker(point, color, radius, "square", highlighted, buried=buried).draw(painter)
 
     def _draw_crosshair(self, painter: QPainter, point: QPointF, color: QColor) -> None:
         painter.setPen(QPen(color, 1.5))
@@ -379,12 +414,13 @@ class ViewportOverlay:
             at = screen[position]
             if at is None:
                 continue
-            here = faded if (index, position) in buried else color
+            sunk = self._visibility.buried(node.at)
+            here = color
             if settings.show_sizes and node.size > 0.0:
                 radius = self._pixel_radius(camera, node, width, height, settings)
                 self._draw_ring(painter, at, here, radius)
             if node.locked:
-                self._draw_point(painter, at, here, settings.node_radius)
+                self._draw_point(painter, at, here, settings.node_radius, sunk)
             else:
                 chosen = tool.selected == (index, position)
                 self._draw_handle(
@@ -393,6 +429,7 @@ class ViewportOverlay:
                     here,
                     settings.handle_radius,
                     active == (index, position) or chosen,
+                    sunk,
                 )
             if settings.show_names:
                 self._draw_label(
@@ -449,7 +486,8 @@ class ViewportOverlay:
                     if at is None:
                         continue
                     here = (index, landmark.key)
-                    self._draw_cross(painter, at, _LANDMARK_COLOR, landmark.mirrored)
+                    self._draw_cross(painter, at, _LANDMARK_COLOR, landmark.mirrored,
+                                     self._visibility.buried(landmark.at))
                     if tool.selected_landmark == here:
                         self._draw_ring(painter, at, _PENDING_COLOR, 9.0)
                     elif active == here:
@@ -459,20 +497,8 @@ class ViewportOverlay:
             if hover is not None:
                 self._draw_crosshair(painter, hover, _PENDING_COLOR)
 
-    def _draw_cross(self, painter: QPainter, point: QPointF, color: QColor, hollow: bool) -> None:
-        """A small cross for a landmark; hollow when the mirror guessed it."""
-        for pen in (QPen(QColor(0, 0, 0, 170), 3.0), QPen(color, 1.6)):
-            painter.setPen(pen)
-            painter.drawLine(
-                QPointF(point.x() - 5.0, point.y() - 5.0),
-                QPointF(point.x() + 5.0, point.y() + 5.0),
-            )
-            painter.drawLine(
-                QPointF(point.x() - 5.0, point.y() + 5.0),
-                QPointF(point.x() + 5.0, point.y() - 5.0),
-            )
-        if not hollow:
-            self._draw_point(painter, point, color, 2.4)
+    def _draw_cross(self, painter, point, color, hollow, buried=False) -> None:
+        VisualMarker(point, color, 5, "cross", hollow=hollow, buried=buried).draw(painter)
 
     # ------------------------------------------------------------------
     # Forms
@@ -507,7 +533,8 @@ class ViewportOverlay:
                     if at is None:
                         continue
                     here = (index, landmark.key)
-                    self._draw_cross(painter, at, _FORM_LANDMARK_COLOR, landmark.mirrored)
+                    self._draw_cross(painter, at, _FORM_LANDMARK_COLOR, landmark.mirrored,
+                                     self._visibility.buried(landmark.at))
                     if tool.selected_landmark == here:
                         self._draw_ring(painter, at, _PENDING_COLOR, 9.0)
                     elif active == here:
@@ -635,24 +662,8 @@ class ViewportOverlay:
         font: QFont,
         color: QColor,
     ) -> None:
-        """Draw text as a filled outline rather than as glyphs.
-
-        Qt's OpenGL paint engine renders glyphs through a texture cache, which
-        on several drivers comes out thin and washed out over a multisampled
-        widget.  Converting to a path routes the text through the same solid
-        geometry path as everything else here, and the dark stroke underneath
-        keeps it readable over both the model and the background.
-        """
-        path = QPainterPath()
-        path.addText(QPointF(left, baseline), font, text)
-        pen = QPen(_TEXT_HALO, 2.6)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(path)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(color)
-        painter.drawPath(path)
+        """Text as filled outlines; see :func:`markers.draw_text` for why."""
+        draw_text(painter, left, baseline, text, font, color)
 
     def _draw_label(
         self, painter: QPainter, anchor: QPointF, text: str, size: int, color: QColor
@@ -786,6 +797,7 @@ class ViewportOverlay:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(_HUD_BACKDROP)
         painter.drawRoundedRect(rect, 5.0, 5.0)
+        self._hud_rect = rect
         for index, line in enumerate(lines):
             self._draw_text(
                 painter,

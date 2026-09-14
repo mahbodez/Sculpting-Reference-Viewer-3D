@@ -406,8 +406,8 @@ def test_the_fill_refits_the_focused_freeform_through_the_history(panel):
     assert form.fill is FormFill.SMOOTH
 
 
-def test_free_points_write_through_and_a_freeform_reads_them(panel):
-    panel._free.setChecked(True)
+def test_legacy_free_points_are_still_readable(panel):
+    panel.state.form_settings.free_placement = True
     assert panel.state.form_settings.free_placement is True
     tool = panel._tool
     assert tool.free_points(PrimaryForm(preset=FREEFORM), panel.state.form_settings)

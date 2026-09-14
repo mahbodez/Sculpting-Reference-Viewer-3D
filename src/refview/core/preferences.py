@@ -51,6 +51,18 @@ MAX_SPEED = 3.0
 #: than the frame rate.
 SAMPLE_COUNTS = (0, 2, 4, 8, 16)
 
+#: Where the frame counter sits, as ``"<top|bottom>-<left|right>"``.
+FPS_CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+
+#: How the frame is smoothed on its way to the screen, in the order the window
+#: offers them: not at all; FXAA, a cheap pass over the finished frame; or
+#: supersampling, the frame drawn at twice the size and averaged down, which
+#: costs four times the pixels and smooths everything, not only the edges.
+#: Unlike the multisample count these take effect at once, since the
+#: smoothing happens in a framebuffer of the renderer's own rather than in
+#: the one the widget is made with.
+ANTIALIASING_MODES = ("off", "fxaa", "ssaa")
+
 
 @dataclass
 class InterfacePreferences:
@@ -122,6 +134,16 @@ class ViewportPreferences:
     #: context's sample count is fixed when it is made, so this one takes a
     #: restart, and the Preferences window says so rather than pretending.
     samples: int = 4
+    #: One of :data:`ANTIALIASING_MODES`.  Off by default: the multisampling
+    #: above already takes the stairs off the model's edges on most machines,
+    #: and this is for the ones where it does not, or where the wires and
+    #: contour lines need more than it gives.
+    antialiasing: str = "off"
+    show_fps: bool = False
+    #: Which corner of the viewport the counter is drawn in.  Bottom right by
+    #: default because the readout and the orientation gizmo already have the
+    #: left-hand ones; the counter moves out of the way of them either way.
+    fps_corner: str = "bottom-right"
     #: Whether the machine is asked to stay awake while this window is in
     #: front.  An artist reads a pose for minutes with both hands in clay,
     #: which is exactly when the screen dims -- but a laptop on a train is a
@@ -157,7 +179,7 @@ class Preferences:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Any) -> "Preferences":
+    def from_dict(cls, data: Any) -> Preferences:
         """Read preferences back, keeping whatever makes sense and no less.
 
         A field that is missing, of the wrong type, or out of range is filled
@@ -217,7 +239,7 @@ def _as_kind_of(value: Any, like: Any) -> Any:
     return None
 
 
-def _clamp(prefs: "Preferences") -> None:
+def _clamp(prefs: Preferences) -> None:
     """Pull anything out of range back into it.
 
     The window cannot produce these values; a settings file can, and a font
@@ -231,6 +253,10 @@ def _clamp(prefs: "Preferences") -> None:
     navigation.zoom_speed = min(max(navigation.zoom_speed, MIN_SPEED), MAX_SPEED)
     if prefs.viewport.samples not in SAMPLE_COUNTS:
         prefs.viewport.samples = ViewportPreferences().samples
+    if prefs.viewport.fps_corner not in FPS_CORNERS:
+        prefs.viewport.fps_corner = ViewportPreferences().fps_corner
+    if prefs.viewport.antialiasing not in ANTIALIASING_MODES:
+        prefs.viewport.antialiasing = ViewportPreferences().antialiasing
 
 
 def equal(one: Any, other: Any) -> bool:

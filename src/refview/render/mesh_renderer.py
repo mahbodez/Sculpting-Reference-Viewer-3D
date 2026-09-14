@@ -21,12 +21,13 @@ from ..core.linalg import look_at, orthographic, spherical_direction, vec3
 from ..core.mesh import Mesh
 from ..core.plane_axes import Coefficients, PlaneAxes, PlaneSet
 from ..core.plane_clusters import fit_planes
-from ..core.settings import PlaneMode, RenderSettings
+from ..core.settings import CONTOUR_DENSITY_MIN, PlaneMode, RenderSettings
 from . import shaders
 from .framebuffer import (
     AccumTarget,
     ColorTarget,
     DepthTarget,
+    FrameTarget,
     GeometryTarget,
     bind_default,
     current_framebuffer,
@@ -50,6 +51,16 @@ _SHADOW_SIZE = 2048
 _MATCAP_UNIT, _SHADOW_UNIT, _OCCLUSION_UNIT, _PLANE_UNIT = 0, 1, 2, 3
 #: The two the ghost's sums are read back through, used by the resolve pass only.
 _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT = 4, 5
+#: The whole frame, read back by the resolve pass.  On unit nought, because
+#: that pass runs alone once everything else has let go of its textures.
+_FRAME_UNIT = 0
+
+#: How the frame is smoothed on its way to the screen: not at all, FXAA over a
+#: frame the screen's own size, or supersampling -- the frame drawn at twice
+#: the size in each direction and averaged down.  These are the values the
+#: viewport preference holds.
+ANTIALIASING_MODES = ("off", "fxaa", "ssaa")
+_SUPERSAMPLE = 2
 
 #: How many fits to keep alongside the one in use.  Each is a mode and a set of
 #: coefficients, so dragging a coefficient slider leaves a trail of them; a
@@ -136,12 +147,21 @@ class SceneRenderer:
         self._pedestal: MeshBuffers | None = None
         self._strokes: StrokeBuffers | None = None
         self._contour: StrokeBuffers | None = None
+        #: The grid laid across the depth axis while a marker is being moved
+        #: in depth, and the point and radius it fades about.  Drawn into the
+        #: scene rather than over it, so the model stands in front of it or
+        #: behind it and says which.
+        self._guide: StrokeBuffers | None = None
+        self._guide_fade: tuple[np.ndarray, float] | None = None
         self._shadow_map = DepthTarget(clamp_to_lit=True)
         self._scene_depth = GeometryTarget()
         self._occlusion = ColorTarget()
         self._occlusion_blur = ColorTarget()
         #: Where a see-through model is summed, then resolved over the frame.
         self._ghost = AccumTarget()
+        #: Where the frame is drawn when it is to be smoothed before the
+        #: screen sees it; untouched when it is not.
+        self._frame = FrameTarget()
         self._empty_vao = 0
         self._matcap: Texture2D | None = None
         self._mesh: Mesh | None = None
@@ -172,6 +192,9 @@ class SceneRenderer:
             ),
             "blur": ShaderProgram(shaders.FULLSCREEN_VERTEX, shaders.BLUR_FRAGMENT, "blur"),
             "ghost": ShaderProgram(shaders.FULLSCREEN_VERTEX, shaders.GHOST_FRAGMENT, "ghost"),
+            "resolve": ShaderProgram(
+                shaders.FULLSCREEN_VERTEX, shaders.RESOLVE_FRAGMENT, "resolve"
+            ),
         }
         self._buffers = MeshBuffers()
         self._sculpt = MeshBuffers()
@@ -179,6 +202,7 @@ class SceneRenderer:
         self._pedestal = MeshBuffers()
         self._strokes = StrokeBuffers()
         self._contour = StrokeBuffers()
+        self._guide = StrokeBuffers()
         self._empty_vao = int(GL.glGenVertexArrays(1))
         self._matcap = Texture2D()
         self._matcap.upload(default_matcap_pixels())
@@ -199,6 +223,7 @@ class SceneRenderer:
             self._pedestal,
             self._strokes,
             self._contour,
+            self._guide,
         ):
             if buffers is not None:
                 buffers.dispose()
@@ -208,6 +233,7 @@ class SceneRenderer:
             self._occlusion,
             self._occlusion_blur,
             self._ghost,
+            self._frame,
         ):
             target.dispose()
         if self._matcap is not None:
@@ -314,6 +340,19 @@ class SceneRenderer:
         if self._contour is not None:
             self._contour.upload_vertices(vertices)
 
+    def set_guide(self, vertices: np.ndarray, centre=None, reach: float = 0.0) -> None:
+        """Replace the depth guide: stroke vertices fading about ``centre``.
+
+        Empty vertices take it away, which is what happens the moment the
+        marker is let go of.
+        """
+        if self._guide is not None:
+            self._guide.upload_vertices(vertices)
+        self._guide_fade = (
+            None if centre is None or reach <= 0.0
+            else (np.asarray(centre, dtype=np.float64), float(reach))
+        )
+
     # -- drawing --------------------------------------------------------
 
     def render(
@@ -323,58 +362,102 @@ class SceneRenderer:
         width: int,
         height: int,
         pixel_ratio: float = 1.0,
+        antialiasing: str = "off",
     ) -> None:
         """Draw one frame, then hand a neutral GL state back to the caller.
 
         ``width``/``height`` are in device pixels; ``pixel_ratio`` converts the
         logical pixel sizes coming from the UI into the same units.
+        ``antialiasing`` is one of :data:`ANTIALIASING_MODES`; anything but
+        ``"off"`` draws the frame offscreen and smooths it on the way out.
 
         The widget paints its 2D overlay with QPainter straight afterwards, and
         Qt's paint engine assumes depth testing is off and nothing is bound --
         leaving the scene's state behind silently swallows strokes and text.
         """
         width, height = max(width, 1), max(height, 1)
+        screen = current_framebuffer()
+        scale = _SUPERSAMPLE if antialiasing == "ssaa" else 1
+        offscreen = antialiasing in ("fxaa", "ssaa")
+        try:
+            if offscreen:
+                # Allocated before anything else is bound, for the same reason
+                # the ghost's buffers are: see _draw_frame.
+                self._frame.resize(width * scale, height * scale)
+                self._frame.bind()
+            self._draw_frame(
+                camera, settings, width * scale, height * scale, pixel_ratio * scale
+            )
+            if offscreen:
+                bind_default(screen)
+                GL.glViewport(0, 0, width, height)
+                self._resolve_frame(antialiasing == "fxaa")
+        finally:
+            self._reset_state()
+
+    def _resolve_frame(self, fxaa: bool) -> None:
+        """Lay the offscreen frame over the screen, smoothed."""
+        frame_width, frame_height = self._frame.size
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glDepthMask(GL.GL_FALSE)
+        GL.glDisable(GL.GL_BLEND)
+        with self._programs["resolve"] as program:
+            program.set_int("uFrame", _FRAME_UNIT)
+            program.set_vec2("uTexelSize", (1.0 / frame_width, 1.0 / frame_height))
+            program.set_bool("uFxaa", fxaa)
+            self._frame.bind_texture(_FRAME_UNIT)
+            self._draw_fullscreen()
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
+    def _draw_frame(
+        self,
+        camera: Camera,
+        settings: RenderSettings,
+        width: int,
+        height: int,
+        pixel_ratio: float,
+    ) -> None:
+        """Everything in the frame, into whichever framebuffer is bound."""
         aspect = width / height
         view = camera.view_matrix()
         projection = camera.projection_matrix(aspect)
         planes = settings.section.planes()
         target = current_framebuffer()
 
-        try:
-            light_matrix = None
-            if settings.shading_mode.uses_quality and self._has_geometry:
-                light_matrix = self._render_shadow_map(camera, settings, planes)
-                self._render_occlusion(camera, settings, projection, view, width, height, planes)
-                bind_default(target)
-            if self._ghost_opacity(settings) is not None:
-                # Sized here, with the other offscreen targets, because
-                # allocating one binds both a framebuffer and a texture.  Doing
-                # it inside the shading pass would take the widget's own
-                # framebuffer out from under that pass and the matcap off its
-                # texture unit -- so the first frame at each new size would come
-                # out unlike every frame after it.
-                self._ghost.resize(width, height)
-                bind_default(target)
+        light_matrix = None
+        if settings.shading_mode.uses_quality and self._has_geometry:
+            light_matrix = self._render_shadow_map(camera, settings, planes)
+            self._render_occlusion(camera, settings, projection, view, width, height, planes)
+            bind_default(target)
+        if self._ghost_opacity(settings) is not None:
+            # Sized here, with the other offscreen targets, because
+            # allocating one binds both a framebuffer and a texture.  Doing
+            # it inside the shading pass would take the widget's own
+            # framebuffer out from under that pass and the matcap off its
+            # texture unit -- so the first frame at each new size would come
+            # out unlike every frame after it.
+            self._ghost.resize(width, height)
+            bind_default(target)
 
-            GL.glViewport(0, 0, width, height)
-            GL.glEnable(GL.GL_DEPTH_TEST)
-            GL.glDepthFunc(GL.GL_LESS)
-            GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
-            self._draw_background(settings)
+        GL.glViewport(0, 0, width, height)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+        GL.glDepthFunc(GL.GL_LESS)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        self._draw_background(settings)
 
-            if not self._has_geometry:
-                return
+        if not self._has_geometry:
+            return
 
-            self._draw_scene(
-                camera, settings, view, projection, planes, light_matrix, width, height,
-                pixel_ratio,
-            )
-            if settings.show_wireframe:
-                self._draw_wireframe(settings, view, projection, planes)
-            self._draw_contour(camera, projection @ view, settings, width, height, pixel_ratio)
-            self._draw_strokes(camera, projection @ view, width, height, pixel_ratio, planes)
-        finally:
-            self._reset_state()
+        self._draw_scene(
+            camera, settings, view, projection, planes, light_matrix, width, height,
+            pixel_ratio,
+        )
+        if settings.show_wireframe:
+            self._draw_wireframe(settings, view, projection, planes)
+        self._draw_contour(camera, projection @ view, settings, width, height, pixel_ratio)
+        self._draw_strokes(camera, projection @ view, width, height, pixel_ratio, planes)
+        self._draw_guide(projection @ view, width, height, pixel_ratio)
 
     @property
     def _has_geometry(self) -> bool:
@@ -557,6 +640,18 @@ class SceneRenderer:
             program.set_bool("uAccumulate", False)
             _set_section(program, planes)
 
+            contour = settings.contour
+            program.set_vec3("uSliceDirection", contour.normal(tuple(camera.forward)))
+            program.set_float(
+                "uSliceSpacing",
+                2.0 * max(camera.scene_radius, 1e-6)
+                / max(contour.density, CONTOUR_DENSITY_MIN),
+            )
+            program.set_float("uSliceWidth", contour.line_width * max(pixel_ratio, 0.1))
+            program.set_vec3("uSliceColor", contour.line_color)
+            program.set_vec3("uSlicePaper", contour.paper_color)
+            program.set_bool("uSliceLit", contour.lit)
+
             matcap = settings.matcap
             program.set_int("uMatcap", _MATCAP_UNIT)
             program.set_float("uMatcapRotation", math.radians(matcap.rotation_deg))
@@ -724,6 +819,7 @@ class SceneRenderer:
             program.set_float("uWidthScale", max(pixel_ratio, 0.1))
             program.set_float("uNormalOffset", camera.scene_radius * 1e-3)
             program.set_float("uDepthBias", _CONTOUR_DEPTH_BIAS)
+            program.set_float("uFadeRadius", 0.0)
             _set_section(program, [])  # The contour lies on the cut; never clip it.
             self._contour.draw()
 
@@ -751,8 +847,39 @@ class SceneRenderer:
             program.set_float("uWidthScale", max(pixel_ratio, 0.1))
             program.set_float("uNormalOffset", camera.scene_radius * _STROKE_LIFT)
             program.set_float("uDepthBias", _STROKE_DEPTH_BIAS)
+            program.set_float("uFadeRadius", 0.0)
             _set_section(program, planes)
             self._strokes.draw()
+        GL.glDepthMask(GL.GL_TRUE)
+
+    def _draw_guide(
+        self, view_projection: np.ndarray, width: int, height: int, pixel_ratio: float
+    ) -> None:
+        """The depth grid, in the scene: hidden where the model is nearer.
+
+        Depth-tested and not depth-written, like the strokes, and blended,
+        because it fades towards its edges -- a grid with a hard edge would
+        read as a floor with a rim, and this is a cue and not a floor.  Never
+        clipped by the section: a marker is as likely to be moved inside a
+        cut-open form as anywhere, and the grid has to follow it in.
+        """
+        if self._guide is None or self._guide.is_empty or self._guide_fade is None:
+            return
+        centre, reach = self._guide_fade
+        GL.glDepthMask(GL.GL_FALSE)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        with self._programs["stroke"] as program:
+            program.set_matrix4("uViewProjection", view_projection)
+            program.set_vec2("uViewport", (width, height))
+            program.set_float("uWidthScale", max(pixel_ratio, 0.1))
+            program.set_float("uNormalOffset", 0.0)
+            program.set_float("uDepthBias", _STROKE_DEPTH_BIAS)
+            program.set_vec3("uFadeCentre", centre)
+            program.set_float("uFadeRadius", reach)
+            _set_section(program, [])
+            self._guide.draw()
+        GL.glDisable(GL.GL_BLEND)
         GL.glDepthMask(GL.GL_TRUE)
 
     # -- high-quality pre-passes ----------------------------------------

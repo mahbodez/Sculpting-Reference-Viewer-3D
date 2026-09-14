@@ -300,3 +300,57 @@ def test_the_disc_draws_the_matcap_that_is_on_the_model(app):
     assert panel._preview.settings() is panel.state.render.matcap
     panel.state.load_matcap(None)
     assert panel._preview.source_pixels() is panel.state.matcap_pixels
+
+
+# -- saving it back out --------------------------------------------------
+
+
+def test_the_original_saves_the_way_it_was_read(app, tmp_path):
+    """A matcap written out and read back in is the same matcap."""
+    from PySide6.QtGui import QImage
+
+    from refview.render.texture import load_matcap_pixels
+
+    preview = MatcapPreview()
+    source = default_matcap_pixels(64)
+    preview.set_source(source)
+    path = preview.save_image(tmp_path / "back.png", graded=False)
+    image = QImage(str(path))
+    assert (image.width(), image.height()) == (64, 64)
+    again = load_matcap_pixels(path)
+    assert again.shape[:2] == source.shape[:2]
+    scale = np.iinfo(source.dtype).max if np.issubdtype(source.dtype, np.integer) else 1.0
+    original = source[..., :3].astype(np.float32) / scale
+    read = again[..., :3].astype(np.float32) / np.iinfo(again.dtype).max
+    assert np.abs(original - read).max() < 2.5 / 255.0
+
+
+def test_the_graded_save_carries_the_grading(app, tmp_path):
+    from PySide6.QtGui import QImage
+
+    preview = MatcapPreview()
+    preview.set_source(default_matcap_pixels(64))
+    plain = preview.image(graded=True)
+    preview.settings().brightness = 0.3
+    preview.refresh()
+    dim = preview.image(graded=True)
+    assert plain.pixelColor(32, 32).lightness() > dim.pixelColor(32, 32).lightness()
+    # Square, and opaque to the corners, so it loads back as a matcap.
+    assert dim.pixelColor(0, 0).alpha() == 255
+    path = preview.save_image(tmp_path / "graded.png")
+    assert QImage(str(path)).width() == 64
+
+
+def test_a_right_click_offers_to_save(app, monkeypatch):
+    """The menu is the way in; what it runs is the save that was just tested."""
+    preview = MatcapPreview()
+    asked = []
+    monkeypatch.setattr(preview, "_ask_to_save", lambda graded: asked.append(graded))
+    menu = preview.save_menu()
+    assert [action.text() for action in menu.actions()] == [
+        "Save Graded Matcap as Image...",
+        "Save Original Matcap as Image...",
+    ]
+    menu.actions()[1].trigger()
+    menu.actions()[0].trigger()
+    assert asked == [False, True]

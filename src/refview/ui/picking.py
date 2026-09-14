@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..core.camera import Camera, Projection
 from ..core.mesh import Mesh
 from ..core.raycast import Hit, raycast_mesh, snap_to_vertex
+
+if TYPE_CHECKING:
+    from .markers import DepthDrag
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,7 @@ class SurfacePicker:
     mesh: Mesh | None
     width: int
     height: int
+    depth_drag: DepthDrag | None = None
 
     def hit(self, x: float, y: float) -> Hit | None:
         """Closest surface intersection under the cursor, or ``None``."""

@@ -23,6 +23,11 @@ from .mesh import Mesh
 
 Color = tuple[float, float, float]
 
+#: How far the plane can be pushed from the centre of the scene, as a multiple
+#: of the scene radius.  Wide enough to push it clear of the model; the
+#: panel's slider and the viewport's rail both span exactly this.
+OFFSET_SPAN = 1.2
+
 
 class SectionAxis(str, Enum):
     """The direction the section plane faces."""

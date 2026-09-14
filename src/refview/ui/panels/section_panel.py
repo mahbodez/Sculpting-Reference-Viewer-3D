@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
-from ...core.section import SectionAxis, SectionMode
+from ...core.section import OFFSET_SPAN, SectionAxis, SectionMode
 from ..widgets import ColorButton, SliderSpin, form_group
 from .base import Panel
 
-#: Slider extent for the plane offset and the slab thickness, as multiples of
-#: the scene radius.  Wide enough to push the plane clear of the model.
-_OFFSET_SPAN = 1.2
+#: Slider extent for the slab thickness, as a multiple of the scene radius.
 _THICKNESS_SPAN = 1.0
 
 
@@ -155,7 +153,7 @@ class SectionPanel(Panel):
         settings = self._settings
         radius = self.state.camera.scene_radius
         with self._suppressed():
-            self._offset.set_range(-radius * _OFFSET_SPAN, radius * _OFFSET_SPAN)
+            self._offset.set_range(-radius * OFFSET_SPAN, radius * OFFSET_SPAN)
             self._thickness.set_range(radius * 1e-3, radius * _THICKNESS_SPAN)
             self._enabled.setChecked(settings.enabled)
             self._axis.setCurrentIndex(self._axis.findData(settings.axis.value))

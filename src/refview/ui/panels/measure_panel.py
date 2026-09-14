@@ -44,6 +44,7 @@ class MeasurePanel(Panel):
 
     measure_toggled = Signal(bool)
     center_requested = Signal(object)
+    selection_changed = Signal(object)
 
     def _build(self) -> None:
         self._toggle = QPushButton("Measure  (M)")
@@ -66,6 +67,8 @@ class MeasurePanel(Panel):
             self._tree.header().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
             )
+        self._tree.itemSelectionChanged.connect(self._selection_changed)
+        self._selected = None
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.itemClicked.connect(self._on_item_clicked)
         self._tree.itemDoubleClicked.connect(self._on_double_clicked)
@@ -110,13 +113,10 @@ class MeasurePanel(Panel):
 
         placement_box, placement_form = form_group("Placement")
         self._snap = QCheckBox("Snap to nearest vertex")
-        self._free = QCheckBox("Free points (ignore the surface)")
-        self._free.setToolTip(
-            "Place and drag points anywhere in space rather than on the model.\n"
-            "They land on the plane facing the camera through the object centre."
-        )
         placement_form.addRow("", self._snap)
-        placement_form.addRow("", self._free)
+        depth_hint = QLabel("Ctrl/Cmd-drag a marker up/down to move it in depth.")
+        depth_hint.setWordWrap(True)
+        placement_form.addRow(depth_hint)
         self._add(placement_box)
 
         display_box, display_form = form_group("Display")
@@ -139,7 +139,6 @@ class MeasurePanel(Panel):
         self._show_all.toggled.connect(lambda v: self._apply("show_all", v))
         self._show_labels.toggled.connect(lambda v: self._apply("show_labels", v))
         self._snap.toggled.connect(lambda v: self._apply("snap_to_vertex", v))
-        self._free.toggled.connect(lambda v: self._apply("free_placement", v))
         self._line_width.valueChanged.connect(lambda v: self._apply("line_width", v))
         self._point_radius.valueChanged.connect(lambda v: self._apply("point_radius", v))
         self._label_size.valueChanged.connect(lambda v: self._apply("label_size", int(v)))
@@ -167,7 +166,6 @@ class MeasurePanel(Panel):
             self._show_all.setChecked(settings.show_all)
             self._show_labels.setChecked(settings.show_labels)
             self._snap.setChecked(settings.snap_to_vertex)
-            self._free.setChecked(settings.free_placement)
             self._line_width.set_value(settings.line_width)
             self._point_radius.set_value(settings.point_radius)
             self._label_size.set_value(settings.label_size)
@@ -176,7 +174,8 @@ class MeasurePanel(Panel):
     def refresh_list(self) -> None:
         """Rebuild the tree from the store, preserving the selected row."""
         settings = self.state.measurement_settings
-        selected = self._selected_index()
+        selected = next((i for i, m in enumerate(self.state.measurements)
+                         if m is self._selected), -1)
         with self._suppressed():
             self._tree.clear()
             for measurement in self.state.measurements:
@@ -198,6 +197,14 @@ class MeasurePanel(Panel):
             if 0 <= selected < self._tree.topLevelItemCount():
                 self._tree.setCurrentItem(self._tree.topLevelItem(selected))
 
+        self._selection_changed()
+
+    def _selection_changed(self) -> None:
+        if self._busy:
+            return
+        self._selected = self._selected_measurement()
+        self.selection_changed.emit(self._selected)
+
     @staticmethod
     def _set_lock_cell(item: QTreeWidgetItem, locked: bool) -> None:
         item.setIcon(_LOCK_COLUMN, lock_icon(locked))
@@ -210,7 +217,9 @@ class MeasurePanel(Panel):
 
     def _selected_index(self) -> int:
         item = self._tree.currentItem()
-        return self._tree.indexOfTopLevelItem(item) if item is not None else -1
+        if item is None or not item.isSelected():
+            return -1
+        return self._tree.indexOfTopLevelItem(item)
 
     def _measurement_at(self, item: QTreeWidgetItem) -> tuple[int, Measurement] | None:
         index = self._tree.indexOfTopLevelItem(item)

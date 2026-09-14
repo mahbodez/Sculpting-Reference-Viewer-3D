@@ -31,7 +31,6 @@ from .panels.annotate_panel import AnnotatePanel
 from .panels.armature_panel import ArmaturePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.forms_panel import FormsPanel
-from .panels.matcap_panel import MatcapPanel
 from .panels.measure_panel import MeasurePanel
 from .panels.model_panel import ModelPanel
 from .panels.planes_panel import PlanesPanel
@@ -69,6 +68,7 @@ CONTROLS_TEXT = """
 <tr><td><b>M</b></td><td>Arm the measuring tool</td></tr>
 <tr><td><b>Left click</b></td><td>Place a point (dragging still orbits)</td></tr>
 <tr><td><b>Padlock</b></td><td>Unlock a measurement to drag its endpoints</td></tr>
+<tr><td><b>Ctrl/Cmd-drag endpoint</b></td><td>Move in depth; Esc restores the start</td></tr>
 <tr><td><b>Esc</b></td><td>Cancel a half-finished measurement</td></tr>
 </table>
 <h3>Annotating</h3>
@@ -101,7 +101,7 @@ and press Start</td></tr>
 it is on</td></tr>
 <tr><td><b>Fill</b></td><td>A freeform's clay as flat planes, or bowed out between the
 points</td></tr>
-<tr><td><b>Free points</b></td><td>Put a freeform's landmarks inside the model, or off it</td></tr>
+<tr><td><b>Ctrl/Cmd-drag marker</b></td><td>Up moves deeper; down moves toward the camera</td></tr>
 <tr><td><b>Left drag a landmark</b></td><td>Move it; the clay follows</td></tr>
 <tr><td><b>Double-click a row</b></td><td>Rename a form, or a freeform's landmark</td></tr>
 <tr><td><b>Append</b></td><td>Take up the selected freeform again and add landmarks to it</td></tr>
@@ -238,7 +238,8 @@ hand them the view you were talking about.  Anything about you -- how fast the
 orbit turns under your hand, how large the type is, which orange the interface
 uses, where your own matcaps are kept, whether opening the application puts
 you back in front of whatever you were last looking at -- stays on this
-machine and follows you from one model to the next.  Settings &gt; Preferences, and every change applies
+machine and follows you from one model to the next.  Settings &gt; Preferences,
+and every change applies
 as you make it.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never
 interfere with typing names into the panels.</p>
@@ -286,8 +287,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._viewport)
 
         self._model_panel = ModelPanel(self._state)
-        self._matcap_panel = MatcapPanel(self._state)
         self._shading_panel = ShadingPanel(self._state)
+        self._matcap_panel = self._shading_panel.matcap_panel
         self._planes_panel = PlanesPanel(self._state)
         self._measure_panel = MeasurePanel(self._state)
         self._section_panel = SectionPanel(self._state)
@@ -329,13 +330,10 @@ class MainWindow(QMainWindow):
     def _build_docks(self) -> None:
         """Give each panel a dock of its own, tabbed together on the right.
 
-        Ten docks rather than one dock of ten tabs: the arrangement they start
-        in is the one the application always had, and every panel in it can
-        now be pulled out to an edge of its own or floated off, which is the
-        only way two panels can be worked between without a click each time.
+        Each panel can be moved to any edge or floated. Matcap controls live
+        inside Shading, where they follow the selected shading mode.
         """
         for key, title, panel in (
-            ("matcap", "Matcap", self._matcap_panel),
             ("model", "Model", self._model_panel),
             ("shading", "Shading", self._shading_panel),
             ("planes", "Planes", self._planes_panel),
@@ -347,6 +345,9 @@ class MainWindow(QMainWindow):
             ("camera", "Camera", self._camera_panel),
         ):
             self._workspace.add_panel(key, title, panel)
+        # Retain saved custom-control references from the former Matcap dock.
+        from .elements.naming import register
+        register(self._matcap_panel, "matcap")
         self._workspace.raise_first()
 
     def _sync_tab_switches(self) -> None:
@@ -578,6 +579,8 @@ class MainWindow(QMainWindow):
         self._planes_panel.export_film_requested.connect(self._export_film)
         self._measure_panel.measure_toggled.connect(self._set_measuring)
         self._measure_panel.center_requested.connect(self._viewport.center_on)
+        self._measure_panel.selection_changed.connect(self._viewport.select_measurement)
+        self._state.render_changed.connect(self._section_panel.refresh)
         self._annotate_panel.annotate_toggled.connect(self._set_annotating)
         self._armature_panel.attach(self._viewport.armature_tool)
         self._armature_panel.armature_toggled.connect(self._set_armaturing)
@@ -796,6 +799,9 @@ class MainWindow(QMainWindow):
         there is one path rather than two that have to agree.
         """
         prefs = self._preferences.value
+        self._viewport.set_show_fps(prefs.viewport.show_fps)
+        self._viewport.set_fps_corner(prefs.viewport.fps_corner)
+        self._viewport.set_antialiasing(prefs.viewport.antialiasing)
         navigation = self._viewport.navigation
         navigation.orbit_speed = prefs.navigation.orbit_speed
         navigation.zoom_speed = prefs.navigation.zoom_speed

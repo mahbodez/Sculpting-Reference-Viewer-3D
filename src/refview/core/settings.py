@@ -31,6 +31,7 @@ class ShadingMode(str, Enum):
     PBR = "pbr"
     NORMALS = "normals"
     HIGH_QUALITY = "high_quality"
+    CONTOUR = "contour"
 
     @property
     def label(self) -> str:
@@ -42,6 +43,7 @@ class ShadingMode(str, Enum):
             ShadingMode.PBR: "PBR (GGX)",
             ShadingMode.NORMALS: "Normals",
             ShadingMode.HIGH_QUALITY: "High Quality",
+            ShadingMode.CONTOUR: "Contour",
         }[self]
 
     @property
@@ -66,6 +68,90 @@ class ShadingMode(str, Enum):
     def uses_quality(self) -> bool:
         """Whether the shadow and occlusion pre-passes need to run."""
         return self is ShadingMode.HIGH_QUALITY
+
+    @property
+    def uses_contour(self) -> bool:
+        return self is ShadingMode.CONTOUR
+
+
+class ContourDirection(str, Enum):
+    """Which way the slicing planes of the contour shading face."""
+
+    VIEW = "view"
+    X = "x"
+    Y = "y"
+    Z = "z"
+    CUSTOM = "custom"
+
+    @property
+    def label(self) -> str:
+        return {
+            ContourDirection.VIEW: "View (follows the camera)",
+            ContourDirection.X: "X (side)",
+            ContourDirection.Y: "Y (height)",
+            ContourDirection.Z: "Z (front)",
+            ContourDirection.CUSTOM: "Custom",
+        }[self]
+
+    @property
+    def fixed(self) -> tuple[float, float, float] | None:
+        """The world axis, or ``None`` when it is the camera's or the artist's."""
+        return {
+            ContourDirection.X: (1.0, 0.0, 0.0),
+            ContourDirection.Y: (0.0, 1.0, 0.0),
+            ContourDirection.Z: (0.0, 0.0, 1.0),
+        }.get(self)
+
+
+#: Ends of the contour density slider: how many slices fall across the
+#: model's diameter.  Four is the coarsest reading that still says anything
+#: about the form; past two hundred the lines are a pixel apart at the size
+#: a model is usually looked at, and the shader fades them out anyway.
+CONTOUR_DENSITY_MIN, CONTOUR_DENSITY_MAX = 4.0, 200.0
+
+
+@dataclass
+class ContourShadingSettings:
+    """Parallel slices drawn across the form, the way a contour map reads land.
+
+    The model is cut by a stack of evenly spaced planes and the cuts are
+    drawn as lines.  Where the surface turns across the planes the lines
+    crowd; where it runs along them they spread, and a flat facing the planes
+    has none at all -- so the curvature and the flatness of the form can be
+    read straight off it.  The planes follow the camera by default, which
+    makes them depth slices: the same picture a sculptor gets by sighting
+    across the form from where they stand.
+    """
+
+    direction: ContourDirection = ContourDirection.VIEW
+    #: Direction used when ``direction`` is :attr:`ContourDirection.CUSTOM`.
+    custom_direction: tuple[float, float, float] = (0.0, 1.0, 0.0)
+    #: How many slices fall across the model's diameter.  A count rather
+    #: than a spacing, so the same setting reads the same on a model a metre
+    #: across and one of a few millimetres.
+    density: float = 32.0
+    #: Line thickness, in logical pixels, held at that width at any zoom.
+    line_width: float = 1.4
+    line_color: Color = (0.10, 0.11, 0.14)
+    #: What the surface is painted between the lines.
+    paper_color: Color = (0.90, 0.88, 0.84)
+    #: Whether a soft light is laid on the paper so the form still reads
+    #: between the lines, or it is left flat like a drawing.
+    lit: bool = True
+
+    def normal(self, view_forward: tuple[float, float, float]) -> tuple[float, float, float]:
+        """The unit direction the slices are stacked along, in world space."""
+        fixed = self.direction.fixed
+        if self.direction is ContourDirection.VIEW:
+            vector = view_forward
+        elif fixed is not None:
+            vector = fixed
+        else:
+            vector = self.custom_direction
+        length = math.sqrt(sum(float(v) * float(v) for v in vector))
+        if length < 1e-9:
+            return (0.0, 1.0, 0.0)
+        return tuple(float(v) / length for v in vector)
 
 
 @dataclass
@@ -500,6 +586,7 @@ class RenderSettings:
     light: LightSettings = field(default_factory=LightSettings)
     surface: SurfaceSettings = field(default_factory=SurfaceSettings)
     quality: QualitySettings = field(default_factory=QualitySettings)
+    contour: ContourShadingSettings = field(default_factory=ContourShadingSettings)
     planes: PlaneSettings = field(default_factory=PlaneSettings)
     section: SectionSettings = field(default_factory=SectionSettings)
     pedestal: PedestalSettings = field(default_factory=PedestalSettings)

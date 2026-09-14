@@ -18,7 +18,7 @@ class MatcapLoadError(RuntimeError):
 
 
 def load_matcap_pixels(path: str | Path) -> np.ndarray:
-    """Read an image file into an ``(H, W, 4)`` uint8 array ready for GL.
+    """Read an image file into an ``(H, W, 4)`` uint16 array ready for GL.
 
     The image is flipped vertically because Qt's origin is top-left while
     OpenGL samples from the bottom-left.
@@ -34,10 +34,10 @@ def load_matcap_pixels(path: str | Path) -> np.ndarray:
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-    image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    image = image.convertToFormat(QImage.Format.Format_RGBA64)
     width, height, stride = image.width(), image.height(), image.bytesPerLine()
-    buffer = np.frombuffer(image.constBits(), dtype=np.uint8, count=height * stride)
-    pixels = buffer.reshape(height, stride // 4, 4)[:, :width, :]
+    buffer = np.frombuffer(image.constBits(), dtype=np.uint16, count=height * stride // 2)
+    pixels = buffer.reshape(height, stride // 8, 4)[:, :width, :]
     return np.ascontiguousarray(pixels[::-1])  # GL samples from the bottom-left.
 
 
@@ -56,7 +56,7 @@ def default_matcap_pixels(size: int = 256) -> np.ndarray:
     rgb = np.stack([shade * 1.00, shade * 0.97, shade * 0.94], axis=-1)
     rgb = np.clip(rgb, 0.0, 1.0) * inside[..., None]
     alpha = np.ones((size, size), dtype=np.float32)
-    return (np.concatenate([rgb, alpha[..., None]], axis=-1) * 255).astype(np.uint8)
+    return np.concatenate([rgb, alpha[..., None]], axis=-1).astype(np.float32)
 
 
 class DataTexture:
@@ -115,7 +115,7 @@ class DataTexture:
 
 
 class Texture2D:
-    """An RGBA8 2D texture with clamped edges and mipmapped minification."""
+    """An RGBA16F 2D texture with clamped edges and mipmapped minification."""
 
     def __init__(self) -> None:
         self._id = int(GL.glGenTextures(1))
@@ -130,19 +130,20 @@ class Texture2D:
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
 
     def upload(self, pixels: np.ndarray) -> None:
-        pixels = np.ascontiguousarray(pixels, dtype=np.uint8)
+        scale = np.iinfo(pixels.dtype).max if np.issubdtype(pixels.dtype, np.integer) else 1.0
+        pixels = np.ascontiguousarray(pixels, dtype=np.float32) / scale
         height, width = pixels.shape[:2]
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         GL.glTexImage2D(
             GL.GL_TEXTURE_2D,
             0,
-            GL.GL_RGBA8,
+            GL.GL_RGBA16F,
             width,
             height,
             0,
             GL.GL_RGBA,
-            GL.GL_UNSIGNED_BYTE,
+            GL.GL_FLOAT,
             pixels,
         )
         GL.glGenerateMipmap(GL.GL_TEXTURE_2D)

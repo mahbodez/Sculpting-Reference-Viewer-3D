@@ -120,6 +120,7 @@ class ViewerState(QObject):
             ARMATURE: self.notify_armature,
             FORMS: self.notify_forms,
             BOOKMARKS: self.notify_bookmarks,
+            "render": self.notify_render,
         }.get(channel)
         if emit is not None:
             emit()

@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.preferences import (
+    ANTIALIASING_MODES,
+    FPS_CORNERS,
     MAX_FONT_SIZE,
     MAX_SPEED,
     MIN_FONT_SIZE,
@@ -216,6 +218,27 @@ class SettingsWindow(QWidget):
         for count in SAMPLE_COUNTS:
             self._samples.addItem("Off" if count == 0 else f"{count}x", count)
         self._samples.setToolTip("Takes effect the next time the application starts.")
+        self._antialiasing = QComboBox()
+        for mode, label in zip(
+            ANTIALIASING_MODES, ("Off", "FXAA (fast)", "Supersampling 2x (sharp)"), strict=True
+        ):
+            self._antialiasing.addItem(label, mode)
+        self._antialiasing.setToolTip(
+            "Smooths the edges of the model, the wires and the contour lines, and\n"
+            "takes effect at once.  FXAA costs almost nothing; supersampling draws\n"
+            "the frame at four times the pixels, so watch the frame counter."
+        )
+        self._show_fps = QCheckBox("Show viewport FPS")
+        self._show_fps.toggled.connect(
+            lambda value: self._write("viewport", "show_fps", value)
+        )
+        self._fps_corner = QComboBox()
+        for corner in FPS_CORNERS:
+            self._fps_corner.addItem(corner.replace("-", " ").capitalize(), corner)
+        self._fps_corner.setToolTip("Which corner of the viewport the counter sits in.")
+        # A corner for a counter that is not shown is a question with no answer.
+        self._show_fps.toggled.connect(self._fps_corner.setEnabled)
+        self._fps_corner.setEnabled(False)
         self._keep_awake = QCheckBox("Keep the machine awake")
         self._keep_awake.setToolTip(
             "While this window is the one in front.  An artist reads a pose for "
@@ -226,16 +249,27 @@ class SettingsWindow(QWidget):
         note = self._samples_note
         self.set_samples_in_use(None)
 
+        form.addRow("Anti-aliasing", self._antialiasing)
         form.addRow("Multisampling", self._samples)
         form.addRow(self._keep_awake)
+        form.addRow(self._show_fps)
+        form.addRow("FPS corner", self._fps_corner)
         form.addRow(note)
         self._add("viewport", box)
 
         self._samples.currentIndexChanged.connect(
             lambda _index: self._write("viewport", "samples", self._samples.currentData())
         )
+        self._antialiasing.currentIndexChanged.connect(
+            lambda _index: self._write(
+                "viewport", "antialiasing", self._antialiasing.currentData()
+            )
+        )
         self._keep_awake.toggled.connect(
             lambda value: self._write("viewport", "keep_awake", value)
+        )
+        self._fps_corner.currentIndexChanged.connect(
+            lambda _index: self._write("viewport", "fps_corner", self._fps_corner.currentData())
         )
 
     def _build_folders(self) -> None:
@@ -342,7 +376,14 @@ class SettingsWindow(QWidget):
             index = self._samples.findData(prefs.viewport.samples)
             if index >= 0:
                 self._samples.setCurrentIndex(index)
+            index = self._antialiasing.findData(prefs.viewport.antialiasing)
+            if index >= 0:
+                self._antialiasing.setCurrentIndex(index)
             self._keep_awake.setChecked(prefs.viewport.keep_awake)
+            self._show_fps.setChecked(prefs.viewport.show_fps)
+            corner = self._fps_corner.findData(prefs.viewport.fps_corner)
+            if corner >= 0:
+                self._fps_corner.setCurrentIndex(corner)
 
             self._matcaps.setText(prefs.folders.matcaps)
         finally:

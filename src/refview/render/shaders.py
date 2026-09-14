@@ -113,6 +113,7 @@ const int MODE_BLINN_PHONG  = 3;
 const int MODE_PBR          = 4;
 const int MODE_NORMALS      = 5;
 const int MODE_HIGH_QUALITY = 6;
+const int MODE_CONTOUR      = 7;
 
 // Grid is the one mode that quantises against something other than a fitted
 // set of planes; the rest differ only in how that set was arrived at.
@@ -152,6 +153,16 @@ uniform float uPlaneSpan;           // radians of turn per plane
 uniform bool  uPlaneContour;
 uniform vec3  uPlaneContourColor;
 uniform float uPlaneContourWidth;   // device pixels
+
+//: The contour mode's stack of slicing planes: which way they face (world
+//: space, unit length), how far apart they are in world units, how thick
+//: their lines are in device pixels, and what is painted on either side.
+uniform vec3  uSliceDirection;
+uniform float uSliceSpacing;
+uniform float uSliceWidth;
+uniform vec3  uSliceColor;
+uniform vec3  uSlicePaper;
+uniform bool  uSliceLit;
 
 uniform sampler2D uMatcap;
 uniform float uMatcapRotation;
@@ -325,6 +336,36 @@ float planeAxisContour(vec3 n, vec3 world) {
                             texelFetch(uPlaneTable, ivec2(runnerUp, 0), 0).xyz);
     ink *= smoothstep(0.0005, 0.0040, apart);   // about 2 to 5 degrees
     return clamp(ink, 0.0, 1.0);
+}
+
+vec3 contourShade(vec3 n, vec3 v) {
+    // Where a stack of evenly spaced planes cuts the surface.  The fragment's
+    // height along the stack, in planes, is a coordinate that runs through a
+    // whole number at every cut; how far it moves in one pixel gives the
+    // distance to the nearest cut in pixels, and that draws a line of an even
+    // width at any zoom and any angle.  Where the surface runs along the
+    // planes the coordinate barely moves and the lines spread out; where it
+    // turns across them they crowd -- which is what the mode is for.
+    float height = dot(vWorldPosition, uSliceDirection) / max(uSliceSpacing, 1e-9);
+    float travel = max(fwidth(height), 1e-6);                  // planes per pixel
+    float toCut = abs(fract(height + 0.5) - 0.5) / travel;      // pixels
+    float halfWidth = max(uSliceWidth, 0.0) * 0.5;
+    float ink = 1.0 - smoothstep(halfWidth - 0.5, halfWidth + 0.5, toCut);
+    // Down to a pixel or two apart the lines would flood the surface, so they
+    // fade to a tone instead -- which still reads as the surface turning
+    // sharply across the planes.
+    ink *= 1.0 - smoothstep(0.25, 0.6, travel);
+    float crowd = smoothstep(0.25, 0.6, travel) * clamp(halfWidth * 2.0 * travel, 0.0, 0.5);
+
+    vec3 paper = uSlicePaper;
+    if (uSliceLit) {
+        // A soft key with a wide fill, so the paper itself models the form
+        // without ever going dark enough to swallow the lines.
+        float key = max(dot(n, normalize(uKeyDirection)), 0.0);
+        float wrap = dot(n, v) * 0.5 + 0.5;
+        paper *= 0.55 + 0.30 * key + 0.15 * wrap;
+    }
+    return mix(paper, uSliceColor, clamp(max(ink, crowd), 0.0, 1.0));
 }
 
 float planeContour(vec3 n) {
@@ -579,6 +620,8 @@ void main() {
         color = analyticShade(n, v, uMode, uUseShadow, occlusionFactor());
     } else if (uMode == MODE_PBR) {
         color = pbrShade(n, v);
+    } else if (uMode == MODE_CONTOUR) {
+        color = contourShade(n, v);
     } else {
         color = analyticShade(n, v, uMode, false, 1.0);
     }
@@ -590,6 +633,11 @@ void main() {
             ? planeContour(turning)
             : planeAxisContour(turning, vWorldPosition);
         color = mix(color, uPlaneContourColor, ink);
+    }
+    if (uMode == MODE_MATCAP) {
+        float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy,
+                            vec2(0.06711056, 0.00583715)))) - 0.5;
+        color += vec3(noise / 255.0);
     }
     vec3 shaded = max(color, vec3(0.0));
     if (uAccumulate) {
@@ -738,9 +786,22 @@ in vec3 vColor;
 in vec3 vWorldPosition;
 out vec4 fragColor;
 
+//: A stroke can be asked to fade out with distance from a point: never quite
+//: solid, so the form still reads through it, level to a third of the way
+//: and gone at uFadeRadius.  Nought means no fade at all, which is what the
+//: annotations and the contour ask for.
+uniform vec3  uFadeCentre;
+uniform float uFadeRadius;
+const float FADED_PEAK = 0.7;
+
 void main() {
     clipSection(vWorldPosition);
-    fragColor = vec4(vColor, 1.0);
+    float alpha = 1.0;
+    if (uFadeRadius > 0.0) {
+        float away = distance(vWorldPosition, uFadeCentre) / uFadeRadius;
+        alpha = FADED_PEAK * (1.0 - smoothstep(0.35, 1.0, away));
+    }
+    fragColor = vec4(vColor, alpha);
 }
 """)
 
@@ -833,6 +894,65 @@ void main() {
     // of merely scaling a value that never got large.
     float open = clamp(1.0 - occluded / float(SAMPLE_COUNT), 0.0, 1.0);
     fragColor = vec4(vec3(pow(open, max(uIntensity, 0.0) * 3.0)), 1.0);
+}
+"""
+
+RESOLVE_FRAGMENT = """
+#version 330 core
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uFrame;
+uniform vec2 uTexelSize;   // one texel of uFrame, in texture coordinates
+uniform bool uFxaa;
+
+float luma(vec3 rgb) {
+    return dot(rgb, vec3(0.299, 0.587, 0.114));
+}
+
+//: Fast approximate anti-aliasing, in the compact form Timothy Lottes gave
+//: it: read the four diagonal neighbours, find the direction the brightness
+//: changes least along -- which runs along an edge rather than across it --
+//: and blend a short way along that direction.  A blend that lands outside
+//: the neighbourhood's own range has overshot an edge, and the shorter one
+//: is kept instead.  Costs a handful of texture reads, and nothing at all in
+//: the flat interior of a form, which comes out as it went in.
+const float SPAN_MAX = 8.0;
+const float REDUCE_MUL = 1.0 / 8.0;
+const float REDUCE_MIN = 1.0 / 128.0;
+
+void main() {
+    vec3 middle = texture(uFrame, vUv).rgb;
+    if (!uFxaa) {
+        // Reading a double-size frame here, through its linear filter at the
+        // screen's own pixel centres, averages each block of four: that is
+        // the whole of the supersampling resolve.
+        fragColor = vec4(middle, 1.0);
+        return;
+    }
+    vec3 nw = texture(uFrame, vUv + vec2(-1.0, -1.0) * uTexelSize).rgb;
+    vec3 ne = texture(uFrame, vUv + vec2( 1.0, -1.0) * uTexelSize).rgb;
+    vec3 sw = texture(uFrame, vUv + vec2(-1.0,  1.0) * uTexelSize).rgb;
+    vec3 se = texture(uFrame, vUv + vec2( 1.0,  1.0) * uTexelSize).rgb;
+    float lumaNW = luma(nw), lumaNE = luma(ne), lumaSW = luma(sw), lumaSE = luma(se);
+    float lumaM = luma(middle);
+    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+    vec2 dir = vec2(-((lumaNW + lumaNE) - (lumaSW + lumaSE)),
+                     ((lumaNW + lumaSW) - (lumaNE + lumaSE)));
+    float reduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * REDUCE_MUL), REDUCE_MIN);
+    float inverse = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * inverse, vec2(-SPAN_MAX), vec2(SPAN_MAX)) * uTexelSize;
+
+    vec3 near = 0.5 * (texture(uFrame, vUv + dir * (1.0 / 3.0 - 0.5)).rgb
+                     + texture(uFrame, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
+    vec3 far = near * 0.5 + 0.25 * (texture(uFrame, vUv + dir * -0.5).rgb
+                                  + texture(uFrame, vUv + dir *  0.5).rgb);
+    float lumaFar = luma(far);
+    vec3 blended = (lumaFar < lumaMin || lumaFar > lumaMax) ? near : far;
+    fragColor = vec4(blended, 1.0);
 }
 """
 

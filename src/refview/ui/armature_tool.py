@@ -204,7 +204,8 @@ class ArmatureTool:
         """
         if settings.free_placement:
             return picker.plane_point(x, y, picker.camera.scene_center)
-        return picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
+        point = picker.point(x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels)
+        return point if point is not None else picker.plane_point(x, y, picker.camera.scene_center)
 
     def drag_target(
         self,
@@ -220,6 +221,8 @@ class ArmatureTool:
         node across the plane it already sits on, so it never jumps to a
         surface the artist did not aim at.
         """
+        if picker.depth_drag is not None:
+            return picker.depth_drag.target(y)
         if not settings.free_placement:
             point = picker.point(
                 x, y, snap=settings.snap_to_vertex, snap_pixels=settings.snap_pixels

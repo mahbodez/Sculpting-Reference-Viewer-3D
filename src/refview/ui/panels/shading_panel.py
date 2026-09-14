@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
-from ...core.settings import GHOST_MIN, LightSettings, ShadingMode, SurfaceSettings
+from ...core.settings import (
+    CONTOUR_DENSITY_MAX,
+    CONTOUR_DENSITY_MIN,
+    GHOST_MIN,
+    ContourDirection,
+    LightSettings,
+    ShadingMode,
+    SurfaceSettings,
+)
 from ..widgets import ColorButton, SliderSpin, form_group
 from .base import Panel
+from .matcap_panel import MatcapPanel
 
 
 class ShadingPanel(Panel):
@@ -33,6 +42,9 @@ class ShadingPanel(Panel):
         form.addRow("", self._ghost)
         form.addRow("Solidity", self._ghost_opacity)
         self._add(box)
+
+        self.matcap_panel = MatcapPanel(self.state, self)
+        self._add(self.matcap_panel)
 
         self._light_box, light_form = form_group("Light")
         self._azimuth = SliderSpin(-180.0, 180.0, 40.0, decimals=0, step=1.0, suffix=" deg")
@@ -90,6 +102,37 @@ class ShadingPanel(Panel):
         quality_form.addRow("AO radius", self._ao_radius)
         quality_form.addRow("AO strength", self._ao_intensity)
         self._add(self._quality_box)
+
+        self._contour_box, contour_form = form_group("Contour")
+        self._contour_box.setToolTip(
+            "Parallel slices drawn across the form, used by the Contour shading mode.\n"
+            "The lines crowd where the surface turns across the slices and spread\n"
+            "where it runs along them, so curves and flats read at a glance."
+        )
+        self._contour_direction = QComboBox()
+        for direction in ContourDirection:
+            self._contour_direction.addItem(direction.label, direction.value)
+        self._contour_from_view = QPushButton("Slice Along the View")
+        self._contour_from_view.setToolTip(
+            "Fix the slices the way the camera faces right now, so they stay put\n"
+            "when the view turns"
+        )
+        self._contour_density = SliderSpin(
+            CONTOUR_DENSITY_MIN, CONTOUR_DENSITY_MAX, 32.0, decimals=0, step=1.0
+        )
+        self._contour_density.setToolTip("How many slices fall across the model")
+        self._contour_width = SliderSpin(0.5, 6.0, 1.4, decimals=1, step=0.1, suffix=" px")
+        self._contour_color = ColorButton((0.10, 0.11, 0.14))
+        self._contour_paper = ColorButton((0.90, 0.88, 0.84))
+        self._contour_lit = QCheckBox("Light the paper between the lines")
+        contour_form.addRow("Slices", self._contour_direction)
+        contour_form.addRow("", self._contour_from_view)
+        contour_form.addRow("Density", self._contour_density)
+        contour_form.addRow("Line width", self._contour_width)
+        contour_form.addRow("Line colour", self._contour_color)
+        contour_form.addRow("Paper", self._contour_paper)
+        contour_form.addRow("", self._contour_lit)
+        self._add(self._contour_box)
 
         pedestal_box, pedestal_form = form_group("Pedestal")
         self._pedestal = QCheckBox("Stand the model on a disc")
@@ -158,6 +201,14 @@ class ShadingPanel(Panel):
         self._ao_radius.valueChanged.connect(self._quality_setter("ao_radius"))
         self._ao_intensity.valueChanged.connect(self._quality_setter("ao_intensity"))
 
+        self._contour_direction.currentIndexChanged.connect(self._on_contour_direction)
+        self._contour_from_view.clicked.connect(self.slice_along_view)
+        self._contour_density.valueChanged.connect(self._contour_setter("density"))
+        self._contour_width.valueChanged.connect(self._contour_setter("line_width"))
+        self._contour_color.colorChanged.connect(self._contour_setter("line_color"))
+        self._contour_paper.colorChanged.connect(self._contour_setter("paper_color"))
+        self._contour_lit.toggled.connect(self._contour_setter("lit"))
+
         self._pedestal.toggled.connect(self._pedestal_setter("enabled"))
         self._pedestal_snap.toggled.connect(self._pedestal_setter("snap_to_lowest"))
         self._pedestal_level.valueChanged.connect(self._pedestal_setter("level"))
@@ -188,6 +239,29 @@ class ShadingPanel(Panel):
     def _pedestal_setter(self, field: str):
         """Slot that writes one field of the pedestal settings."""
         return lambda value: self._apply(self.state.render.pedestal, field, value)
+
+    def _contour_setter(self, field: str):
+        """Slot that writes one field of the contour shading settings."""
+        return lambda value: self._apply(self.state.render.contour, field, value)
+
+    def _on_contour_direction(self, index: int) -> None:
+        if self._busy:
+            return
+        direction = ContourDirection(self._contour_direction.itemData(index))
+        self._apply(self.state.render.contour, "direction", direction)
+
+    def slice_along_view(self) -> None:
+        """Freeze the slices the way the camera faces now.
+
+        The view direction is the one an artist most often wants the slices
+        along, and the one that will not hold still; this pins it, so the
+        model can then be turned and the same slices read from the side.
+        """
+        contour = self.state.render.contour
+        contour.custom_direction = tuple(float(v) for v in self.state.camera.forward)
+        contour.direction = ContourDirection.CUSTOM
+        self.state.notify_render()
+        self.refresh()
 
     # -- reactions ------------------------------------------------------
 
@@ -220,9 +294,13 @@ class ShadingPanel(Panel):
         with self._suppressed():
             self._ghost.setChecked(self.state.render.ghost)
         self._mode_form.setRowVisible(self._ghost_opacity, self.state.render.ghost)
+        self.matcap_panel.setVisible(mode is ShadingMode.MATCAP)
+        with self._suppressed():
+            self._mode.setCurrentIndex(self._mode.findData(mode.value))
         self._light_box.setVisible(mode.uses_lighting)
         self._surface_box.setVisible(mode.uses_lighting)
         self._quality_box.setVisible(mode.uses_quality)
+        self._contour_box.setVisible(mode.uses_contour)
         self._pedestal_form.setRowVisible(
             self._pedestal_level, not self.state.render.pedestal.snap_to_lowest
         )
@@ -234,11 +312,22 @@ class ShadingPanel(Panel):
         self.refresh()
 
     def refresh(self) -> None:
+        self.matcap_panel.refresh()
         render = self.state.render
         light, surface = render.light, render.surface
         quality, pedestal = render.quality, render.pedestal
+        contour = render.contour
         radius = self.state.camera.scene_radius
         with self._suppressed():
+            self._contour_direction.setCurrentIndex(
+                self._contour_direction.findData(contour.direction.value)
+            )
+            self._contour_density.set_value(contour.density)
+            self._contour_width.set_value(contour.line_width)
+            self._contour_color.set_color(contour.line_color)
+            self._contour_paper.set_color(contour.paper_color)
+            self._contour_lit.setChecked(contour.lit)
+
             self._shadows.setChecked(quality.show_shadows)
             self._shadow_strength.set_value(quality.shadow_strength)
             self._shadow_softness.set_value(quality.shadow_softness)

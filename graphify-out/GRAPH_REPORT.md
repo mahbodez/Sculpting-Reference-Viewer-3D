@@ -1,186 +1,212 @@
 # Graph Report - reference-viewer  (2026-09-14)
 
 ## Corpus Check
-- 123 files · ~417,921 words
+- 135 files · ~437,602 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3944 nodes · 8864 edges · 142 communities (137 shown, 5 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 406 edges (avg confidence: 0.57)
+- 4348 nodes · 9751 edges · 168 communities (150 shown, 18 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 460 edges (avg confidence: 0.59)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `72c8e821`
+- Built from commit: `68bcb195`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- test_forms.py
-- VideoSettings
-- update_check.py
+- form_group
+- test_preferences.py
+- Release
 - Viewport
 - plane_axes
-- settings.py
+- main_window.py
 - MainWindow
 - Stroke
 - GifWriter
 - mesh_renderer.py
-- ._draw_scene
-- test_plane_film.py
-- naming.py
-- _wires
+- SceneRenderer
+- plane_solids.py
+- elements/__init__.py
+- rebuild
 - Armature
 - README.md
 - ViewerState
-- SectionPanel
+- PlaneSettings
 - framebuffer.py
 - CameraPanel
 - UpdateChecker
 - ShaderProgram
-- ViewportOverlay
+- test_viewport_markers.py
 - test_planes_panel.py
 - MeasurePanel
 - BookmarkStore
-- NavigationController
-- core/__init__.py
-- ndarray
+- Writer
+- SectionSettings
+- plane_volume.py
 - ControlsWindow
-- VideoError
+- TriangleIndex
 - ShadingPanel
-- PlaneSet
+- mesh.py
 - test_camera.py
 - test_plane_clusters.py
 - WakeLock
-- plane_volume.py
-- _derived
+- MatcapPreview
+- SectionPanel
 - Frame
 - film_export.py
 - SurfacePicker
 - Camera
-- test_armature.py
+- ArmatureNode
 - ValueSlider
-- compute_vertex_normals
-- form_group
+- gltf_loader.py
+- ExportVideoDialog
 - open_writer
 - _Build
 - Agent Graph-First Instructions
-- SceneRenderer
-- plane_clusters.py
-- surface_of
-- landmarks.py
-- custom.py
+- VideoSettings
+- Mesh
+- test_matcap_preview.py
+- test_armature.py
+- load_obj
 - OrientationSettings
-- PlaneSettings
+- ._turn
 - FilmExport
 - FormsPanel
 - PlanesPanel
 - forms.py
 - ArmatureTool
 - Workspace
-- Mesh
-- Solid
-- clay_lumps
+- section_segments
+- test_forms.py
+- application.py
 - MeasureTool
 - Link
 - PrimaryForm
 - History
-- mesh.py
+- compute_vertex_normals
 - AnnotatePanel
-- plane_regions
-- Release
-- Measurement
-- PlaneAxes
-- Texture2D
-- application.py
+- test_plane_solids.py
+- .__init__
+- Session
+- ndarray
+- MeshBuffers
+- load_matcap_pixels
 - test_custom_panels.py
-- ArmaturePanel
-- Coefficients
-- session.py
-- Wires
+- .split_point
+- core/preferences.py
+- ContourShadingSettings
+- NavigationController
 - Bounds
-- symbol_button
+- plane_count
 - test_forms_panel.py
-- TriangleIndex
-- stl_loader.py
+- picking.py
+- MeshLoadError
+- _clone_preview
+- MatcapPanel
+- ColorButton
+- frame.py
+- _Encoder
 - ._picker
-- .new_armature
-- PointEdit
-- FrameBar
-- load_obj
-- .mousePressEvent
 - test_elements.py
-- PlaneMode
+- FakeViewport
 - FormRun
 - ReflowLayout
-- .split_point
-- _Encoder
-- picking.py
+- core/__init__.py
+- ArmaturePanel
+- CHANGELOG.md
 - clone.py
 - ._sync_scene
-- .dropEvent
-- .film_changed
+- Path
+- paths.py
 - .mouseReleaseEvent
 - test_panel_docks.py
+- ._build_menus
 - ._place_armature_node
 - test_mesh_io.py
-- viewport.py
+- ._start_update_check
 - DockTitle
 - test_reflow.py
-- ball
-- build_form
+- MatcapSettings
+- ndarray
 - ArmatureStore
-- plane_solids.py
-- .update_enabled
-- Reflow
+- ModelPanel
+- ._on_bone_toggled
+- .refresh
 - ShadingMode
 - SetAttributes
-- ._draw_hud
+- ViewportOverlay
 - release.yml
-- plane_axes.py
-- wakelock.py
-- BoneLabels
-- _ScreenSaverBackend
-- ndarray
+- _tick
+- .stage_images
+- _tab_switch
+- shaders.py
+- test_the_disc_samples_where_the_shader_would
+- welded
+- GuideRun
+- section.py
+- ._buried_nodes
+- OverlayParts
 - ExportLook
 - ._place_form_landmark
-- .refresh_list
-- .column_of
-- theme.py
-- _height_of
-- ._commit_node_drag
-- section
-- _WindowsBackend
-- _MacBackend
-- WholeFaceToggles
-- app
-- test_plane_solids.py
+- preview
 - refview/__init__.py
+- theme.py
+- .film_changed
+- box
+- SectionGizmo
+- _drag_over
+- panel
 - .with_landmark_at
-- ._buried_nodes
+- .refresh
+- ._scene_center
+- parametrize
+- section
+- _summary
+- test_a_session_saved_without_panels_leaves_the_ones_open_alone
+- .install
+- coarse_lattice
+- test_resetting_the_layout_puts_the_docks_back_at_once
+- ._built
+- ui/preferences.py
+- restored
+- test_resetting_keeps_the_panels_built_by_hand
+- test_a_panel_does_not_cover_its_own_title
+- test_the_switch_is_not_squeezed_to_nothing
+- test_a_panel_can_be_taken_away_and_another_built_after_a_restore
+- test_loading_a_session_over_a_restored_layout_survives
+- test_the_dock_of_a_panel_taken_away_is_used_again
+- test_a_reused_dock_does_not_bring_the_old_panels_contents_with_it
+- Q: Where are the todo viewport marker and shading changes implemented?
+- sample_count
+- coarse_lattice
+- environment.yml
+- palette.py
+- app
 
 ## God Nodes (most connected - your core abstractions)
-1. `Mesh` - 143 edges
-2. `Viewport` - 101 edges
-3. `PrimaryForm` - 78 edges
-4. `Camera` - 75 edges
-5. `Armature` - 73 edges
-6. `MainWindow` - 68 edges
-7. `PlaneSettings` - 67 edges
-8. `ViewerState` - 67 edges
+1. `Mesh` - 144 edges
+2. `Viewport` - 118 edges
+3. `Camera` - 83 edges
+4. `PrimaryForm` - 79 edges
+5. `ViewerState` - 79 edges
+6. `MainWindow` - 76 edges
+7. `Armature` - 74 edges
+8. `PlaneSettings` - 67 edges
 9. `FormsPanel` - 63 edges
 10. `ArmaturePanel` - 62 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Pedestal (1.1.0)` --rationale_for--> `PedestalSettings`  [EXTRACTED]
-  CHANGELOG.md → src/refview/core/pedestal.py
-- `The cut interior is flooded flat` --rationale_for--> `SceneRenderer`  [INFERRED]
-  README.md → src/refview/render/mesh_renderer.py
 - `Orthographic extent derived from FOV and distance` --rationale_for--> `Camera`  [EXTRACTED]
   README.md → src/refview/core/camera.py
-- `Every document edit is a command` --rationale_for--> `SetAttributes`  [EXTRACTED]
-  README.md → src/refview/core/commands.py
-- `Every document edit is a command` --rationale_for--> `AddItem`  [EXTRACTED]
-  README.md → src/refview/core/commands.py
+- `Pedestal (1.1.0)` --rationale_for--> `PedestalSettings`  [EXTRACTED]
+  CHANGELOG.md → src/refview/core/pedestal.py
+- `REFVIEW_RESOURCES resource override` --rationale_for--> `available_matcaps()`  [EXTRACTED]
+  README.md → src/refview/paths.py
+- `Terracotta clay matcap` --shares_data_with--> `available_matcaps()`  [INFERRED]
+  resources/matcaps/clay_terracotta.png → src/refview/paths.py
+- `The cut interior is flooded flat` --rationale_for--> `SceneRenderer`  [INFERRED]
+  README.md → src/refview/render/mesh_renderer.py
 
 ## Import Cycles
 - 3-file cycle: `src/refview/ui/elements/__init__.py -> src/refview/ui/elements/clone.py -> src/refview/ui/elements/slider.py -> src/refview/ui/elements/__init__.py`
@@ -191,83 +217,83 @@
 - **The four generic undo commands** — src_refview_core_commands_setattributes, src_refview_core_commands_additem, src_refview_core_commands_removeitem, src_refview_core_commands_replaceitems, src_refview_core_history_command, readme_every_edit_is_a_command [EXTRACTED 1.00]
 - **Windows binary-compatibility decisions** — readme_pyside6_pinned_below_68, environment_pip_installed_binaries, environment_python_311, github_workflows_release_pyinstaller_build [INFERRED 0.75]
 
-## Communities (142 total, 5 thin omitted)
+## Communities (168 total, 18 thin omitted)
 
-### Community 0 - "test_forms.py"
-Cohesion: 0.06
-Nodes (47): A graph of named points under the form, and the wire it stands for. An armature…, The hull of the points with its faces bowed out; see :func:`rounded_hull`., median_plane_ready(), mirror_form_landmarks(), The midline landmarks, which are what the median plane is fitted to., The landmark list with every paired landmark reflected into place. The…, Whether enough of the midline is down for the mirror to have a plane., median_plane() (+39 more)
+### Community 0 - "form_group"
+Cohesion: 0.11
+Nodes (17): QPushButton, QWidget, A strip of buttons that one form row can show or hide as a unit., _row(), The preferences as they stand. Treat as read-only; use :meth:`set`., QWidget, Fill in the groups. A switch with nothing to put in the caption column is given…, The one button that is not a preference, and what the window is for. (+9 more)
 
-### Community 1 - "VideoSettings"
-Cohesion: 0.09
-Nodes (13): How long the film runs and what it is written as. Everything here is about time…, One stage's hold, in whole milliseconds. The encoders are driven off this…, How many input frames the stage at ``index`` of ``count`` takes. One, except…, How long the stage at ``index`` of ``count`` is held for., How long the whole film runs, in seconds., VideoSettings, FakeViewport, QImage (+5 more)
+### Community 1 - "test_preferences.py"
+Cohesion: 0.07
+Nodes (44): _clamp(), Preferences, Everything above, in one object, which is what gets saved and applied., Read preferences back, keeping whatever makes sense and no less. A field that…, Pull anything out of range back into it. The window cannot produce these…, Read the preferences off the machine. Never raises., app(), model() (+36 more)
 
-### Community 2 - "update_check.py"
-Cohesion: 0.14
-Nodes (22): check_for_update(), fetch_latest_release(), is_newer(), _padded(), parse_version(), RuntimeError, Ask GitHub whether a newer release exists. The check is deliberately small and…, The release could not be looked up (offline, rate limited, malformed). (+14 more)
+### Community 2 - "Release"
+Cohesion: 0.11
+Nodes (30): check_for_update(), fetch_latest_release(), is_newer(), _padded(), parse_version(), RuntimeError, Ask GitHub whether a newer release exists. The check is deliberately small and…, The release could not be looked up (offline, rate limited, malformed). (+22 more)
 
 ### Community 3 - "Viewport"
-Cohesion: 0.08
-Nodes (13): QOpenGLWidget, Slide the view so a point sits at the centre, keeping the angle., A form changed: work its clay out again and redraw., Slide the view so a measurement sits at the centre, keeping the angle., End any film being recorded, and wait for its thread to really stop. For…, The document being drawn., The film of the form's making, as far as it has been recorded., Whether frames are being rendered out of a film right now. (+5 more)
+Cohesion: 0.07
+Nodes (13): QOpenGLWidget, Slide the view so a point sits at the centre, keeping the angle., A form changed: work its clay out again and redraw., Slide the view so a measurement sits at the centre, keeping the angle., End any film being recorded, and wait for its thread to really stop. For…, The film of the form's making, as far as it has been recorded., Whether frames are being rendered out of a film right now., Free every GL object while the owning context is still current. (+5 more)
 
 ### Community 4 - "plane_axes"
-Cohesion: 0.11
-Nodes (29): plane_axes(), Split the mesh's normals into planes, keeping every count on the way., cube(), ndarray, Fitting planes to a model's own normals. The properties that matter are not…, Sampling is strided, not random, so a session reopens looking the same., Asking a flat plate for eight planes gets its one, not eight copies., The renderer reads an empty set as "leave the normals alone". (+21 more)
+Cohesion: 0.08
+Nodes (37): plane_axes(), ndarray, A level with no place in it: nearest direction wins, as before., How much surface each vertex stands for: a third of each triangle on it.…, The plane direction of a group, its spread, and its total weight., Cut a group across its first principal component, or refuse to., Split the mesh's normals into planes, keeping every count on the way., _split() (+29 more)
 
-### Community 5 - "settings.py"
-Cohesion: 0.04
-Nodes (57): QIcon, _along(), lattice_fineness(), plane_count(), plane_span_deg(), Serialisable description of how the object should be shaded. Every value here…, Where a detail setting sits on its slider, 0 to 1., How much finer than usual a detail setting asks the lattice to be. One at the… (+49 more)
+### Community 5 - "main_window.py"
+Cohesion: 0.06
+Nodes (46): QScrollArea, The handful of undoable edits the whole application is built from.…, Undo/redo stack. Every document edit is expressed as a :class:`Command` that…, MatcapLoadError, RuntimeError, Matcap texture loading and upload, and the small data table beside it., Raised when an image cannot be used as a matcap., framed() (+38 more)
 
 ### Community 6 - "MainWindow"
 Cohesion: 0.06
-Nodes (17): QAction, MainWindow, QMainWindow, Wires the viewport, the panels and the document together., Give each panel a dock of its own, tabbed together on the right. Ten docks…, Keep every dock's switch agreeing with the panel it speaks for., Which panels are open, and the panels the artist builds. Rebuilt every time it…, Add a menu entry, optionally with a window-wide shortcut. (+9 more)
+Nodes (15): MainWindow, QMainWindow, Put the panels back where they started, now., Follow the machine's sleep to whether this window is in front., Whether the drag is a copy being moved out of a hand-built panel., Whether this drag is a copied control being let go over the model. Dragging a…, Whether a point in the window's own coordinates is on the model., Wires the viewport, the panels and the document together. (+7 more)
 
 ### Community 7 - "Stroke"
-Cohesion: 0.07
-Nodes (34): AnnotationStore, ndarray, Half-open index ranges of the contiguous ``True`` regions of ``mask``., An ordered collection of strokes, oldest first., The live list; the undo commands operate on it directly., Strokes with the points within ``radius`` of ``center`` rubbed out. Returns…, One painted polyline lying on the surface., Normals padded to match the points, so callers can zip them freely. (+26 more)
+Cohesion: 0.05
+Nodes (39): AnnotationStore, ndarray, Half-open index ranges of the contiguous ``True`` regions of ``mask``., An empty stroke carrying the current brush., An ordered collection of strokes, oldest first., The live list; the undo commands operate on it directly., Strokes with the points within ``radius`` of ``center`` rubbed out. Returns…, One painted polyline lying on the surface. (+31 more)
 
 ### Community 8 - "GifWriter"
 Cohesion: 0.07
 Nodes (32): _bayer(), _blocks(), GifWriter, _indices(), _lookup(), lzw(), palette_of(), ndarray (+24 more)
 
 ### Community 9 - "mesh_renderer.py"
-Cohesion: 0.09
-Nodes (34): Named camera positions the artist can jump between while sculpting., Projection, Enum, str, Interactive camera model driving both perspective and orthographic views., Projection used by :class:`Camera`., look_at(), normalize() (+26 more)
+Cohesion: 0.10
+Nodes (30): Interactive camera model driving both perspective and orthographic views., look_at(), normalize(), orthographic(), perspective(), ndarray, Small linear-algebra helpers using OpenGL conventions. Matrices are stored row-…, Return ``v`` scaled to unit length, or ``fallback`` for a zero vector. (+22 more)
 
-### Community 10 - "._draw_scene"
-Cohesion: 0.11
-Nodes (17): normal_matrix(), ndarray, The model's own planes under ``mode``, fitted once and kept., Replace the section contour, prepared by the caller as stroke vertices., Draw one frame, then hand a neutral GL state back to the caller.…, How see-through the model is this frame, or ``None`` if it is solid. Asked in…, The model, the pedestal under it and the flat cap over the cut., Point the shading pass at the shadow map and the occlusion buffer. (+9 more)
+### Community 10 - "SceneRenderer"
+Cohesion: 0.07
+Nodes (34): Everything the viewport needs in order to draw a frame., How solid the model is drawn, 1.0 unless it is being ghosted., RenderSettings, bind_default(), current_framebuffer(), The framebuffer object bound right now -- Qt's, in a widget., Restore a framebuffer captured with :func:`current_framebuffer`., light_directions() (+26 more)
 
-### Community 11 - "test_plane_film.py"
-Cohesion: 0.06
-Nodes (41): film_key(), What a film depends on. Everything that changes the shape of any stage, and…, coarse_lattice(), film_of(), fixture, MonkeyPatch, parametrize, Scrubbing through the making of a form, rather than only arriving at it. The… (+33 more)
+### Community 11 - "plane_solids.py"
+Cohesion: 0.07
+Nodes (33): planes_for(), How many solids each stage of a film is made of. Every count from the coarsest…, The detail setting that asks for ``solids``, or ``None`` if none does. The…, stage_counts(), block_count(), piece_count(), ndarray, Handing the planes of a fit to the thing that actually works the volume. The… (+25 more)
 
-### Community 12 - "naming.py"
-Cohesion: 0.13
-Nodes (25): _clone_slider(), _asked(), caption_for(), element_id(), _free(), _from_id(), lookup(), name_tree() (+17 more)
+### Community 12 - "elements/__init__.py"
+Cohesion: 0.08
+Nodes (37): clone(), A working copy of ``source``, or ``None`` if its kind cannot be copied., Make every control under ``root`` that can be copied Alt-draggable. A group is…, watch_tree(), A panel the artist builds, out of copies of controls from the fixed ones. The…, One dock per panel, with a bar of its own across the top. Every panel is its…, The widgets the panels are built out of, and the rules they follow. Four ideas,…, _asked() (+29 more)
 
-### Community 13 - "_wires"
-Cohesion: 0.12
-Nodes (31): The order the artist put the bones in is what the scrub walks through, which is…, The claim the whole film rests on, asked again with an armature under it: an…, test_a_film_of_clay_on_a_wire_lays_it_down_in_the_order_it_was_listed(), test_the_last_stage_of_a_film_on_a_wire_is_the_form_the_slider_gives(), _bar(), _bed_for(), _holds(), A long ellipsoid: one closed form with an obvious axis to lie along. (+23 more)
+### Community 13 - "rebuild"
+Cohesion: 0.15
+Nodes (12): _kept_laying(), Fresh bones, laid the way the armature was already laying them. The bone list…, The nodes and bones an armature's landmarks now imply. A node's name and…, rebuild(), Mirror what is missing, then rebuild the figure from the whole set. The…, A nudged landmark rebuilds the whole wire, and it would be intolerable for that…, test_a_freehand_armature_has_no_preset_to_rebuild_from(), test_a_locked_node_keeps_the_size_it_was_given() (+4 more)
 
 ### Community 14 - "Armature"
-Cohesion: 0.05
-Nodes (38): Armature, ArmatureNode, Bone, The end that is not ``index``., A graph of nodes and the bones joining them. When it came from a preset the…, The two points a bone runs between, or ``None`` if it dangles., The longest bone, falling back to the span of the nodes themselves., A plausible thickness for a node placed by hand. (+30 more)
+Cohesion: 0.06
+Nodes (31): Armature, Bone, The end that is not ``index``., A graph of nodes and the bones joining them. When it came from a preset the…, The two points a bone runs between, or ``None`` if it dangles., The longest bone, falling back to the span of the nodes themselves., A plausible thickness for a node placed by hand., What to call a bone: its own name, or the two nodes it runs between. (+23 more)
 
 ### Community 15 - "README.md"
-Cohesion: 0.14
-Nodes (18): High Quality shading mode (1.1.0), numpy, PySide6 and PyOpenGL installed with pip, Python 3.11 from conda-forge, refview conda environment, refview, Annotations drawn as widened geometry, core never imports Qt, Every document edit is a command (+10 more)
+Cohesion: 0.17
+Nodes (15): High Quality shading mode (1.1.0), Annotations drawn as widened geometry, core never imports Qt, The cut interior is flooded flat, High Quality without ray tracing, Three-layer separation: core, render, ui, Measurements drawn in screen space with QPainter, Orthographic extent derived from FOV and distance (+7 more)
 
 ### Community 16 - "ViewerState"
-Cohesion: 0.09
-Nodes (19): ndarray, Path, QObject, Emit the change signal a command's channel maps onto., Run an edit through the history so it can be undone. ``apply=False`` records a…, Load a model, centre it on the origin and frame it in the view. The current…, Turn a freshly read mesh the right way up and centre it., Turn the model, bringing the marks made on it along. Measurements, annotations,… (+11 more)
+Cohesion: 0.08
+Nodes (18): Path, QObject, Emit the change signal a command's channel maps onto., Run an edit through the history so it can be undone. ``apply=False`` records a…, Load a model, centre it on the origin and frame it in the view. The current…, Turn a freshly read mesh the right way up and centre it., Turn the model, bringing the marks made on it along. Measurements, annotations,…, Take the display unit from the file when the format declares one. Only glTF… (+10 more)
 
-### Community 17 - "SectionPanel"
-Cohesion: 0.16
-Nodes (7): Cross-section tool (1.1.0), Turn the cut on or off, for the menu and the keyboard shortcut., Face the plane along the camera, so the cut squares up with the view., Only the settings this cut has a use for. A thickness is what a slab is; the…, Slices the model with a plane and shows the profile at the cut., Write one field; ``arms`` also switches the cut on. Moving the plane is a clear…, SectionPanel
+### Community 17 - "PlaneSettings"
+Cohesion: 0.04
+Nodes (47): _empty(), The best ``count`` planes, or as many as the model supports. A model whose…, film_key(), What a film depends on. Everything that changes the shape of any stage, and…, Holds the working state between one turn of the sliders and the next.…, Drop everything held, so the next call starts from the fit., The fit these settings ask for, refitting only if it has gone stale. The fit is…, The stand-in these settings ask for, or ``None`` for the model itself. (+39 more)
 
 ### Community 18 - "framebuffer.py"
 Cohesion: 0.07
-Nodes (20): AccumTarget, bind_default(), ColorTarget, current_framebuffer(), DepthTarget, GeometryTarget, Offscreen render targets used by the high-quality and ghost passes. Four of…, A single-channel colour framebuffer, used for the occlusion buffers. (+12 more)
+Nodes (18): AccumTarget, ColorTarget, DepthTarget, FrameTarget, GeometryTarget, Offscreen render targets used by the high-quality, ghost and smoothing passes.…, A depth-only framebuffer, sampled afterwards as a texture., ``clamp_to_lit`` makes everything outside the map read as unshadowed. (+10 more)
 
 ### Community 19 - "CameraPanel"
 Cohesion: 0.12
@@ -281,485 +307,537 @@ Nodes (7): QRunnable, _CheckTask, QObject, Runs :func:`check_for_update` off the
 Cohesion: 0.12
 Nodes (9): OpenGL rendering layer: shader programs, textures and the scene renderer., ndarray, RuntimeError, Thin wrapper around an OpenGL shader program., Raised when a shader fails to compile or link., Upload a row-major numpy 4x4, transposing for GL's column-major., Compiles a vertex/fragment pair and caches its uniform locations. Uniform…, ShaderError (+1 more)
 
-### Community 22 - "ViewportOverlay"
-Cohesion: 0.16
-Nodes (19): QPointF, project_visible(), Handle, QColor, QPainter, Draws measurements, tool previews, the orientation gizmo and the readout., A line laid over its own dark outline, so it reads against anything., An unfilled circle: how thick the form is here, not how big a dot is. (+11 more)
+### Community 22 - "test_viewport_markers.py"
+Cohesion: 0.08
+Nodes (28): DepthDrag, draw_rail(), draw_text(), Shared marker appearance, visibility, and constrained depth gestures., A grid across the depth axis, at the depth the point has reached. Returns…, Draw text as a filled outline rather than as glyphs. Qt's OpenGL paint engine…, The screen-space cue for one degree of freedom. A vertical rail that fades out…, A fixed world axis through the grabbed point; upward drags go deeper. (+20 more)
 
 ### Community 23 - "test_planes_panel.py"
-Cohesion: 0.07
-Nodes (25): app(), _names(), panel(), fixture, The Planes panel, where the clay is told which armature to build on. Most of…, It is a reordering of the making, not a structural edit, so an armature derived…, The question in front of this list is what one more step of Detail would buy,…, A session saved with two wires and reopened with one has to come back as… (+17 more)
+Cohesion: 0.08
+Nodes (21): _names(), The Planes panel, where the clay is told which armature to build on. Most of…, It is a reordering of the making, not a structural edit, so an armature derived…, The question in front of this list is what one more step of Detail would buy,…, A session saved with two wires and reopened with one has to come back as…, Or there would be no way to turn one back on., A limb is four bones, and deciding not to block the arms in is one decision.…, It is rebuilt on every change, and ticking one row of a selected limb would be… (+13 more)
 
 ### Community 24 - "MeasurePanel"
-Cohesion: 0.10
-Nodes (11): MeasurePanel, _NameOnlyDelegate, QStyledItemDelegate, QTreeWidgetItem, Reflect the tool state without re-emitting the toggle., Rebuild the tree from the store, preserving the selected row., Commit a renamed or re-checked row, if anything actually changed., Run a row's edit once Qt has finished delivering the current signal. Committing… (+3 more)
+Cohesion: 0.09
+Nodes (14): lock_icon(), A padlock, shut or hanging open. Open reads as "this measurement will move if…, MeasurePanel, _NameOnlyDelegate, QStyledItemDelegate, QTreeWidgetItem, Reflect the tool state without re-emitting the toggle., Rebuild the tree from the store, preserving the selected row. (+6 more)
 
 ### Community 25 - "BookmarkStore"
-Cohesion: 0.13
-Nodes (7): BookmarkStore, CameraBookmark, A camera pose stored under a name., An ordered list of :class:`CameraBookmark` with cycling support., Index of the most recently recalled bookmark, or ``-1``., Mark a bookmark as the one cycling continues from., test_bookmarks_cycle_and_wrap()
+Cohesion: 0.12
+Nodes (9): BookmarkStore, CameraBookmark, A camera pose stored under a name., An ordered list of :class:`CameraBookmark` with cycling support., Index of the most recently recalled bookmark, or ``-1``., Mark a bookmark as the one cycling continues from., Deletion goes through the undo stack, so the store only tracks position., test_bookmarks_cycle_and_wrap() (+1 more)
 
-### Community 26 - "NavigationController"
-Cohesion: 0.10
-Nodes (22): Shift-snapped orbiting (1.1.0), DragMode, NavigationController, Enum, ndarray, Mouse-gesture to camera-motion mapping. Orbiting pivots on the point where the…, Orbit in whole increments of ``step`` degrees from the drag's start., Zoom by wheel notches, keeping the point under the cursor fixed. ``anchor`` is… (+14 more)
+### Community 26 - "Writer"
+Cohesion: 0.18
+Nodes (7): ndarray, What an export needs of whatever is doing the encoding., Offered the last frame before the first is written, if it helps., Write one frame, held for ``seconds``., Give up, leaving nothing half-written behind., Nothing to do: ffmpeg reads the whole stream before it decides., Writer
 
-### Community 27 - "core/__init__.py"
-Cohesion: 0.07
-Nodes (37): The cut interior is flooded flat, Qt-free geometry, camera and document model for the reference viewer., Enum, ndarray, str, Cutting the model open with planes. A section is described by one plane -- an…, Unit plane normal, honouring the flip toggle., The half-spaces the current mode cuts with; empty when disabled. (+29 more)
+### Community 27 - "SectionSettings"
+Cohesion: 0.16
+Nodes (17): How the model is cut open, and how the cut is drawn., SectionSettings, LightSettings, A key light, an opposing fill and a hemispherical ambient term., Material parameters shared by the analytic shading modes., SurfaceSettings, _box(), Cutting planes, the contour they produce and the pedestal under the model. (+9 more)
 
-### Community 28 - "ndarray"
-Cohesion: 0.08
-Nodes (38): block_bounds(), block_field(), block_labels(), block_splits(), blocks(), carve(), coarse_bounds(), _corner_facings() (+30 more)
+### Community 28 - "plane_volume.py"
+Cohesion: 0.04
+Nodes (114): Work the form stage by stage, handing each one back as it is finished. A…, record(), _axes(), _back_inside(), _balloon(), Bed, block_bounds(), block_field() (+106 more)
 
 ### Community 29 - "ControlsWindow"
 Cohesion: 0.22
 Nodes (6): ControlsWindow, QWidget, The window the controls reference is read in. It was a message box, which is…, A scrolled, searchable page of prose., Find the next occurrence, wrapping round the end., Open the controls reference. A message box was the wrong container for this: it…
 
-### Community 30 - "VideoError"
-Cohesion: 0.09
-Nodes (19): _encode_arguments(), _encoders(), _FFmpegWriter, _no_window(), ndarray, RuntimeError, An export that could not be written, said in words for the artist., Which encoders this ffmpeg was built with. Asked once, because a build without… (+11 more)
+### Community 30 - "TriangleIndex"
+Cohesion: 0.15
+Nodes (13): Picking about a hundred times faster, Morton-curve leaf boxes for picking, Picking accelerator, built on first use and kept for the mesh's life., _morton_order(), ndarray, Spatial index that keeps picking fast on large meshes. Every click, every hover…, Leaf bounding boxes over a Morton-sorted triangle list., Build the index from expanded triangle corners, shape ``(T, 3, 3)``. (+5 more)
 
 ### Community 31 - "ShadingPanel"
 Cohesion: 0.20
-Nodes (7): Chooses the shading model and edits its light and surface parameters., Slot that writes one field of the light settings., Slot that writes one field of the surface settings., Slot that writes one field of the high-quality settings., Slot that writes one field of the pedestal settings., Show what this mode is actually lit and shaded by, and hide the rest. A matcap…, ShadingPanel
+Nodes (9): Chooses the shading model and edits its light and surface parameters., Slot that writes one field of the light settings., Slot that writes one field of the surface settings., Slot that writes one field of the high-quality settings., Slot that writes one field of the pedestal settings., Slot that writes one field of the contour shading settings., ShadingPanel, test_a_copied_group_still_drives_the_originals() (+1 more)
 
-### Community 32 - "PlaneSet"
-Cohesion: 0.09
-Nodes (19): QThread, PlaneSet, One level of a fit: the planes the shader is to quantise against. A plane is a…, Film, A whole making, from the coarsest stage to the one the slider asks for. Held by…, FilmRecorder, QObject, Recording a form's making in the background, so the app stays usable. A film is… (+11 more)
+### Community 32 - "mesh.py"
+Cohesion: 0.05
+Nodes (47): QThread, auto_smooth(), _gathered(), Triangle-mesh containers shared by the loader, the renderer and picking., Which group each of ``total`` things lands in, given pairs that agree. Hooking…, A copy of ``mesh`` shaded smooth across every edge gentler than ``degrees``.…, PlaneSet, One level of a fit: the planes the shader is to quantise against. A plane is a… (+39 more)
 
 ### Community 33 - "test_camera.py"
 Cohesion: 0.12
 Nodes (8): camera(), fixture, parametrize, Camera behaviour: framing, projection round trips and the navigation gestures., A drag applies many small steps, and the pivot barely moves on screen. It is…, test_orbit_keeps_the_pivot_under_the_cursor(), test_serialisation_round_trip(), test_zoom_keeps_the_anchor_under_the_cursor()
 
 ### Community 34 - "test_plane_clusters.py"
-Cohesion: 0.07
-Nodes (44): angle_deg(), cube(), ndarray, parametrize, quad(), Fitting planes to a model's surface rather than only to its normals. What…, How far the least well served of ``wanted`` is from anything offered., The one form whose planes are not a matter of opinion. (+36 more)
+Cohesion: 0.06
+Nodes (58): angle_deg(), bent_plate(), cube(), lumpy(), ndarray, parametrize, quad(), Fitting planes to a model's surface rather than only to its normals. What… (+50 more)
 
 ### Community 35 - "WakeLock"
-Cohesion: 0.17
-Nodes (13): Holds sleep off while the window that owns it is the one in front. The class…, WakeLock, Broken, The wake lock: it must ask once, drop once, and never take the viewer down., A backend that writes down what it was asked to do., A platform that refuses, the way an old or locked-down one might., The viewer must open and close normally on a machine that says no., Recorder (+5 more)
+Cohesion: 0.05
+Nodes (32): c_void_p, _Backend, _MacBackend, _platform_backend(), Keeping the machine awake while the viewer is the window in front. An artist…, The freedesktop screensaver service, which hands back a cookie., The backend for this machine, or a do-nothing one if it cannot be had., Holds sleep off while the window that owns it is the one in front. The class… (+24 more)
 
-### Community 36 - "plane_volume.py"
+### Community 36 - "MatcapPreview"
 Cohesion: 0.10
-Nodes (29): _axes(), _balloon(), close_gaps(), encloses(), lattice(), lay_bed(), nearest_surface(), outside_points() (+21 more)
+Nodes (12): QMenu, MatcapPreview, Path, QSize, QWidget, A matcap on a sphere, which is also how the matcap is graded., Offer the picture back as a file: as graded here, or as it came. A grading…, The matcap as a picture, at its own resolution. Square and opaque, with the… (+4 more)
 
-### Community 37 - "_derived"
-Cohesion: 0.10
-Nodes (24): _kept_laying(), Fresh bones, laid the way the armature was already laying them. The bone list…, The nodes and bones an armature's landmarks now imply. A node's name and…, rebuild(), _derived(), A guess the artist corrects is theirs, and the mirror leaves it alone., The new list is the edit; the old one has to survive to be undone to., Hips, then the ribcage, then the head, then the limbs largest first. This order… (+16 more)
+### Community 37 - "SectionPanel"
+Cohesion: 0.19
+Nodes (6): Turn the cut on or off, for the menu and the keyboard shortcut., Face the plane along the camera, so the cut squares up with the view., Only the settings this cut has a use for. A thickness is what a slab is; the…, Slices the model with a plane and shows the profile at the cut., Write one field; ``arms`` also switches the cut on. Moving the plane is a clear…, SectionPanel
 
 ### Community 38 - "Frame"
-Cohesion: 0.08
-Nodes (17): carried(), _push_frame(), Nothing: each row inside the copy is linked on its own., Read a drag's payload back, or ``None`` if it is not one of ours., CustomPanel, Move a copy already in a panel to a new place in this one. ``frame`` and…, The group under a point in the panel, if there is one., Which row of a group a drop at ``point`` should become. (+9 more)
+Cohesion: 0.07
+Nodes (25): carried(), _push_frame(), Nothing: each row inside the copy is linked on its own., Read a drag's payload back, or ``None`` if it is not one of ours., CustomPanel, _detach(), QFormLayout, QWidget (+17 more)
 
 ### Community 39 - "film_export.py"
 Cohesion: 0.07
 Nodes (21): Enum, str, Quality, Turning a sequence of rendered frames into a file someone can play. A film of a…, What an artist should know before picking this one., How hard the encoder is asked to work at keeping the picture., H.264's constant-rate factor, where lower keeps more., MPEG-4's quantiser, 1 (best) to 31. (+13 more)
 
 ### Community 40 - "SurfacePicker"
-Cohesion: 0.06
-Nodes (28): AnnotationSettings, The annotate tool's brush, shared by every stroke it lays down., An empty stroke carrying the current brush., AnnotateTool, ndarray, Centre and world radius of the eraser, or ``None`` when off the model., Add one freehand point, unless the cursor has barely moved., Project screen-space samples onto the surface, breaking at the misses. (+20 more)
+Cohesion: 0.09
+Nodes (20): AnnotationSettings, The annotate tool's brush, shared by every stroke it lays down., AnnotateTool, ndarray, Centre and world radius of the eraser, or ``None`` when off the model., Add one freehand point, unless the cursor has barely moved., Project screen-space samples onto the surface, breaking at the misses., Continue the open run with a hit, or end it where the ray missed. (+12 more)
 
 ### Community 41 - "Camera"
 Cohesion: 0.07
-Nodes (19): Orthographic extent derived from FOV and distance, Return the pose at ``index`` and remember it as the current one., Step forwards or backwards through the list, wrapping around., Camera, ndarray, Ray through a pixel, as ``(origin, unit direction)``. ``x``/``y`` are Qt widget…, Project a world point to ``(x, y, ndc_depth)`` in widget pixels., Intersect the pixel ray with the camera-facing plane through a point. Defaults… (+11 more)
+Nodes (18): Return the pose at ``index`` and remember it as the current one., Step forwards or backwards through the list, wrapping around., Camera, ndarray, Ray through a pixel, as ``(origin, unit direction)``. ``x``/``y`` are Qt widget…, Project a world point to ``(x, y, ndc_depth)`` in widget pixels., Intersect the pixel ray with the camera-facing plane through a point. Defaults…, Screen-to-world scale at the focal plane; identical in both modes. (+10 more)
 
-### Community 42 - "test_armature.py"
-Cohesion: 0.07
-Nodes (56): build_humanoid(), Turn placed landmarks into a figure's armature. Anything whose landmarks are…, _chain(), _figure(), ndarray, The armature graph, the humanoid landmarks and the joints they infer., Every plane through a straight line is as good as every other., The femoral head is in from the ASIS, below it and behind it, by shares of the… (+48 more)
+### Community 42 - "ArmatureNode"
+Cohesion: 0.08
+Nodes (25): ArmatureNode, One joint of the wire: where it is, and how thick the form is there., ndarray, The thickness a resize drag is asking for: the cursor's reach, in world units., Drop a new node into the middle of a bone, taking its thickness from the ends., What the armature becomes when a picked point is dropped into it. Returns the…, The same question in three dimensions, for interpolating along a bone., _share_between() (+17 more)
 
 ### Community 43 - "ValueSlider"
 Cohesion: 0.07
-Nodes (11): _pull_slider(), QSize, QWidget, Re-scale the bar, e.g. once a model's size is known., Put the bar at a value without telling anyone it moved., Grow the bar to take in a value from beyond its end., Set the value the way a hand on the control would., The value the track stands at ``x`` pixels across. (+3 more)
+Nodes (13): _clone_slider(), _pull_slider(), _push_slider(), QSize, QWidget, Re-scale the bar, e.g. once a model's size is known., Put the bar at a value without telling anyone it moved., Grow the bar to take in a value from beyond its end. (+5 more)
 
-### Community 44 - "compute_vertex_normals"
+### Community 44 - "gltf_loader.py"
 Cohesion: 0.13
-Nodes (26): _accessor(), _buffers(), GltfLoadError, load_gltf(), _local_transform(), _primitive_geometry(), _primitives(), ndarray (+18 more)
+Nodes (27): Units are adopted, never guessed, _accessor(), _buffers(), GltfLoadError, load_gltf(), _local_transform(), _primitive_geometry(), _primitives() (+19 more)
 
-### Community 45 - "form_group"
-Cohesion: 0.11
-Nodes (15): QDialog, QProgressDialog, even(), ExportVideoDialog, Path, QWidget, ``value`` rounded down to a multiple of four. Two would do for H.264, which…, Where an artist says how the film should be written out. Everything on the… (+7 more)
+### Community 45 - "ExportVideoDialog"
+Cohesion: 0.12
+Nodes (12): QDialog, QProgressDialog, even(), ExportVideoDialog, Path, ``value`` rounded down to a multiple of four. Two would do for H.264, which…, Open the file and begin. Any failure here is reported, not raised., Where an artist says how the film should be written out. Everything on the… (+4 more)
 
 ### Community 46 - "open_writer"
-Cohesion: 0.13
-Nodes (16): ffmpeg_path(), open_writer(), Path, Where ffmpeg is, or ``None``. Looked for in the order of how deliberate each…, Why ``format`` cannot be written here, or ``None`` if it can., Start an encoder for ``settings``, or say why there cannot be one., unavailable(), frames() (+8 more)
+Cohesion: 0.08
+Nodes (28): _encode_arguments(), _encoders(), ffmpeg_path(), _FFmpegWriter, _no_window(), open_writer(), Path, RuntimeError (+20 more)
 
 ### Community 47 - "_Build"
-Cohesion: 0.21
+Cohesion: 0.19
 Nodes (14): _Build, _build_arm(), _build_leg(), _build_torso(), _humanoid_bones(), _mid(), ndarray, Somewhere to collect nodes while the rules that need each other run. (+6 more)
 
 ### Community 48 - "Agent Graph-First Instructions"
 Cohesion: 0.50
 Nodes (3): Query the graph before reading source, Run graphify update after modifying code, Copilot: graph-first repo questions
 
-### Community 49 - "SceneRenderer"
-Cohesion: 0.07
-Nodes (19): _ghost_depth_range(), MeshBuffers, Owns every GL resource the viewport needs. The widget calls :meth:`initialize`…, Draw ``mesh`` in place of the model; pass ``None`` to draw the model. The…, Replace the ground disc; pass ``None`` to hide it., Replace the clay of the primary forms; pass ``None`` to hide it. The forms are…, Whichever geometry is standing for the model this frame., Fill the shader's table with a level, if it is not already in it. (+11 more)
+### Community 49 - "VideoSettings"
+Cohesion: 0.12
+Nodes (10): How long the film runs and what it is written as. Everything here is about time…, One stage's hold, in whole milliseconds. The encoders are driven off this…, How many input frames the stage at ``index`` of ``count`` takes. One, except…, How long the stage at ``index`` of ``count`` is held for., How long the whole film runs, in seconds., VideoSettings, Pump the event loop until ``done()`` or the clock runs out., run_until() (+2 more)
 
-### Community 50 - "plane_clusters.py"
+### Community 50 - "Mesh"
+Cohesion: 0.04
+Nodes (63): Mesh, Return a copy whose bounding-box centre sits at the origin., An indexed triangle mesh with per-vertex positions and normals. The viewer…, Coefficients, PlaneAxes, Reading the planes of a form out of the model's own normals. The grid quantiser…, The planes a model falls into, at every count. Built once per mesh and per…, What each block of the design matrix counts for, against the normals. A fit… (+55 more)
+
+### Community 51 - "test_matcap_preview.py"
+Cohesion: 0.14
+Nodes (24): QPoint, _drag(), The matcap as its own control, and whether it tells the truth. The disc is only…, Positive rotation moves a feature clockwise, which is the way a drag goes.…, The picture follows the hand, which is the whole reason for the disc., Dragging further than the range goes is not a negative gamma., Alt and a drag copies a control; the disc must not swallow that., Tint and flip are not dragged on the disc, so they are not reset by it. (+16 more)
+
+### Community 52 - "test_armature.py"
 Cohesion: 0.09
-Nodes (29): _compact(), _consensus(), _cut(), _first_planes(), _fit(), _leaves(), Patches, plane_flats() (+21 more)
+Nodes (46): build_humanoid(), Turn placed landmarks into a figure's armature. Anything whose landmarks are…, _figure(), ndarray, The armature graph, the humanoid landmarks and the joints they infer., Every plane through a straight line is as good as every other., The femoral head is in from the ASIS, below it and behind it, by shares of the…, A wire in two halves is not an armature anybody could bend. (+38 more)
 
-### Community 51 - "surface_of"
-Cohesion: 0.11
-Nodes (19): _back_inside(), Bed, dual_contour(), The surface where ``value`` changes sign, one vertex per lattice cell. Each…, The gradient of a lattice field, by central differences. Which is the direction…, Drop the loose pieces, keeping the form and anything of its size. A block is a…, Read lattice fields at places between their corners, straight-line. Nearest-…, Put anything that has drifted out of the model back onto its surface. One… (+11 more)
-
-### Community 52 - "landmarks.py"
-Cohesion: 0.09
-Nodes (21): _humanoid_landmarks(), mirror_landmarks(), mirror_point(), _node_name(), Preset, Enum, Guided presets: the anatomy an artist points at, and the joints it implies. A…, An ordered set of landmarks and the armature they build. (+13 more)
-
-### Community 53 - "custom.py"
-Cohesion: 0.13
-Nodes (15): Make every control under ``root`` that can be copied Alt-draggable. A group is…, watch_tree(), _detach(), QFormLayout, QWidget, A panel the artist builds, out of copies of controls from the fixed ones. The…, Take a copy out of this panel and destroy it., Whether a control already says what it is, so needs no caption. Three do. A… (+7 more)
+### Community 53 - "load_obj"
+Cohesion: 0.22
+Nodes (14): load_obj(), ObjLoadError, Path, Raised when a file cannot be interpreted as an OBJ mesh., Load ``path`` and return a :class:`~refview.core.mesh.Mesh`. Faces with more…, Negative face indices count back from the most recent vertex., test_obj_relative_indices_still_load(), OBJ parsing: normals, triangulation and index handling. (+6 more)
 
 ### Community 54 - "OrientationSettings"
-Cohesion: 0.09
-Nodes (24): OrientationSettings, Enum, str, Putting an imported model the right way up. Formats disagree about which axis…, Which axis of the file points up., A rigid turn from the file's axes to the viewer's Y-up world., Whether the model is used exactly as the file stored it., UpAxis (+16 more)
+Cohesion: 0.16
+Nodes (17): OrientationSettings, A rigid turn from the file's axes to the viewer's Y-up world., Whether the model is used exactly as the file stored it., Turning an imported model the right way up., A tall, thin shape lying along +Z, as a Z-up export would store it., A negative determinant would turn the model inside out., A measurement is attached to the surface, so it turns with it., test_an_identity_turn_reuses_the_mesh() (+9 more)
 
-### Community 55 - "PlaneSettings"
-Cohesion: 0.05
-Nodes (36): Holds the working state between one turn of the sliders and the next.…, Drop everything held, so the next call starts from the fit., The fit these settings ask for, refitting only if it has gone stale. The fit is…, The stand-in these settings ask for, or ``None`` for the model itself., SculptCache, PlaneSettings, Discretisation of the shading normals into the planes of the form. A sculptor…, How much of a turn in the surface one plane covers, in degrees. Linear in… (+28 more)
+### Community 55 - "._turn"
+Cohesion: 0.17
+Nodes (5): Redraw from the settings, which something else has changed., Put the grading back, which is the one thing a disc cannot show., Turn the matcap by the angle the cursor swept about the centre. By angle and…, Two grades on one drag: one along each axis of the movement. Both move together…, Keep the angle in -180 to 180, the range the setting is stored in.
 
 ### Community 56 - "FilmExport"
-Cohesion: 0.13
-Nodes (12): FilmExport, frame_bytes(), QImage, An image's pixels, packed tight, whatever padding Qt left on its rows. Qt pads…, One export, rendered from the event loop and encoded behind it. The renderer…, Open the file and begin. Any failure here is reported, not raised., Stop where it is and leave no half-written file behind., Let the encoding thread finish, for shutdown. It calls off an export still in… (+4 more)
+Cohesion: 0.14
+Nodes (11): FilmExport, frame_bytes(), QImage, An image's pixels, packed tight, whatever padding Qt left on its rows. Qt pads…, One export, rendered from the event loop and encoded behind it. The renderer…, Stop where it is and leave no half-written file behind., Let the encoding thread finish, for shutdown. It calls off an export still in…, Offer the encoder the last stage before the first is written. Only the built-in… (+3 more)
 
 ### Community 57 - "FormsPanel"
-Cohesion: 0.04
-Nodes (35): FormsPanel, QPushButton, QTreeWidgetItem, QWidget, A strip of buttons that one form row can show or hide as a unit., Arms the forms tool, runs the guided presets and lists what they built., Adopt the viewport's tool, which is where the guided run lives., Reflect the tool state without re-emitting the toggle. (+27 more)
+Cohesion: 0.05
+Nodes (29): FormsPanel, QTreeWidgetItem, Arms the forms tool, runs the guided presets and lists what they built., Adopt the viewport's tool, which is where the guided run lives., Reflect the tool state without re-emitting the toggle., Begin a run against a fresh form: a preset's walk, or a freeform's., Take up the selected freeform again, so more landmarks can go on it. The same…, The freeform the highlighted row belongs to, when no run is on. (+21 more)
 
 ### Community 58 - "PlanesPanel"
-Cohesion: 0.09
-Nodes (20): PlanesPanel, QListWidgetItem, Lay one length of wire earlier or later, as one undoable step., Put the design matrix back the way it reads a figure., Hold the settings a recording is built from still while it runs. A film is a…, Show what this way of working needs, and put the rest away. A setting that does…, The line under the normals slider: what the setting has asked for., The line under the geometry slider: how the form is being worked. ``wires`` is… (+12 more)
+Cohesion: 0.15
+Nodes (11): PlanesPanel, Lay one length of wire earlier or later, as one undoable step., Hold the settings a recording is built from still while it runs. A film is a…, Show what this way of working needs, and put the rest away. A setting that does…, Breaks the form into planes, in the shading or in the geometry itself., The armature the clay is being built on, or ``None``. An index past the end of…, Re-read the armatures and what the chosen one is laying down. Called whenever…, The bones of the chosen armature, in the order the clay goes down. Every intact… (+3 more)
 
 ### Community 59 - "forms.py"
-Cohesion: 0.07
-Nodes (42): build_freeform(), _centre(), form_landmark_title(), form_spec(), FormFill, FormPreset, FormStage, freeform_landmark() (+34 more)
+Cohesion: 0.05
+Nodes (47): DegenerateHullError, The points are flat, collinear or too few to hold any volume., build_freeform(), _centre(), FormFill, FormPreset, FormStage, FormStore (+39 more)
 
 ### Community 60 - "ArmatureTool"
 Cohesion: 0.06
-Nodes (39): LandmarkRef, ArmatureSettings, How the armature is drawn, and how new nodes are placed., ArmatureTool, Handle, Begin a preset run against an armature already in the store., The landmarks still to place, in order, the current one first., The landmark the artist is being asked for right now. (+31 more)
+Nodes (43): LandmarkRef, ArmatureSettings, How the armature is drawn, and how new nodes are placed., ArmatureTool, Handle, The landmarks still to place, in order, the current one first., The landmark the artist is being asked for right now., How many landmarks are placed, out of how many will be asked for. (+35 more)
 
 ### Community 61 - "Workspace"
 Cohesion: 0.05
-Nodes (30): QDockWidget, QScrollArea, QSettings, QTabBar, PanelDock, A dock that can go anywhere, with :class:`DockTitle` across the top., forget(), Drop every id under a prefix; for a panel that has been thrown away. (+22 more)
+Nodes (28): QDockWidget, QTabBar, PanelDock, A dock that can go anywhere, with :class:`DockTitle` across the top., _number_in(), QMainWindow, QObject, QSettings (+20 more)
 
-### Community 62 - "Mesh"
+### Community 62 - "section_segments"
+Cohesion: 0.18
+Nodes (9): ndarray, Unit plane normal, honouring the flip toggle., The half-spaces the current mode cuts with; empty when disabled., Line segments where ``plane`` cuts ``mesh``, shape ``(n, 2, 3)``. Every…, Unit axis, or ``None`` for a custom direction., A half-space: everything past ``offset`` along ``normal`` is cut away., Signed distance of each point; positive means cut away., section_segments() (+1 more)
+
+### Community 63 - "test_forms.py"
+Cohesion: 0.04
+Nodes (98): convex_hull(), flat_mesh(), merged(), _outward(), _patch_samples(), ndarray, Convex solids from points: the hull, a cut through it, and its mesh. A primary…, The outward unit normal at each vertex: the area-weighted mean of its faces'. A… (+90 more)
+
+### Community 64 - "application.py"
 Cohesion: 0.14
-Nodes (13): Mesh, Return a copy whose bounding-box centre sits at the origin., An indexed triangle mesh with per-vertex positions and normals. The viewer…, flatness(), neighbour_agreement(), How nearly each vertex faces the way its neighbours do, as a cosine. One along…, How much each vertex's opinion of its plane is worth, 0 to 1., Thin the model down to a design matrix, or say it has nothing to give. (+5 more)
-
-### Community 63 - "Solid"
-Cohesion: 0.06
-Nodes (64): convex_hull(), DegenerateHullError, flat_mesh(), _outward(), _patch_samples(), ndarray, Convex solids from points: the hull, a cut through it, and its mesh. A primary…, The outward unit normal at each vertex: the area-weighted mean of its faces'. A… (+56 more)
-
-### Community 64 - "clay_lumps"
-Cohesion: 0.16
-Nodes (18): _box_facings(), clay_lumps(), clay_pieces(), fit_piece(), _frame(), grow_piece(), join_pieces(), Which three ways a lump of material runs. Columns, thinnest first. Thinnest… (+10 more)
+Nodes (17): ArgumentParser, Namespace, QSplashScreen, _apply_startup_arguments(), build_parser(), _create_splash(), _fitted_title_font(), main() (+9 more)
 
 ### Community 65 - "MeasureTool"
-Cohesion: 0.15
-Nodes (7): Which of the things drawn over the model belong in the frames., MeasureTool, Length of the rubber band currently being dragged out, if any., Picks points and turns pairs of them into measurements. The tool stays armed…, Drop the half-finished measurement and the hover preview., OverlayParts, Which of the things drawn over the model are wanted this time. The viewport…
+Cohesion: 0.12
+Nodes (10): MeasureTool, Handle, ndarray, The nearest grabbable endpoint under the cursor, if any. Only unlocked, visible…, Consume a picked point; returns a measurement on the second click., Length of the rubber band currently being dragged out, if any., Picks points and turns pairs of them into measurements. The tool stays armed…, Drop the half-finished measurement and the hover preview. (+2 more)
 
 ### Community 66 - "Link"
 Cohesion: 0.11
 Nodes (10): CloneGesture, Link, _Pulse, QObject, One timer for every copy in the window., Holds a copy to the control it was copied from. Parented to the copy, so it…, Bring the copy up to date with its original., Whether the copy is being used right now and must not be written. (+2 more)
 
 ### Community 67 - "PrimaryForm"
-Cohesion: 0.05
-Nodes (43): FormLandmarkRef, PlacedLandmark, One anatomical point the artist put on the model during a guided run., FormSettings, FormStore, PrimaryForm, Point3, One form in the document: which recipe, and where its landmarks are. The solids… (+35 more)
+Cohesion: 0.04
+Nodes (85): FormLandmarkRef, PlacedLandmark, One anatomical point the artist put on the model during a guided run., build_form(), built_count(), form_landmark_title(), form_mesh(), form_spec() (+77 more)
 
 ### Community 68 - "History"
-Cohesion: 0.06
-Nodes (27): Camera motion is deliberately not undoable, AddItem, Append an item to a document list., Delete the item at ``index``, putting it back in place on undo., Swap the whole contents of a document list. Used for bulk edits -- clearing the…, RemoveItem, ReplaceItems, Command (+19 more)
-
-### Community 69 - "mesh.py"
 Cohesion: 0.08
-Nodes (32): Model orientation (1.1.0), Pedestal (1.1.0), Every panel scrolls, Semantic versioning policy, Session format version 4, STL and glTF import (1.1.0), Units are adopted, never guessed, _gathered() (+24 more)
+Nodes (22): Camera motion is deliberately not undoable, AddItem, Append an item to a document list., Command, History, One reversible change, named for the undo menu., A bounded undo/redo stack., Record ``command``, applying it first unless it already ran. Interactive… (+14 more)
+
+### Community 69 - "compute_vertex_normals"
+Cohesion: 0.17
+Nodes (18): compute_vertex_normals(), Area-weighted smooth vertex normals for an indexed triangle soup., _assemble(), _face_corners(), _float_table(), _index_pairs(), _load_fast(), _load_generic() (+10 more)
 
 ### Community 70 - "AnnotatePanel"
 Cohesion: 0.19
 Nodes (3): AnnotatePanel, Arms the annotate tool and edits the brush it paints with., Reflect the tool state without re-emitting the toggle.
 
-### Community 71 - "plane_regions"
-Cohesion: 0.08
-Nodes (44): plane_regions(), Break the surface into patches and merge them back into planes., A stand-in for ``mesh`` blocked in out of ``planes``, worked from one side. The…, sculpt_mesh(), dumbbell(), flatness(), parametrize, The invariant an artist actually sees, on the finished stand-in: clay is added… (+36 more)
+### Community 71 - "test_plane_solids.py"
+Cohesion: 0.03
+Nodes (133): plane_regions(), Break the surface into patches and merge them back into planes., A stand-in for ``mesh`` blocked in out of ``planes``, worked from one side. The…, sculpt_mesh(), film_of(), parametrize, Scrubbing through the making of a form, rather than only arriving at it. The…, A cut takes material away, so no stage of a carving is larger than the one… (+125 more)
 
-### Community 72 - "Release"
+### Community 72 - ".__init__"
 Cohesion: 0.18
-Nodes (12): The newest published release, as GitHub describes it., Release, Ask GitHub for the newest release in the background. The startup check is…, is_skipped(), QWidget, Background release check and the notice it puts in front of the artist. The…, Whether the artist already dismissed this exact version., Offer the release page, with the option never to be asked again. (+4 more)
+Nodes (4): Give each panel a dock of its own, tabbed together on the right. Each panel can…, Single-key shortcuts, scoped so they never eat text input. They only fire while…, Push the preferences that this window's own parts hold a copy of. The store has…, Put the docks and the hand-built panels back where they were. Unless the artist…
 
-### Community 73 - "Measurement"
+### Community 73 - "Session"
 Cohesion: 0.12
-Nodes (10): Measurement, MeasurementStore, ndarray, The live list; mutate through the methods below where possible., Append a measurement, auto-naming it when no name is supplied., A straight distance between two points on the model surface., Distance in scene units., One end of the measurement, ``0`` for the start and ``1`` for the end. (+2 more)
+Nodes (20): _coerce(), decode(), encode(), Any, Tolerant conversion between dataclasses and plain JSON structures. Sessions…, Convert dataclasses, enums, tuples and numpy arrays to JSON types., Build an instance of the dataclass ``cls`` from ``data``., Path (+12 more)
 
-### Community 74 - "PlaneAxes"
-Cohesion: 0.22
-Nodes (5): PlaneAxes, The planes a model falls into, at every count. Built once per mesh and per…, The best ``count`` planes, or as many as the model supports. A model whose…, fit_planes(), The planes of ``mesh`` under ``mode``; empty where the mode needs none.
+### Community 74 - "ndarray"
+Cohesion: 0.17
+Nodes (5): ndarray, Expanded triangle corners, shape ``(T, 3, 3)``., Return a copy turned by a 3x3 rotation, e.g. to fix the up axis. Rotations…, test_bounds_of_an_empty_point_set(), ValueError
 
-### Community 75 - "Texture2D"
-Cohesion: 0.13
-Nodes (7): DataTexture, ndarray, Matcap texture loading and upload, and the small data table beside it., An RGBA8 2D texture with clamped edges and mipmapped minification., A small RGBA32F table the shader reads exact values out of. Not a picture:…, Store an ``(h, w, 4)`` float array, reallocating only when resized., Texture2D
+### Community 75 - "MeshBuffers"
+Cohesion: 0.06
+Nodes (16): MeshBuffers, Forget the contents without releasing the buffer objects., Draw ``mesh`` in place of the model; pass ``None`` to draw the model. The…, Replace the ground disc; pass ``None`` to hide it., Replace the clay of the primary forms; pass ``None`` to hide it. The forms are…, Whichever geometry is standing for the model this frame., Replace the annotation geometry; pass an empty list to hide it., Vertex/index buffers for one mesh, bound through a single VAO. (+8 more)
 
-### Community 76 - "application.py"
-Cohesion: 0.05
-Nodes (56): ArgumentParser, Color, Namespace, QSplashScreen, REFVIEW_RESOURCES resource override, Charcoal matcap, Terracotta clay matcap, Jade matcap (+48 more)
+### Community 76 - "load_matcap_pixels"
+Cohesion: 0.15
+Nodes (23): Color, Charcoal matcap, Terracotta clay matcap, Jade matcap, Steel matcap, Studio white matcap, Wax skin matcap, load_matcap_pixels() (+15 more)
 
 ### Community 77 - "test_custom_panels.py"
 Cohesion: 0.07
 Nodes (23): QMimeData, app(), custom(), _drop_on(), fixture, Panels the artist builds, and putting them back next time. A hand-built panel…, A panel reorganised between versions loads with a gap, not an error., A group is not a row, so it goes ahead of the group it was dropped on. (+15 more)
 
-### Community 78 - "ArmaturePanel"
-Cohesion: 0.09
-Nodes (11): ArmaturePanel, Arms the armature tool, lists its nodes and runs the guided presets., Take back the landmark before this one and ask for it again., Record an edited landmark list, re-deriving the wire if it still follows. An…, Put the nodes back under the preset the landmarks describe., The mirrored landmarks reflected from ``key``, which it anchors., The multiplier the position boxes are read and written through., Show the landmark group only once there are landmarks to show. (+3 more)
+### Community 78 - ".split_point"
+Cohesion: 0.20
+Nodes (9): BoneRef, _project(), The nearest bone under the cursor, for showing its length., Where on a bone a click at ``(x, y)`` landed. The share along the bone is read…, A world point in widget pixels, or ``None`` when it is behind the camera., How far along a screen-space segment the cursor's nearest point lies., Pixels from the cursor to the segment, or ``None`` if either end is behind., _segment_distance() (+1 more)
 
-### Community 79 - "Coefficients"
-Cohesion: 0.13
-Nodes (14): Coefficients, What each block of the design matrix counts for, against the normals. A fit…, Whether anything but the normals is being read at all., The design-matrix settings, in the form the fitters want them., lumpy(), A form with real planes in it, and more than one facing the same way., How many planes have another plane pointing very nearly where they do., The coefficients have to reach the fit, and reaching it has to show. Two planes… (+6 more)
+### Community 79 - "core/preferences.py"
+Cohesion: 0.12
+Nodes (18): _as_kind_of(), equal(), _fill(), FolderPreferences, InterfacePreferences, NavigationPreferences, Any, What the artist prefers, as distinct from what the document says. There are two… (+10 more)
 
-### Community 80 - "session.py"
-Cohesion: 0.08
-Nodes (29): _coerce(), decode(), encode(), Any, Tolerant conversion between dataclasses and plain JSON structures. Sessions…, Convert dataclasses, enums, tuples and numpy arrays to JSON types., Build an instance of the dataclass ``cls`` from ``data``., Path (+21 more)
+### Community 80 - "ContourShadingSettings"
+Cohesion: 0.20
+Nodes (8): ContourShadingSettings, Parallel slices drawn across the form, the way a contour map reads land. The…, The unit direction the slices are stacked along, in world space., parametrize, The contour shading mode: slices across the form, read off it like a map., test_a_custom_direction_is_normalised_and_an_empty_one_falls_back(), test_the_density_floor_keeps_the_spacing_finite(), test_the_slices_face_the_way_that_was_asked()
 
-### Community 81 - "Wires"
-Cohesion: 0.18
-Nodes (8): kept_off(), An armature, as the clay reads it: where each length of wire runs. The order…, How many lumps the wire itself asks for., What a cache has to compare to know the wire has not moved., Which points lie in the sleeve a length of wire declares round itself. The wire…, Which material lies under a length of wire that is to take no clay. Turning a…, Wires, within_sleeve()
+### Community 81 - "NavigationController"
+Cohesion: 0.07
+Nodes (28): DragMode, NavigationController, Enum, ndarray, Mouse-gesture to camera-motion mapping. Orbiting pivots on the point where the…, Orbit in whole increments of ``step`` degrees from the drag's start., Zoom by wheel notches, keeping the point under the cursor fixed. ``anchor`` is…, Degrees of yaw per pixel, signed by whether the drag is inverted. (+20 more)
 
 ### Community 82 - "Bounds"
-Cohesion: 0.11
-Nodes (19): Bounds, ndarray, Expanded triangle corners, shape ``(T, 3, 3)``., Return a copy turned by a 3x3 rotation, e.g. to fix the up axis. Rotations…, An axis-aligned bounding box., Radius of the sphere circumscribing the box (never zero)., build_pedestal(), _disc() (+11 more)
+Cohesion: 0.18
+Nodes (15): Bounds, An axis-aligned bounding box., Radius of the sphere circumscribing the box (never zero)., build_pedestal(), _disc(), PedestalSettings, ndarray, A turntable-style disc the model can stand on. A ground plane gives the eye… (+7 more)
 
-### Community 83 - "symbol_button"
-Cohesion: 0.21
-Nodes (9): QPushButton, QWidget, Add a group below the list rather than to the panel root., The points the preset was built from, and the means to move them. Its own list…, A strip of buttons that one form row can show or hide as a unit., _row(), QPushButton, A button that carries a drawing instead of a word. For the few actions that… (+1 more)
+### Community 83 - "plane_count"
+Cohesion: 0.20
+Nodes (7): _along(), plane_count(), Where a detail setting sits on its slider, 0 to 1., How many planes a detail setting asks for. See :attr:`PlaneSettings.axis_count`., How much of a turn in the surface one plane covers, in degrees. Linear in…, How many planes a mode fitted to the model keeps. The climb from two planes to…, How many planes the form itself is rebuilt out of.
 
 ### Community 84 - "test_forms_panel.py"
 Cohesion: 0.11
 Nodes (30): app(), _click(), panel(), _pending(), _pick(), _place_all(), fixture, The Forms panel: the guided run it drives, and the document it writes. The… (+22 more)
 
-### Community 85 - "TriangleIndex"
-Cohesion: 0.14
-Nodes (14): Picking about a hundred times faster, Morton-curve leaf boxes for picking, Picking accelerator, built on first use and kept for the mesh's life., _morton_order(), ndarray, Spatial index that keeps picking fast on large meshes. Every click, every hover…, Leaf bounding boxes over a Morton-sorted triangle list., Build the index from expanded triangle corners, shape ``(T, 3, 3)``. (+6 more)
+### Community 85 - "picking.py"
+Cohesion: 0.08
+Nodes (36): Projection, Enum, str, Projection used by :class:`Camera`., Hit, intersects_bounds(), ndarray, Ray/mesh intersection used by the measuring and annotating tools. The test… (+28 more)
 
-### Community 86 - "stl_loader.py"
-Cohesion: 0.20
-Nodes (14): STL corner welding, _ascii_corners(), _binary_corners(), load_stl(), ndarray, Path, Binary and ASCII STL reader. STL stores three loose corners per facet and…, Raised when a file cannot be interpreted as an STL mesh. (+6 more)
+### Community 86 - "MeshLoadError"
+Cohesion: 0.16
+Nodes (17): STL corner welding, MeshLoadError, RuntimeError, Raised when a file cannot be interpreted as a triangle mesh., _ascii_corners(), _binary_corners(), load_stl(), ndarray (+9 more)
 
-### Community 87 - "._picker"
-Cohesion: 0.17
-Nodes (5): Apply the drag live, so the artist sees the wire bend as they pull it., Apply the drag live, so the figure re-forms under the cursor., Orbit increment while Shift is held, or 0 for a free orbit., Apply the drag live, so the clay re-forms under the cursor., Rub out the stroke points under the eraser, live.
+### Community 87 - "_clone_preview"
+Cohesion: 0.27
+Nodes (6): _clone_preview(), _pull_preview(), ndarray, Point the preview at the settings it edits. The object itself, not a copy: this…, The matcap image, in the orientation the renderer uploads it. ``None`` for the…, The matcap image this is drawing, for a copy of it to draw too.
 
-### Community 89 - "PointEdit"
-Cohesion: 0.13
-Nodes (10): _clone_point(), _pull_point(), _push_point(), _AxisBox, PointEdit, QDoubleSpinBox, QWidget, Three boxes for one point in space. Keyboard tracking is off, so a typed number… (+2 more)
+### Community 88 - "MatcapPanel"
+Cohesion: 0.10
+Nodes (18): QIcon, _draw_glyph(), glyph(), QColor, QPixmap, One of the small line drawings above, as an icon. A button whose whole job is…, _render(), MatcapPanel (+10 more)
 
-### Community 90 - "FrameBar"
-Cohesion: 0.09
-Nodes (13): FrameBar, framed(), QFormLayout, QPainter, QSize, QWidget, The mark beside a group's name: filled when open, a ring when shut. It is the…, The rows inside the frame. ``layout()`` is the frame's own, which stacks the… (+5 more)
+### Community 89 - "ColorButton"
+Cohesion: 0.11
+Nodes (12): _clone_swatch(), _pull_swatch(), _push_swatch(), _AxisBox, ColorButton, QColor, QDoubleSpinBox, QSize (+4 more)
 
-### Community 91 - "load_obj"
-Cohesion: 0.24
-Nodes (13): _load_generic(), load_obj(), Path, Line-by-line reader for files the fast path declines., Load ``path`` and return a :class:`~refview.core.mesh.Mesh`. Faces with more…, _push_slider(), OBJ parsing: normals, triangulation and index handling., test_empty_file_is_rejected() (+5 more)
+### Community 90 - "frame.py"
+Cohesion: 0.08
+Nodes (14): FrameBar, QFormLayout, QPainter, QSize, QWidget, A titled frame that folds away behind its own bar. Every group of controls in…, The mark beside a group's name: filled when open, a ring when shut. It is the…, The rows inside the frame. ``layout()`` is the frame's own, which stacks the… (+6 more)
 
-### Community 92 - ".mousePressEvent"
-Cohesion: 0.15
-Nodes (6): ndarray, Take hold of a landmark, to move it or just to say which one it is., Object centre, which anchors the plane the orbit pivot lies on., Take hold of a form's landmark, to move it or just to say which one it is., Alt forces the camera gesture, whichever tool is armed., Take hold of a node, to move it, resize it, or just to select it. This works…
+### Community 91 - "_Encoder"
+Cohesion: 0.22
+Nodes (6): Queue, _Encoder, QObject, QWidget, The encoding itself, living on a thread of its own. It takes frames off a short…, Abandon the file. Called from the GUI thread; see :meth:`run`.
+
+### Community 92 - "._picker"
+Cohesion: 0.11
+Nodes (9): Rub out the stroke points under the eraser, live., Alt forces the camera gesture, whichever tool is armed., Take hold of a node, to move it, resize it, or just to select it. This works…, Apply the drag live, so the artist sees the wire bend as they pull it., Take hold of a landmark, to move it or just to say which one it is., Apply the drag live, so the figure re-forms under the cursor., Orbit increment while Shift is held, or 0 for a free orbit., Take hold of a form's landmark, to move it or just to say which one it is. (+1 more)
 
 ### Community 93 - "test_elements.py"
-Cohesion: 0.08
-Nodes (19): Copies of controls: what they drive, and what keeps them honest. The contract a…, The original changed without saying so; the copy catches up anyway., A panel taken apart underneath a copy must not take the window with it., Controls that cannot be used take the room of controls that can., Folding is not a lock: switching it on again restores what was there., A matcap has no light to aim, so the Light group goes -- and its space. The…, Run the refresh the shared timer would have run., ``self._mode`` is ``mode``; the group called Mode settles for a number. (+11 more)
+Cohesion: 0.11
+Nodes (10): Copies of controls: what they drive, and what keeps them honest. The contract a…, Controls that cannot be used take the room of controls that can., Folding is not a lock: switching it on again restores what was there., A matcap has no light to aim, so the Light group goes -- and its space. The…, ``self._mode`` is ``mode``; the group called Mode settles for a number., test_a_folded_group_is_only_as_tall_as_its_bar(), test_a_group_comes_back_the_way_it_was_left(), test_a_group_folds_away_when_its_settings_go_dead() (+2 more)
 
-### Community 94 - "PlaneMode"
-Cohesion: 0.17
-Nodes (8): PlaneMode, PlaneTarget, Enum, str, What the planes filter is allowed to act on. The two are mutually exclusive…, How the plane directions are arrived at. ``shader_id`` must stay in sync with…, Whether the directions are read off the model rather than imposed., Whether the mode reads the design matrix, and so its coefficients. Grid reads…
+### Community 94 - "FakeViewport"
+Cohesion: 0.28
+Nodes (3): FakeViewport, QImage, A viewport that renders nothing, at whatever size it is asked for.
 
 ### Community 95 - "FormRun"
 Cohesion: 0.40
 Nodes (3): FormRun, Begin a run against a form already in the store., A guided form part-way through.
 
 ### Community 96 - "ReflowLayout"
-Cohesion: 0.14
-Nodes (9): Orientations, QLayout, QLayoutItem, QRect, Put the items where the packing said, sharing out any room left. A panel is…, Whether an item asked to be given more height than it needs., Lays its items out in as many equal columns as the width allows., ReflowLayout (+1 more)
+Cohesion: 0.08
+Nodes (19): Orientations, QLayout, QLayoutItem, _height_of(), QRect, QSize, QWidget, How many columns this layout would break into at ``width``. (+11 more)
 
-### Community 97 - ".split_point"
-Cohesion: 0.20
-Nodes (9): BoneRef, _project(), The nearest bone under the cursor, for showing its length., Where on a bone a click at ``(x, y)`` landed. The share along the bone is read…, A world point in widget pixels, or ``None`` when it is behind the camera., How far along a screen-space segment the cursor's nearest point lies., Pixels from the cursor to the segment, or ``None`` if either end is behind., _segment_distance() (+1 more)
+### Community 97 - "core/__init__.py"
+Cohesion: 0.04
+Nodes (61): AnnotateMode, Enum, str, Freehand annotations painted onto the model surface. A stroke is a polyline of…, What the annotate tool does with a drag. The first three describe the shape a…, BoneLabels, Buried, Enum (+53 more)
 
-### Community 98 - "_Encoder"
+### Community 98 - "ArmaturePanel"
+Cohesion: 0.04
+Nodes (34): ArmaturePanel, _NameOnlyDelegate, QPushButton, QStyledItemDelegate, QWidget, Allows in-place editing of the name column only., Arms the armature tool, lists its nodes and runs the guided presets., Add a group below the list rather than to the panel root. (+26 more)
+
+### Community 99 - "CHANGELOG.md"
 Cohesion: 0.25
-Nodes (5): Queue, _Encoder, QObject, The encoding itself, living on a thread of its own. It takes frames off a short…, Abandon the file. Called from the GUI thread; see :meth:`run`.
-
-### Community 99 - "picking.py"
-Cohesion: 0.09
-Nodes (31): Hit, intersects_bounds(), ndarray, Ray/mesh intersection used by the measuring and annotating tools. The test…, Snap a hit onto the nearest corner of its triangle, when close enough.…, A point where a ray met the mesh surface., Slab test against an axis-aligned box; tolerant of axis-parallel rays., Return the closest front- or back-facing hit along the ray, or ``None``. (+23 more)
+Nodes (7): Shift-snapped orbiting (1.1.0), Cross-section tool (1.1.0), Model orientation (1.1.0), Pedestal (1.1.0), Every panel scrolls, Semantic versioning policy, Session format version 4
 
 ### Community 100 - "clone.py"
-Cohesion: 0.04
-Nodes (73): QAbstractButton, QComboBox, QLineEdit, QSlider, QSpinBox, _begin(), can_clone(), clone() (+65 more)
+Cohesion: 0.05
+Nodes (65): QAbstractButton, QComboBox, QLineEdit, QSlider, QSpinBox, _begin(), can_clone(), _clone_button() (+57 more)
 
 ### Community 101 - "._sync_scene"
 Cohesion: 0.12
 Nodes (6): Regenerate the pedestal and the cut contour when their settings move. Both are…, The armature the clay is to be built on, if one was chosen. Read here rather…, Rebuild the planar stand-in and hand it to the renderer. Cutting a form into…, A stage landed: show it if it is the one being looked at., Draw whichever stage of ``film`` the scrub handle is on., Cut the mesh with each section plane and expand the result to strokes.
 
-### Community 102 - ".dropEvent"
-Cohesion: 0.12
-Nodes (7): Path, Apply a matcap image, reporting unreadable files to the user., Load a model, reporting failures without tearing down the window., Whether the drag is a copy being moved out of a hand-built panel., Whether this drag is a copied control being let go over the model. Dragging a…, Whether a point in the window's own coordinates is on the model., Take a copied control out of whichever hand-built panel holds it.
+### Community 102 - "Path"
+Cohesion: 0.15
+Nodes (9): Path, Take a copied control out of whichever hand-built panel holds it., A path written down last time, if it is one and it is still there., Apply a matcap image, reporting unreadable files to the user., Pick up whatever was last being worked on, if that was asked for. A session…, Write down the session just saved or loaded, for the next start., Write down the model just opened, for when there is no session. This also…, Load a model, reporting failures without tearing down the window. (+1 more)
+
+### Community 103 - "paths.py"
+Cohesion: 0.26
+Nodes (13): available_matcaps(), _bundled_root(), image_path(), matcap_dir(), model_dir(), Path, Locations of the bundled resources. ``REFVIEW_RESOURCES`` overrides the search,…, Return PyInstaller's extracted application directory when frozen. (+5 more)
 
 ### Community 104 - ".mouseReleaseEvent"
-Cohesion: 0.16
-Nodes (6): Record the finished drag as one step, or read a press as a selection., Track whatever the cursor is over, so the overlay can respond., Track the node and bone under the cursor; True when anything changed., Record the finished drag as one step, or read a press as a selection., Track the form landmark under the cursor; True when it changed., Record the finished drag as a single undo step.
+Cohesion: 0.11
+Nodes (9): Record the finished drag as a single undo step., Record the finished gesture: a move, a resize, or a plain click. A press that…, Record the finished drag as one step, or read a press as a selection., Run a bone between two nodes of the same armature., A node moved by hand stops following its landmarks. Recorded as its own step…, Track whatever the cursor is over, so the overlay can respond., Track the node and bone under the cursor; True when anything changed., Record the finished drag as one step, or read a press as a selection. (+1 more)
 
 ### Community 105 - "test_panel_docks.py"
-Cohesion: 0.05
-Nodes (39): app(), _drag_over(), _middle_of_the_view(), fixture, parametrize, Each panel in a dock of its own, and putting the docks back next time. Two…, A drag of ``holder`` arriving at ``point`` in the window's coordinates. A real…, The gesture the whole thing rests on: drag it onto the model, it goes. (+31 more)
+Cohesion: 0.13
+Nodes (4): Each panel in a dock of its own, and putting the docks back next time. Two…, test_a_restored_copy_drives_the_new_windows_own_control(), test_a_session_carries_the_hand_built_panels(), test_the_layout_comes_back_through_the_settings()
+
+### Community 106 - "._build_menus"
+Cohesion: 0.25
+Nodes (4): QAction, Which panels are open, and the panels the artist builds. Rebuilt every time it…, Add a menu entry, optionally with a window-wide shortcut., Open the preferences, on one group when the menu asked for one.
 
 ### Community 107 - "._place_armature_node"
 Cohesion: 0.22
-Nodes (4): The wire changed: redraw it, and re-cut anything built on it. Not mid-drag,…, Which armature an edit lands in, counting a guided run as binding., Drop a node, or record the landmark a guided run is asking for., A click on a length of wire lengthens the chain rather than branching off it.…
+Nodes (4): Which armature an edit lands in, counting a guided run as binding., Drop a node, or record the landmark a guided run is asking for., A click on a length of wire lengthens the chain rather than branching off it.…, The wire changed: redraw it, and re-cut anything built on it. Not mid-drag,…
 
 ### Community 108 - "test_mesh_io.py"
-Cohesion: 0.18
-Nodes (16): load_mesh(), Path, Load any supported mesh file, raising :class:`MeshLoadError` otherwise., Reading the mesh formats the viewer imports., Negative face indices count back from the most recent vertex., A minimal GLB holding the tetrahedron under a scaled node., test_an_unsupported_suffix_is_reported(), test_ascii_stl_matches_the_binary_one() (+8 more)
+Cohesion: 0.20
+Nodes (15): STL and glTF import (1.1.0), load_mesh(), Path, Load any supported mesh file, raising :class:`MeshLoadError` otherwise., Reading the mesh formats the viewer imports., A minimal GLB holding the tetrahedron under a scaled node., test_an_unsupported_suffix_is_reported(), test_ascii_stl_matches_the_binary_one() (+7 more)
 
-### Community 109 - "viewport.py"
-Cohesion: 0.10
-Nodes (22): AnnotateMode, Enum, str, Freehand annotations painted onto the model surface. A stroke is a polyline of…, What the annotate tool does with a drag. The first three describe the shape a…, The handful of undoable edits the whole application is built from.…, Undo/redo stack. Every document edit is expressed as a :class:`Command` that…, MeasurementSettings (+14 more)
+### Community 109 - "._start_update_check"
+Cohesion: 0.29
+Nodes (4): Ask GitHub for the newest release in the background. The startup check is…, QWidget, show_failure_dialog(), show_up_to_date_dialog()
 
 ### Community 110 - "DockTitle"
 Cohesion: 0.09
-Nodes (14): QToolButton, DockTitle, make_switch(), QCheckBox, QSize, QWidget, One dock per panel, with a bar of its own across the top. Every panel is its…, Put a show/hide switch at the left of the bar and return it. (+6 more)
+Nodes (13): QToolButton, DockTitle, make_switch(), QCheckBox, QSize, QWidget, Put a show/hide switch at the left of the bar and return it., A square that is on or off, and is clickable all over. A check box decides… (+5 more)
 
 ### Community 111 - "test_reflow.py"
-Cohesion: 0.18
-Nodes (17): _block(), _panel(), QLabel, The layout that decides how many columns a panel is. A panel does not know…, A tree or a gallery is worth as much of the dock as is going spare., What the columns are for: the same groups, in less height., The scroll area sizes the panel from this, so it has to be the truth., A column of plain groups sits at the top of a tall panel. (+9 more)
+Cohesion: 0.14
+Nodes (20): app(), _block(), _panel(), fixture, QLabel, The layout that decides how many columns a panel is. A panel does not know…, A tree or a gallery is worth as much of the dock as is going spare., One offscreen Qt application for the run; see test_film_recorder. (+12 more)
 
-### Community 112 - "ball"
-Cohesion: 0.11
-Nodes (28): app(), coarse_lattice(), fixture, MonkeyPatch, Recording a film on a thread, without taking the process down with it. The rest…, Which is what the panel puts its controls to sleep by, so it has to be true…, Shutdown must not care whether the thread beat it to the exit. A recording that…, The guard that decides whether to scrub an existing film or record a new one.… (+20 more)
+### Community 112 - "MatcapSettings"
+Cohesion: 0.16
+Nodes (16): MatcapSettings, Post-processing applied to the sampled matcap texel., _angle(), grade(), _push_preview(), The matcap itself, as the control for grading it. A matcap is a picture of a…, Draw the matcap onto a sphere of ``size`` pixels, graded. Returns ``(size,…, The angle of ``point`` about ``centre``, anticlockwise with y upwards. (+8 more)
 
-### Community 113 - "build_form"
-Cohesion: 0.09
-Nodes (36): merged(), Several flat meshes as one, or ``None`` when there is nothing to draw., build_form(), built_count(), form_mesh(), landmark_signature(), ndarray, The landmarks as a mapping a builder can read. (+28 more)
+### Community 113 - "ndarray"
+Cohesion: 0.29
+Nodes (3): ndarray, Every node position as ``(n, 3)``., The landmarks as a mapping a preset builder can read.
 
 ### Community 114 - "ArmatureStore"
 Cohesion: 0.18
 Nodes (4): ArmatureStore, An ordered, named collection of armatures, usually holding one. Deliberately…, The live list; the undo commands operate on it directly., Append an empty armature, auto-naming it when no name is supplied.
 
-### Community 115 - "plane_solids.py"
-Cohesion: 0.12
-Nodes (25): planes_for(), The stages a form passes through on its way from a block to a figure. The…, How many solids each stage of a film is made of. Every count from the coarsest…, The detail setting that asks for ``solids``, or ``None`` if none does. The…, Work the form stage by stage, handing each one back as it is finished. A…, record(), stage_counts(), block_count() (+17 more)
-
-### Community 116 - ".update_enabled"
-Cohesion: 0.10
-Nodes (11): Adopt the viewport's tool, which is where the guided run lives., Reflect the tool state without re-emitting the toggle., Write a structural change, detaching the armature from its preset., Remove the selected node, or the whole armature when its row is picked., Run a bone between the row selected now and the node held before it., Take off the panel whatever does not apply right now., The node the selected row stands for, if the row is a node at all., The armature the selected row stands for, when the row is not a node. (+3 more)
-
-### Community 117 - "Reflow"
-Cohesion: 0.30
-Nodes (4): QWidget, A widget laid out by :class:`ReflowLayout`, sized to fit its columns. A scroll…, Add a widget at a position, rather than only at the end., Reflow
+### Community 116 - "._on_bone_toggled"
+Cohesion: 0.29
+Nodes (4): QListWidgetItem, Catch the selection a click on a checkbox is about to collapse. Qt selects a…, Which bones of the armature the picked-out rows stand for., Take lengths of wire out of the clay, or put them back. A tick on a row that…
 
 ### Community 118 - "ShadingMode"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (4): Shading model applied to the mesh. ``shader_id`` must stay in sync with the…, Whether the shadow and occlusion pre-passes need to run., ShadingMode, TestEven
 
 ### Community 119 - "SetAttributes"
-Cohesion: 0.14
-Nodes (8): Any, Assign one or more attributes on an object, remembering the old values.…, SetAttributes, QTreeWidgetItem, Run a row's edit once Qt has finished delivering the current signal. Committing…, Record an edit the viewport's tool worked out., Join two nodes of one armature, if they are two and they are one armature., Commit a renamed or re-checked row, if anything actually changed.
+Cohesion: 0.09
+Nodes (13): Every document edit is a command, Any, Assign one or more attributes on an object, remembering the old values.…, Delete the item at ``index``, putting it back in place on undo., Swap the whole contents of a document list. Used for bulk edits -- clearing the…, RemoveItem, ReplaceItems, SetAttributes (+5 more)
 
-### Community 120 - "._draw_hud"
-Cohesion: 0.24
-Nodes (5): QFont, Burn a line into the bottom of a frame, for an exported clip. Which stage of…, What the forms tool is waiting for, said in as few lines as it takes., Draw text as a filled outline rather than as glyphs. Qt's OpenGL paint engine…, What the armature tool is waiting for, said in as few lines as it takes.
+### Community 120 - "ViewportOverlay"
+Cohesion: 0.13
+Nodes (23): QPointF, QRectF, One marker object for endpoints, nodes, landmarks and tool previews., VisualMarker, project_visible(), Handle, QColor, QFont (+15 more)
 
 ### Community 121 - "release.yml"
 Cohesion: 0.47
 Nodes (5): Publish job creates the GitHub release, PyInstaller build from packaging/refview.spec, Release triggered by a v* tag, Windows, Intel macOS and Apple Silicon matrix, Tag-driven desktop releases
 
-### Community 122 - "plane_axes.py"
-Cohesion: 0.13
-Nodes (15): _empty(), ndarray, Reading the planes of a form out of the model's own normals. The grid quantiser…, A level with no place in it: nearest direction wins, as before., How much surface each vertex stands for: a third of each triangle on it.…, The plane direction of a group, its spread, and its total weight., Cut a group across its first principal component, or refuse to., _split() (+7 more)
-
-### Community 125 - "wakelock.py"
-Cohesion: 0.22
-Nodes (7): _Backend, _platform_backend(), Keeping the machine awake while the viewer is the window in front. An artist…, The backend for this machine, or a do-nothing one if it cannot be had., A way of asking one platform to stay awake., Ask for sleep to be held off., Withdraw the request.
-
-### Community 127 - "BoneLabels"
+### Community 122 - "_tick"
 Cohesion: 0.29
-Nodes (6): BoneLabels, Buried, Enum, str, When the length of a bone is written beside it., What becomes of the part of the armature the model is standing in front of. An…
+Nodes (7): The original changed without saying so; the copy catches up anyway., A panel taken apart underneath a copy must not take the window with it., Run the refresh the shared timer would have run., test_a_copy_follows_the_original_on_the_tick(), test_a_copy_goes_dead_when_its_original_does(), test_switching_the_original_off_switches_the_copy_off(), _tick()
 
-### Community 128 - "_ScreenSaverBackend"
-Cohesion: 0.22
-Nodes (4): The freedesktop screensaver service, which hands back a cookie., Hold sleep off, or stop holding it, whichever is not already true., Drop the request, if one is out. Safe to call more than once., _ScreenSaverBackend
+### Community 123 - ".stage_images"
+Cohesion: 0.23
+Nodes (7): QOpenGLFramebufferObject, QImage, One stage, rendered as it would be exported. For the preview., Render each of ``stages`` offscreen, at the size and look asked for. A…, An offscreen target the frames are drawn into, made once per export.…, Draw the scene into ``surface`` and read it back as an image., Lay the overlay -- and the caption, if it was asked for -- on a frame. Painted…
 
-### Community 130 - "ndarray"
+### Community 124 - "_tab_switch"
 Cohesion: 0.29
-Nodes (3): ndarray, Every node position as ``(n, 3)``., The landmarks as a mapping a preset builder can read.
+Nodes (7): The show/hide switch on the tab named ``title``, if it has one., Stacked behind another panel is where the switch is worth the most., It is fifteen pixels wide and carries no words, which is exactly the shape the…, _tab_switch(), test_a_panel_that_draws_nothing_gets_no_switch_on_its_tab(), test_a_tabbed_panel_still_shows_its_switch(), test_clicking_the_switch_on_a_tab_works()
+
+### Community 125 - "shaders.py"
+Cohesion: 0.33
+Nodes (5): GLSL sources for the viewport. Seven small programs cover everything the viewer…, Splice the shared cross-section test into a fragment shader., Substitute the array sizes GLSL needs as compile-time constants., _with_limits(), _with_section()
+
+### Community 126 - "test_the_disc_samples_where_the_shader_would"
+Cohesion: 0.33
+Nodes (6): parametrize, ``sampleMatcap``, transcribed from the GLSL, for a camera down +z. Deliberately…, The mapping :func:`sample` uses, for one normal rather than a grid., _shader_uv(), test_the_disc_samples_where_the_shader_would(), _widget_uv()
+
+### Community 127 - "welded"
+Cohesion: 0.67
+Nodes (3): ndarray, Which point each vertex really is, once copies of a position are one point., welded()
+
+### Community 128 - "GuideRun"
+Cohesion: 0.40
+Nodes (3): GuideRun, Begin a preset run against an armature already in the store., A guided preset part-way through. The index walks the preset's own list rather…
+
+### Community 129 - "section.py"
+Cohesion: 0.21
+Nodes (7): Enum, str, Cutting the model open with planes. A section is described by one plane -- an…, The direction the section plane faces., Which side of the plane survives the cut., SectionAxis, SectionMode
+
+### Community 131 - "OverlayParts"
+Cohesion: 0.18
+Nodes (5): Which of the things drawn over the model belong in the frames., MarkerVisibility, Cache surface occlusion by view and position for every kind of marker., OverlayParts, Which of the things drawn over the model are wanted this time. The viewport…
 
 ### Community 132 - "ExportLook"
-Cohesion: 0.10
-Nodes (17): QOpenGLFramebufferObject, The stage at ``index``, clamped to what has actually been recorded., One moment in the making of a form. :attr:`solids` is how many blocks or lumps…, What to call this stage in the panel, under the scrub handle., Stage, ExportLook, What the frames are to look like, as against what they are of. Laid over the…, ``base`` with this export's choices laid over it. (+9 more)
+Cohesion: 0.15
+Nodes (10): The stage at ``index``, clamped to what has actually been recorded., One moment in the making of a form. :attr:`solids` is how many blocks or lumps…, What to call this stage in the panel, under the scrub handle., Stage, ExportLook, What the frames are to look like, as against what they are of. Laid over the…, ``base`` with this export's choices laid over it., The line burned into the corner of the frame for ``stage``. Counted off the… (+2 more)
 
-### Community 134 - ".refresh_list"
-Cohesion: 0.29
-Nodes (3): The landmarks in the preset's own order, top of the figure down. Placement…, Rebuild the tree from the store, keeping the tool's selection shown. A node…, Rebuild the landmark list, keeping the row the panel is editing.
-
-### Community 135 - ".column_of"
-Cohesion: 0.25
-Nodes (3): How many columns this layout would break into at ``width``., Which column a widget currently sits in, or -1 if it is not laid out., How many columns the widget is currently broken into.
-
-### Community 136 - "theme.py"
-Cohesion: 0.25
-Nodes (8): css(), outline(), QColor, Draw the hairline that separates a control from the panel. One line, the same…, A colour as a style sheet function, for the parts Qt draws., A dark theme, so the viewport is what draws the eye. The colours themselves…, The style sheet, written out of the palette so the two cannot disagree., _stylesheet()
-
-### Community 138 - "_height_of"
+### Community 134 - "preview"
 Cohesion: 0.40
-Nodes (3): _height_of(), QSize, How tall an item needs to be once it has been given ``width``.
+Nodes (5): app(), preview(), fixture, One offscreen Qt application for the run; see test_film_recorder., A disc the size the panel gives it, with settings of its own to write.
 
-### Community 139 - "._commit_node_drag"
-Cohesion: 0.33
-Nodes (3): Record the finished gesture: a move, a resize, or a plain click. A press that…, Run a bone between two nodes of the same armature., A node moved by hand stops following its landmarks. Recorded as its own step…
-
-### Community 144 - "section"
-Cohesion: 0.50
-Nodes (4): app(), fixture, One offscreen Qt application for the run; see test_film_recorder., section()
-
-### Community 147 - "_WindowsBackend"
-Cohesion: 0.25
-Nodes (5): ``SetThreadExecutionState``: a flag on this thread, not a handle. The flags…, _WindowsBackend, skipif, The flag the viewer sets is the one Windows reports back afterwards., test_windows_really_sets_the_execution_state()
-
-### Community 148 - "_MacBackend"
-Cohesion: 0.33
-Nodes (3): c_void_p, _MacBackend, An IOKit power assertion, held by id until it is released.
-
-### Community 149 - "WholeFaceToggles"
-Cohesion: 0.14
-Nodes (10): QApplication, QObject, Making the whole of a switch the part you can press. The theme turns every…, Turns a press anywhere on a switch into a click on it., Put the rule in place for every switch in the application., WholeFaceToggles, The theme makes a check box a button; Qt still thinks it is a tick box. Left…, Alt and a drag copies a control; that gesture must reach its own filter. (+2 more)
-
-### Community 151 - "app"
-Cohesion: 0.67
-Nodes (3): app(), fixture, One offscreen Qt application for the run; see test_film_recorder.
-
-### Community 152 - "test_plane_solids.py"
-Cohesion: 0.05
-Nodes (42): ndarray, Points spread over the model closely enough for a lattice to feel it. The…, surface_seeds(), block(), box(), coarse_lattice(), fixture, MonkeyPatch (+34 more)
-
-### Community 153 - "refview/__init__.py"
+### Community 135 - "refview/__init__.py"
 Cohesion: 0.50
 Nodes (3): Reference Viewer 3D -- a matcap-shaded OBJ, STL and glTF viewer for sculpting., Read the version from ``pyproject.toml``, bundled or in the source checkout., _read_version()
 
+### Community 136 - "theme.py"
+Cohesion: 0.15
+Nodes (12): css(), A colour as a style sheet function, for the parts Qt draws., QObject, Making the whole of a switch the part you can press. The theme turns every…, Turns a press anywhere on a switch into a click on it., WholeFaceToggles, apply_dark_theme(), QApplication (+4 more)
+
+### Community 138 - "box"
+Cohesion: 0.50
+Nodes (4): box(), A unit cube, shaded flat: six planes and twelve right angles., Every edge of a cube is a right angle, and no reading of AutoSmooth short of…, test_autosmooth_leaves_a_real_plane_change_hard()
+
+### Community 139 - "SectionGizmo"
+Cohesion: 0.18
+Nodes (8): Centre, half-length and offset span of the rail, or ``None``., Handle position, drag axis in pixels per scene unit, and its direction., Whether ``(x, y)`` lands on the rail or its handle., SectionGizmo, ndarray, Rotate the measurements, annotations, armature and forms onto the turned model.…, The rail stands still while the camera moves, and never leaves the frame., test_section_rail_is_a_screen_space_cue_at_the_right_edge()
+
+### Community 140 - "_drag_over"
+Cohesion: 0.22
+Nodes (10): _drag_over(), _middle_of_the_view(), A drag of ``holder`` arriving at ``point`` in the window's coordinates. A real…, The gesture the whole thing rests on: drag it onto the model, it goes., A gesture that destroys something only fires where it clearly meant to., Refused at the door it would never reach the model; so it is let in., test_a_copy_dropped_on_the_model_is_thrown_away(), test_a_copy_is_let_into_the_window_wherever_it_arrives() (+2 more)
+
+### Community 141 - "panel"
+Cohesion: 0.50
+Nodes (4): app(), panel(), fixture, One offscreen Qt application for the run; see test_film_recorder.
+
+### Community 145 - "parametrize"
+Cohesion: 0.67
+Nodes (3): parametrize, test_a_panel_that_draws_nothing_has_no_switch(), test_the_switch_on_a_dock_bar_is_the_panels_own_visibility()
+
+### Community 146 - "section"
+Cohesion: 0.50
+Nodes (4): app(), fixture, One offscreen Qt application for the run; see test_film_recorder., section()
+
+### Community 149 - ".install"
+Cohesion: 0.29
+Nodes (6): QApplication, Put the rule in place for every switch in the application., The theme makes a check box a button; Qt still thinks it is a tick box. Left…, Alt and a drag copies a control; that gesture must reach its own filter., test_a_switch_answers_a_press_anywhere_on_its_face(), test_alt_is_left_alone_so_a_switch_can_still_be_copied()
+
+### Community 150 - "coarse_lattice"
+Cohesion: 0.50
+Nodes (4): coarse_lattice(), fixture, MonkeyPatch, Read every model on a small lattice, so the suite stays quick.
+
+### Community 152 - "._built"
+Cohesion: 0.33
+Nodes (4): QImage, QRect, Where the sphere goes: square, centred, above the legend., The graded disc at ``side`` pixels, rebuilt only when it has to be. A drag…
+
+### Community 153 - "ui/preferences.py"
+Cohesion: 0.11
+Nodes (18): current(), forget(), PreferenceStore, QObject, QSettings, _qcolor(), Where the preferences are kept, and what happens when one changes.…, Push the preferences that something in the process holds a copy of.… (+10 more)
+
+### Community 154 - "restored"
+Cohesion: 0.29
+Nodes (7): app(), fixture, One offscreen Qt application for the run; see test_film_recorder., A second window, built from a layout the first one saved. The point is…, A window with the saved layout out of the way, and put back after. Shown,…, restored(), window()
+
+### Community 162 - "Q: Where are the todo viewport marker and shading changes implemented?"
+Cohesion: 0.40
+Nodes (4): Answer, Outcome, Q: Where are the todo viewport marker and shading changes implemented?, Source Nodes
+
+### Community 164 - "sample_count"
+Cohesion: 0.50
+Nodes (3): How many samples the framebuffer bound right now is drawing with. One where…, sample_count(), How many samples this view is really drawing with, or ``None``. Asked of GL…
+
+### Community 167 - "coarse_lattice"
+Cohesion: 0.50
+Nodes (4): coarse_lattice(), fixture, MonkeyPatch, Read every model on a small lattice, so the suite stays quick.
+
+### Community 168 - "environment.yml"
+Cohesion: 0.40
+Nodes (5): numpy, PySide6 and PyOpenGL installed with pip, Python 3.11 from conda-forge, refview conda environment, refview, PySide6 pinned below 6.8
+
+### Community 171 - "palette.py"
+Cohesion: 0.25
+Nodes (7): outline(), QColor, The colours the hand-drawn elements paint with. Kept apart from…, Draw the hairline that separates a control from the panel. One line, the same…, Change the one colour that is not grey, everywhere at once. The hand-painted…, set_accent(), The slider the whole application is set with. One flat bar: the name of the…
+
+### Community 173 - "app"
+Cohesion: 0.67
+Nodes (3): app(), fixture, One offscreen Qt application for the run; see test_film_recorder.
+
 ## Knowledge Gaps
-- **1 isolated node(s):** `refview`
+- **4 isolated node(s):** `refview`, `Answer`, `Outcome`, `Source Nodes`
   These have ≤1 connection - possible missing edges or undocumented components.
-- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Mesh` connect `Mesh` to `VideoSettings`, `plane_axes`, `ExportLook`, `mesh_renderer.py`, `test_plane_film.py`, `_wires`, `README.md`, `ViewerState`, `test_plane_solids.py`, `core/__init__.py`, `ndarray`, `PlaneSet`, `test_plane_clusters.py`, `plane_volume.py`, `compute_vertex_normals`, `SceneRenderer`, `plane_clusters.py`, `surface_of`, `OrientationSettings`, `PlaneSettings`, `FilmExport`, `forms.py`, `Solid`, `PrimaryForm`, `mesh.py`, `plane_regions`, `PlaneAxes`, `Coefficients`, `Wires`, `Bounds`, `TriangleIndex`, `stl_loader.py`, `load_obj`, `picking.py`, `test_mesh_io.py`, `viewport.py`, `ball`, `build_form`, `plane_solids.py`, `ShadingMode`, `plane_axes.py`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
-- **Why does `Viewport` connect `Viewport` to `ExportLook`, `._place_form_landmark`, `MainWindow`, `._commit_node_drag`, `ViewerState`, `ViewportOverlay`, `NavigationController`, `._buried_nodes`, `PlaneSet`, `film_export.py`, `SurfacePicker`, `form_group`, `FilmExport`, `ArmatureTool`, `MeasureTool`, `PrimaryForm`, `._picker`, `.mousePressEvent`, `_Encoder`, `._sync_scene`, `.mouseReleaseEvent`, `._place_armature_node`, `viewport.py`, `build_form`?**
-  _High betweenness centrality (0.075) - this node is a cross-community bridge._
-- **Why does `Armature` connect `Armature` to `test_forms.py`, `ndarray`, `settings.py`, `.refresh_list`, `ViewportOverlay`, `test_planes_panel.py`, `core/__init__.py`, `.with_landmark_at`, `_derived`, `test_armature.py`, `landmarks.py`, `PlaneSettings`, `ArmatureTool`, `ArmaturePanel`, `session.py`, `.new_armature`, `.split_point`, `viewport.py`, `ArmatureStore`, `plane_solids.py`, `.update_enabled`, `._draw_hud`?**
-  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Why does `Mesh` connect `Mesh` to `section.py`, `plane_axes`, `ExportLook`, `mesh_renderer.py`, `box`, `plane_solids.py`, `SectionGizmo`, `README.md`, `ViewerState`, `PlaneSettings`, `test_viewport_markers.py`, `SectionSettings`, `plane_volume.py`, `TriangleIndex`, `mesh.py`, `test_plane_clusters.py`, `gltf_loader.py`, `VideoSettings`, `load_obj`, `OrientationSettings`, `FilmExport`, `forms.py`, `section_segments`, `test_forms.py`, `PrimaryForm`, `compute_vertex_normals`, `test_plane_solids.py`, `ndarray`, `MeshBuffers`, `Bounds`, `picking.py`, `MeshLoadError`, `FakeViewport`, `core/__init__.py`, `test_mesh_io.py`, `ShadingMode`, `welded`?**
+  _High betweenness centrality (0.119) - this node is a cross-community bridge._
+- **Why does `Viewport` connect `Viewport` to `test_preferences.py`, `._buried_nodes`, `ExportLook`, `main_window.py`, `MainWindow`, `._place_form_landmark`, `SectionGizmo`, `ViewerState`, `._scene_center`, `test_viewport_markers.py`, `mesh.py`, `sample_count`, `film_export.py`, `SurfacePicker`, `ExportVideoDialog`, `FilmExport`, `ArmatureTool`, `MeasureTool`, `PrimaryForm`, `.__init__`, `NavigationController`, `_Encoder`, `._picker`, `core/__init__.py`, `._sync_scene`, `.mouseReleaseEvent`, `._place_armature_node`, `ViewportOverlay`, `.stage_images`?**
+  _High betweenness centrality (0.094) - this node is a cross-community bridge._
+- **Why does `MainWindow` connect `MainWindow` to `application.py`, `core/__init__.py`, `Release`, `form_group`, `History`, `main_window.py`, `Path`, `Viewport`, `.__init__`, `test_panel_docks.py`, `._build_menus`, `ExportVideoDialog`, `._start_update_check`, `ViewerState`, `Workspace`, `UpdateChecker`, `restored`, `ControlsWindow`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **Are the 33 inferred relationships involving `Mesh` (e.g. with `DegenerateHullError` and `Solid`) actually correct?**
   _`Mesh` has 33 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 15 inferred relationships involving `Viewport` (e.g. with `_Encoder` and `ExportLook`) actually correct?**
-  _`Viewport` has 15 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 7 inferred relationships involving `PrimaryForm` (e.g. with `PlacedLandmark` and `DegenerateHullError`) actually correct?**
-  _`PrimaryForm` has 7 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 17 inferred relationships involving `Viewport` (e.g. with `_Encoder` and `ExportLook`) actually correct?**
+  _`Viewport` has 17 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 3 inferred relationships involving `Camera` (e.g. with `BookmarkStore` and `CameraBookmark`) actually correct?**
   _`Camera` has 3 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 7 inferred relationships involving `PrimaryForm` (e.g. with `PlacedLandmark` and `DegenerateHullError`) actually correct?**
+  _`PrimaryForm` has 7 INFERRED edges - model-reasoned connections that need verification._

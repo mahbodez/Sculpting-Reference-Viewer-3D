@@ -283,13 +283,10 @@ class ArmaturePanel(Panel):
     def _build_placement(self) -> None:
         box, form = form_group("Placement")
         self._snap = QCheckBox("Snap to nearest vertex")
-        self._free = QCheckBox("Free points (ignore the surface)")
-        self._free.setToolTip(
-            "A joint sits under the skin rather than on it, so once the landmarks\n"
-            "are down this is usually what you want for moving nodes inwards."
-        )
         form.addRow("", self._snap)
-        form.addRow("", self._free)
+        depth_hint = QLabel("Ctrl/Cmd-drag a marker up/down to move it in depth.")
+        depth_hint.setWordWrap(True)
+        form.addRow(depth_hint)
         self._place(box)
 
     def _build_display(self) -> None:
@@ -342,7 +339,6 @@ class ArmaturePanel(Panel):
 
         self._size.valueCommitted.connect(self._resize_selected)
         self._snap.toggled.connect(lambda v: self._apply("snap_to_vertex", v))
-        self._free.toggled.connect(lambda v: self._apply("free_placement", v))
         self._show_all.toggled.connect(lambda v: self._apply("show_all", v))
         self._show_names.toggled.connect(lambda v: self._apply("show_names", v))
         self._show_sizes.toggled.connect(lambda v: self._apply("show_sizes", v))
@@ -675,7 +671,6 @@ class ArmaturePanel(Panel):
         with self._suppressed():
             self._mirror.setChecked(settings.mirror)
             self._snap.setChecked(settings.snap_to_vertex)
-            self._free.setChecked(settings.free_placement)
             self._show_all.setChecked(settings.show_all)
             self._show_names.setChecked(settings.show_names)
             self._show_sizes.setChecked(settings.show_sizes)

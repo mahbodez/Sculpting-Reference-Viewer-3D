@@ -251,6 +251,39 @@ def test_the_multisample_choices_are_all_reachable(window, store):
         assert store.value.viewport.samples == window._samples.itemData(index)
 
 
+def test_every_anti_aliasing_mode_is_reachable_and_nonsense_falls_back(window, store):
+    from refview.core.preferences import ANTIALIASING_MODES
+    from refview.render.mesh_renderer import ANTIALIASING_MODES as RENDERER_MODES
+
+    assert ANTIALIASING_MODES == RENDERER_MODES
+    for index in range(window._antialiasing.count()):
+        window._antialiasing.setCurrentIndex(index)
+        assert store.value.viewport.antialiasing == window._antialiasing.itemData(index)
+    offered = {window._antialiasing.itemData(i) for i in range(window._antialiasing.count())}
+    assert offered == set(ANTIALIASING_MODES)
+    data = Preferences().to_dict()
+    data["viewport"]["antialiasing"] = "msaa64"
+    assert Preferences.from_dict(data).viewport.antialiasing == "off"
+    prefs = Preferences()
+    prefs.viewport.antialiasing = "ssaa"
+    store.set(prefs)
+    assert window._antialiasing.currentData() == "ssaa"
+
+
+def test_the_fps_corner_is_offered_only_with_the_counter_and_reaches_the_store(window, store):
+    window._show_fps.setChecked(False)
+    assert not window._fps_corner.isEnabled()
+    window._show_fps.setChecked(True)
+    assert window._fps_corner.isEnabled()
+    for index in range(window._fps_corner.count()):
+        window._fps_corner.setCurrentIndex(index)
+        assert store.value.viewport.fps_corner == window._fps_corner.itemData(index)
+    prefs = Preferences()
+    prefs.viewport.fps_corner = "top-left"
+    store.set(prefs)
+    assert window._fps_corner.currentData() == "top-left"
+
+
 # -- carrying on from last time ------------------------------------------
 #
 # The preference that is easiest to get wrong, because the thing it restores

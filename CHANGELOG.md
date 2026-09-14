@@ -4,6 +4,95 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.0.0]
+
+The interface is rebuilt around the way ZBrush is worked: every panel goes
+anywhere, every control can be copied out to where it is wanted, and the
+things that are yours rather than the model's have a window of their own.
+Sessions from 1.x load unchanged.
+
+### Added
+
+- **Panels that go anywhere.** Every panel is a dock of its own: any edge of
+  the window, stacked into a tab strip with others, or floated. Docked to the
+  top or the bottom, a panel's groups break into columns to use the width
+  rather than squeezing. Every group folds away behind its own bar, and a
+  group whose settings have gone dead folds itself. The controls the panels
+  are built from -- the sliders, the swatches, the folding frames -- are drawn
+  by hand so that they wrap, reflow and stay legible however narrow the dock
+  is pulled.
+
+- **Copy any control out of its panel.** Hold `Alt` and drag a control -- or
+  a group's bar, for the whole group -- into a panel of your own
+  (`Ctrl+Shift+N` opens an empty one; its right-click menu adds, names and
+  removes the groups in it, and names the panel).
+  A copy is a second pair of hands on the same control, not a second setting:
+  move either and both move. Drop a copy on the model to be rid of it. The
+  arrangement, and every panel you have built, is remembered between runs and
+  written into the session file.
+
+- **Preferences.** `Ctrl+,`, or the Settings menu for one group of them: the
+  accent colour and type size, orbit and zoom speed and direction, the splash
+  screen, the release check, whether the machine is kept awake, reopening the
+  last session, the viewport's multisampling, anti-aliasing and frame counter,
+  and a folder of your own matcaps. Every change applies as it is made,
+  multisampling excepted, which says so.
+
+- **The matcap is its own control.** The sphere under the gallery is drawn
+  with the grading applied and is dragged rather than described: drag to
+  turn it, `Shift`-drag for brightness and contrast, `Ctrl`-drag for
+  saturation and gamma, double-click to put the grading back. What is drawn
+  is exactly what the shader does. Right-click it to save the matcap as an
+  image, graded or as it came. The Matcap panel itself has moved into the
+  Shading panel and appears when Matcap is the mode.
+
+- **Contour shading.** A new shading mode cuts the form with a stack of
+  evenly spaced planes and draws the cuts, the way a contour map reads land.
+  The lines crowd where the surface turns across the planes and spread where
+  it runs along them, so curves and flats read at a glance. The planes follow
+  the camera by default, or face X, Y or Z, or are pinned the way the camera
+  faced with `Slice Along the View`; density, width and colour, the paper
+  between the lines and whether it is lit are all adjustable.
+
+- **Anti-aliasing at runtime.** FXAA, or supersampling at twice the size,
+  chosen in Preferences and applied at once -- the frame is drawn into a
+  buffer of the renderer's own and smoothed on its way to the screen -- beside
+  the multisampling that is fixed when the window is made.
+
+- **A frame counter**, in whichever corner of the viewport you ask for; it
+  keeps clear of the readout and the orientation gizmo.
+
+- **A gesture for depth.** Markers -- measurement ends, armature nodes, every
+  kind of landmark -- go inside the model or off it by `Ctrl`/`Cmd`-dragging
+  them: up moves deeper, down moves toward the camera, along a fixed axis
+  through the point. A fading ruler beside the point shows the signed travel,
+  and a grid facing the camera is laid through the point in the scene, where
+  the model stands in front of it or behind it and says which. Escape puts
+  the point back. The `Free points` switches are gone; the gesture replaces
+  them.
+
+- **One kind of marker.** Every marker in the viewport is drawn by one
+  object, so they share a shadow against the surface, a highlight when
+  grabbed, and a faded body inside a dashed ring when they sit behind the
+  surface rather than on it.
+
+- **A rail for the cut.** While a section is on, a rail at the right edge of
+  the viewport, in the contour's colour, slides the plane along its normal
+  over the same range as the panel's slider. It is the depth ruler's own cue,
+  and stays put while the view turns.
+
+- **The selected measurement** is highlighted in the viewport when picked in
+  the list.
+
+### Changed
+
+- Matcap textures are kept at sixteen bits and the shading dithered, which
+  takes the colour banding off gradients.
+- Every piece of text drawn over the model -- the readout, the labels, the
+  depth ruler, the section rail -- is drawn as filled outlines with a dark
+  halo, so it reads over the model and the background alike on every driver.
+- Session files are at version 7: they carry the arrangement of the panels.
+
 ## [1.12.0]
 
 ### Added
