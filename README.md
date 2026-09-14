@@ -603,6 +603,51 @@ height readable.
 - A stroke that runs off the silhouette breaks there instead of bridging the
   gap, so paint never floats in front of the background.
 
+**The interface**
+
+Every panel is its own dock and goes wherever you put it — any edge of the
+window, stacked with others into a tab strip, or floated off on its own. A
+panel dragged to the top or the bottom has width rather than height, so its
+groups break into columns to use it; nothing about the panel changes, only how
+much room it was given. Every group folds away behind its own bar, and a group
+whose settings have gone dead folds itself.
+
+Any control can be **copied out of the panel it lives in**: hold `Alt`, drag
+it, and drop it into a panel of your own (`Ctrl+Shift+N` opens an empty one).
+Alt-dragging a group's bar takes the whole group. A copy is a second pair of
+hands on the same control, not a second setting — move either and both move,
+because there is only one of them. That is for the handful of controls a
+particular piece of work keeps reaching for, which are almost never the
+handful that happen to share a subject. Drop a copy on the model to be rid of
+it.
+
+Where the panels are, and any you have built, are remembered between runs and
+written into the session file alongside the marks on the model.
+
+**The matcap is its own control**
+
+A matcap is a picture of a sphere, and the sphere is the whole of what it says
+— so the sphere under the gallery is drawn with the grading applied and is
+dragged rather than described. Drag it and it turns under your hand; `Shift` and
+drag sets brightness across and contrast up and down; `Ctrl` and drag sets
+saturation and gamma; double-click puts the grading back. What is drawn is
+exactly what the shader will do, because for a sphere facing the camera the
+renderer's reflection lookup collapses to the matcap image itself, turned. The
+five numbers are still underneath, folded away, for typing an exact rotation
+into or copying out into a panel of your own.
+
+**Preferences**
+
+`Ctrl+,`, or the Settings menu for one group of them. What belongs to the piece
+of work — the matcap, the section, the planes — travels in the session file;
+what belongs to you stays on the machine and follows you from model to model:
+the accent colour and type size, how fast the orbit turns and which way round,
+the splash screen, the release check, whether the machine is kept awake,
+whether to carry on from whatever was last open, and a folder of your own to
+read matcaps from. Every change applies as you make it,
+and the window is built out of the same folding groups and sliders the panels
+are, so a control in it can be Alt-dragged into a panel like any other.
+
 **Undo**
 
 `Ctrl+Z` / `Ctrl+Shift+Z` cover measurements, annotations and saved views. Each
@@ -700,7 +745,11 @@ src/refview/
              scene and stroke renderers
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
              armature and forms tools, the 2D overlay, the observable
-             document, panels and the main window
+             document, panels, the docks they live in and the main window
+  ui/elements/
+             the controls the panels are built from: the reflowing layout,
+             the folding frame, the sliders and swatches drawn by hand, and
+             the machinery that copies a control into a panel of your own
 tools/       the matcap generator
 tests/       pytest suite for the core layer
 ```

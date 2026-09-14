@@ -31,7 +31,7 @@ from ...core.forms import (
 )
 from ...core.history import FORMS
 from ...core.landmarks import Landmark, Side
-from ..widgets import ColorButton, PointEdit, SliderSpin, form_group
+from ..widgets import ColorButton, PointEdit, SliderSpin, form_group, symbol_button
 from .base import Panel
 
 _NAME_COLUMN = 0
@@ -250,7 +250,7 @@ class FormsPanel(Panel):
         self._tree.itemSelectionChanged.connect(self._on_selection_changed)
         self._add(self._tree)
 
-        self._delete = QPushButton("Delete")
+        self._delete = symbol_button("trash", "Delete")
         self._delete.setToolTip(
             "Take the selected landmark back off the model, along with any guess\n"
             "mirrored from it -- or delete the whole form when its row is selected."
@@ -261,7 +261,7 @@ class FormsPanel(Panel):
             "next click lays down whatever is named above, as when it was started.\n"
             "A preset's landmarks are fixed, so only a freeform can be appended to."
         )
-        self._center = QPushButton("Centre View")
+        self._center = symbol_button("centre", "Centre View")
         self._clear = QPushButton("Clear All")
         self._add(self._append)
         self._add(_row(self._delete, self._center, self._clear))

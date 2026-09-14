@@ -243,6 +243,20 @@ def test_a_session_from_before_annotations_still_loads(tmp_path):
     assert session.annotations == []
 
 
+def test_a_session_from_before_the_panels_moved_still_loads(tmp_path):
+    """Version 6 files predate panels being something a session could carry."""
+    path = tmp_path / "v6.refview.json"
+    path.write_text(
+        json.dumps({"version": 6, "render": {"shading_mode": "phong"}}),
+        encoding="utf-8",
+    )
+    session = Session.load(path)
+    assert session.render.shading_mode is ShadingMode.PHONG
+    # No layout at all, rather than an empty one someone might act on: a file
+    # that says nothing about the panels must not move them.
+    assert session.layout == {}
+
+
 def test_unknown_and_missing_keys_are_tolerated(tmp_path):
     path = tmp_path / "old.refview.json"
     path.write_text(

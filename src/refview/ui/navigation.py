@@ -36,6 +36,15 @@ class NavigationController:
     ZOOM_PER_NOTCH = 1.15
 
     def __init__(self) -> None:
+        #: Multiples of the two rates above, and which way round a drag turns
+        #: the model.  Instance attributes rather than arguments to every call
+        #: because they are the artist's standing answer and not something a
+        #: gesture decides; the window writes them from the preferences.  See
+        #: :class:`refview.core.preferences.NavigationPreferences`.
+        self.orbit_speed = 1.0
+        self.zoom_speed = 1.0
+        self.invert_orbit_x = False
+        self.invert_orbit_y = False
         self._mode = DragMode.NONE
         self._last: tuple[float, float] | None = None
         self._pivot: np.ndarray | None = None
@@ -97,8 +106,8 @@ class NavigationController:
             return False
 
         if self._mode is DragMode.ORBIT:
-            yaw = math.radians(-dx * self.ORBIT_DEGREES_PER_PIXEL)
-            pitch = math.radians(-dy * self.ORBIT_DEGREES_PER_PIXEL)
+            yaw = math.radians(-dx * self._orbit_x)
+            pitch = math.radians(-dy * self._orbit_y)
             camera.orbit(yaw, pitch, self._pivot)
             self._snapped = None  # Free motion; the next snap must reapply.
         else:
@@ -109,8 +118,8 @@ class NavigationController:
         """Orbit in whole increments of ``step`` degrees from the drag's start."""
         if self._start is None or self._origin is None:
             return False
-        travel_x = (x - self._origin[0]) * self.ORBIT_DEGREES_PER_PIXEL
-        travel_y = (y - self._origin[1]) * self.ORBIT_DEGREES_PER_PIXEL
+        travel_x = (x - self._origin[0]) * self._orbit_x
+        travel_y = (y - self._origin[1]) * self._orbit_y
         angles = (-round(travel_x / step) * step, -round(travel_y / step) * step)
         self._last = (x, y)
         if angles == self._snapped:
@@ -150,4 +159,28 @@ class NavigationController:
             if anchor is None
             else np.asarray(anchor, dtype=np.float64)
         )
-        camera.zoom(self.ZOOM_PER_NOTCH ** -notches, pivot)
+        camera.zoom(self._zoom_per_notch ** -notches, pivot)
+
+    # -- what the preferences set ---------------------------------------
+
+    @property
+    def _orbit_x(self) -> float:
+        """Degrees of yaw per pixel, signed by whether the drag is inverted."""
+        rate = self.ORBIT_DEGREES_PER_PIXEL * self.orbit_speed
+        return -rate if self.invert_orbit_x else rate
+
+    @property
+    def _orbit_y(self) -> float:
+        rate = self.ORBIT_DEGREES_PER_PIXEL * self.orbit_speed
+        return -rate if self.invert_orbit_y else rate
+
+    @property
+    def _zoom_per_notch(self) -> float:
+        """The per-notch multiplier, scaled about 1 rather than multiplied.
+
+        Zoom is geometric: a notch multiplies the distance, so twice the speed
+        has to mean twice the *exponent* and not twice the factor.  Scaling the
+        step away from 1 is the same thing said in one line, and it keeps the
+        rate continuous through the shipped setting rather than jumping at it.
+        """
+        return 1.0 + (self.ZOOM_PER_NOTCH - 1.0) * self.zoom_speed

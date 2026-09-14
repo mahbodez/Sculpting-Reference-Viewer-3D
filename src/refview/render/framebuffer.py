@@ -25,6 +25,18 @@ def bind_default(framebuffer: int) -> None:
     GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, framebuffer)
 
 
+def sample_count() -> int:
+    """How many samples the framebuffer bound right now is drawing with.
+
+    One where there is no multisampling.  Worth asking for, because the widget
+    cannot answer it: ``QOpenGLWidget.format().samples()`` describes the
+    context, the multisampling lives in the framebuffer Qt composites the
+    widget from, and the two disagree -- so a view drawing perfectly well at
+    eight samples reports nought and the preference that set it looks inert.
+    """
+    return int(GL.glGetIntegerv(GL.GL_SAMPLES))
+
+
 def _require_complete(name: str) -> None:
     """Fail loudly on an unusable attachment rather than rendering nothing.
 

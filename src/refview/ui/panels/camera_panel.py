@@ -65,7 +65,7 @@ class CameraPanel(Panel):
         frame = QPushButton("Frame Object  (F)")
         frame.clicked.connect(self._frame)
         grid.addWidget(frame, 2, 0, 1, 3)
-        views_box.layout().addRow(grid)
+        views_box.form().addRow(grid)
         self._add(views_box)
 
         bookmarks_box, _ = form_group("Saved Views")
@@ -74,7 +74,7 @@ class CameraPanel(Panel):
         self._list.setToolTip("Click to jump there; double-click the name to rename it.")
         self._list.itemClicked.connect(self._recall_item)
         self._list.itemChanged.connect(self._rename_item)
-        bookmarks_box.layout().addRow(self._list)
+        bookmarks_box.form().addRow(self._list)
 
         buttons = QWidget()
         row = QHBoxLayout(buttons)
@@ -89,7 +89,7 @@ class CameraPanel(Panel):
             button.setToolTip(tip)
             button.clicked.connect(slot)
             row.addWidget(button)
-        bookmarks_box.layout().addRow(buttons)
+        bookmarks_box.form().addRow(buttons)
 
         cycle = QWidget()
         cycle_row = QHBoxLayout(cycle)
@@ -100,7 +100,7 @@ class CameraPanel(Panel):
         following.clicked.connect(lambda: self.cycle(1))
         cycle_row.addWidget(previous)
         cycle_row.addWidget(following)
-        bookmarks_box.layout().addRow(cycle)
+        bookmarks_box.form().addRow(cycle)
         self._add(bookmarks_box)
         self._add_stretch()
 

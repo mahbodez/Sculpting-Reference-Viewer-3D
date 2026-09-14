@@ -50,7 +50,7 @@ from ..core.plane_film import shaded as film_shaded
 from ..core.plane_solids import SculptCache, wires_for
 from ..core.section import section_segments
 from ..core.settings import SculptMode
-from ..render.framebuffer import bind_default, current_framebuffer
+from ..render.framebuffer import bind_default, current_framebuffer, sample_count
 from ..render.mesh_renderer import SceneRenderer
 from ..render.stroke_renderer import build_segment_vertices
 from .annotate_tool import AnnotateTool
@@ -70,14 +70,21 @@ if typing.TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
     from .film_export import ExportLook
 
 
-def configure_surface_format() -> None:
-    """Request a core-profile context; must run before the QApplication."""
+def configure_surface_format(samples: int = 4) -> None:
+    """Request a core-profile context; must run before the QApplication.
+
+    ``samples`` is the multisample count, and it is an argument rather than a
+    constant because it is the one render setting that cannot be changed once
+    the application is running: the sample count belongs to the context, and
+    the context is made before the window.  Hence a preference read on the way
+    up, and a note in the Preferences window that it takes a restart.
+    """
     fmt = QSurfaceFormat()
     fmt.setVersion(3, 3)
     fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
     fmt.setDepthBufferSize(24)
     fmt.setStencilBufferSize(8)
-    fmt.setSamples(4)
+    fmt.setSamples(max(int(samples), 0))
     QSurfaceFormat.setDefaultFormat(fmt)
 
 
@@ -429,6 +436,36 @@ class Viewport(QOpenGLWidget):
     def state(self) -> ViewerState:
         """The document being drawn."""
         return self._state
+
+    @property
+    def navigation(self) -> NavigationController:
+        """How a drag turns into camera motion, so the preferences can set it."""
+        return self._navigation
+
+    def samples_in_use(self) -> int | None:
+        """How many samples this view is really drawing with, or ``None``.
+
+        Asked of GL rather than of the widget, because ``format().samples()``
+        on a QOpenGLWidget reports nought whatever it was given -- the
+        multisampling lives in the framebuffer Qt composites from and not in
+        the context, and the context is what that method describes.  Which
+        leaves the preference looking inert when it is working perfectly, so
+        the number is fetched from the thing that knows and shown in the
+        Preferences window.
+
+        ``None`` before the view has a context, and on any driver that
+        declines the question.
+        """
+        if not self._ready:
+            return None
+        try:
+            self.makeCurrent()
+            try:
+                return sample_count()
+            finally:
+                self.doneCurrent()
+        except Exception:  # pragma: no cover - driver-specific
+            return None
 
     @property
     def film(self) -> Film | None:

@@ -36,6 +36,14 @@ from .mesh_io import MESH_FILTER, MESH_SUFFIXES, load_mesh
 from .obj_loader import ObjLoadError, load_obj
 from .orientation import SPIN_STEPS, OrientationSettings, UpAxis
 from .pedestal import PedestalSettings, build_pedestal
+from .preferences import (
+    FolderPreferences,
+    InterfacePreferences,
+    NavigationPreferences,
+    Preferences,
+    StartupPreferences,
+    ViewportPreferences,
+)
 from .raycast import Hit, raycast_mesh, snap_to_vertex
 from .section import SectionAxis, SectionMode, SectionSettings, section_segments
 from .session import SESSION_SUFFIX, Session, sidecar_path
@@ -70,7 +78,9 @@ __all__ = [
     "Buried",
     "Camera",
     "CameraBookmark",
+    "FolderPreferences",
     "Hit",
+    "InterfacePreferences",
     "Landmark",
     "LightSettings",
     "MatcapSettings",
@@ -80,11 +90,13 @@ __all__ = [
     "Mesh",
     "MeshLoadError",
     "MeshUnits",
+    "NavigationPreferences",
     "NavigationSettings",
     "ObjLoadError",
     "OrientationSettings",
     "PedestalSettings",
     "PlacedLandmark",
+    "Preferences",
     "Preset",
     "Projection",
     "QualitySettings",
@@ -95,9 +107,11 @@ __all__ = [
     "Session",
     "ShadingMode",
     "Side",
+    "StartupPreferences",
     "StlLoadError",
     "SurfaceSettings",
     "UpAxis",
+    "ViewportPreferences",
     "build_humanoid",
     "build_pedestal",
     "compute_vertex_normals",

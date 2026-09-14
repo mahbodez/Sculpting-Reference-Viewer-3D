@@ -36,7 +36,33 @@ def resources_dir() -> Path:
     return PROJECT_ROOT / "resources"
 
 
+#: A folder of the artist's own to read matcaps from, in place of the bundled
+#: one.  Set from the preferences; ``None`` means the ones that ship.  A
+#: module-level override rather than an argument threaded through every caller
+#: because "where the matcaps are" is one answer for the whole run, and the
+#: three places that ask are not the places that know.
+_matcap_override: Path | None = None
+
+
+def set_matcap_dir(folder: str | Path | None) -> None:
+    """Read matcaps from ``folder`` instead of the bundled ones.
+
+    A folder that has gone -- an external drive that is not plugged in, a
+    path copied from another machine -- is not an error and not a reason to
+    show an empty gallery: :func:`available_matcaps` falls back to the ones
+    that ship, so the application is never without a matcap to draw with.
+    """
+    global _matcap_override
+    if folder is None or not str(folder).strip():
+        _matcap_override = None
+        return
+    _matcap_override = Path(folder).expanduser()
+
+
 def matcap_dir() -> Path:
+    """Where matcaps are read from: the artist's folder, or the bundled one."""
+    if _matcap_override is not None and _matcap_override.is_dir():
+        return _matcap_override
     return resources_dir() / "matcaps"
 
 

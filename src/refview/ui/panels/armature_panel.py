@@ -24,7 +24,7 @@ from ...core.commands import AddItem, RemoveItem, ReplaceItems, SetAttributes
 from ...core.history import ARMATURE
 from ...core.landmarks import PRESETS, landmark_title
 from ..icons import lock_icon
-from ..widgets import PointEdit, SliderSpin, collapsible_group, form_group
+from ..widgets import PointEdit, SliderSpin, collapsible_group, form_group, symbol_button
 from .base import Panel
 
 _NAME_COLUMN = 0
@@ -181,7 +181,7 @@ class ArmaturePanel(Panel):
         self._tree.setMinimumHeight(120)
         self._splitter.addWidget(self._tree)
 
-        self._delete = QPushButton("Delete")
+        self._delete = symbol_button("trash", "Delete")
         self._delete.setToolTip("Remove the selected node and the bones that reached it.")
         self._dissolve = QPushButton("Dissolve")
         self._dissolve.setToolTip(
@@ -193,8 +193,8 @@ class ArmaturePanel(Panel):
         )
         self._add_row(self._delete, self._dissolve, self._connect_button)
 
-        self._new = QPushButton("New Armature")
-        self._center = QPushButton("Centre View")
+        self._new = symbol_button("plus", "New Armature")
+        self._center = symbol_button("centre", "Centre View")
         self._clear = QPushButton("Clear All")
         self._add_row(self._new, self._center, self._clear)
 
@@ -255,11 +255,11 @@ class ArmaturePanel(Panel):
 
         self._landmark_point = PointEdit()
         self._landmark_point.setToolTip(_POSITION_TIP)
-        self._landmark_delete = QPushButton("Delete")
+        self._landmark_delete = symbol_button("trash", "Delete")
         self._landmark_delete.setToolTip(
             "Take this landmark back off the model, along with any guess mirrored from it."
         )
-        self._landmark_center = QPushButton("Centre View")
+        self._landmark_center = symbol_button("centre", "Centre View")
         self._landmark_rebuild = QPushButton("Rebuild Nodes")
         self._landmark_rebuild.setToolTip(_REBUILD_TIP)
 

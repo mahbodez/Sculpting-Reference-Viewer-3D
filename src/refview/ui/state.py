@@ -75,6 +75,10 @@ class ViewerState(QObject):
         self.bookmarks = BookmarkStore()
         self.history = History()
         self.orientation = OrientationSettings()
+        #: The panel arrangement carried by the last session that was loaded.
+        #: A passenger: nothing here reads it, and the window takes it off
+        #: after a load.  See :attr:`refview.core.session.Session.layout`.
+        self.session_layout: dict = {}
         self.mesh: Mesh | None = None
         #: The mesh exactly as the file stored it.  Every orientation is
         #: applied to this rather than to the last result, so switching back
@@ -347,8 +351,17 @@ class ViewerState(QObject):
         self.notify_bookmarks()
         self.history_changed.emit()
 
-    def save_session(self, path: str | Path) -> Path:
-        saved = self.to_session().save(path)
+    def save_session(self, path: str | Path, layout: dict | None = None) -> Path:
+        """Write the document, and whatever the window says its layout is.
+
+        The layout travels through here rather than being written by the
+        window, because it belongs in the same file as the document and there
+        is only one place that writes that file.  Nothing here looks inside
+        it; see :attr:`Session.layout`.
+        """
+        session = self.to_session()
+        session.layout = dict(layout or {})
+        saved = session.save(path)
         self.status_message.emit(f"Saved session to {saved.name}")
         return saved
 
@@ -357,6 +370,7 @@ class ViewerState(QObject):
         if load_mesh and session.mesh_path and Path(session.mesh_path).is_file():
             self.load_mesh(session.mesh_path, load_sidecar=False)
         self.apply_session(session)
+        self.session_layout = dict(session.layout)
         self.status_message.emit(f"Loaded session {Path(path).name}")
 
     def default_session_path(self) -> Path | None:

@@ -1,4 +1,11 @@
-"""Matcap selection and colour grading."""
+"""Matcap selection and colour grading.
+
+The grading is done on the matcap itself: the disc under the gallery is the
+control, and the five numbers that used to be five rows are folded away
+underneath it for the times a number is what you want.  See
+:mod:`refview.ui.matcap_preview` for why the disc can be trusted to show what
+the renderer will do with it.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +29,15 @@ from PySide6.QtWidgets import (
 from ...core.settings import MatcapSettings
 from ...paths import available_matcaps, matcap_dir
 from ...render.texture import MatcapLoadError
-from ..widgets import ColorButton, SliderSpin, form_group, scrollable
+from ..matcap_preview import MatcapPreview
+from ..widgets import (
+    ColorButton,
+    SliderSpin,
+    collapsible_group,
+    form_group,
+    scrollable,
+    symbol_button,
+)
 from .base import Panel
 
 _THUMBNAIL = QSize(56, 56)
@@ -62,29 +77,45 @@ class MatcapPanel(Panel):
         row.setContentsMargins(0, 0, 0, 0)
         browse_button = QPushButton("Load Matcap...")
         browse_button.clicked.connect(self.browse)
-        rescan = QPushButton("Rescan Folder")
+        rescan = symbol_button("refresh", "Rescan Folder")
         rescan.clicked.connect(self.reload_gallery)
         row.addWidget(browse_button)
         row.addWidget(rescan)
         column.addWidget(buttons)
 
+        # The disc goes straight into the column, outside any group.  Every
+        # other group in the application folds, and a control that is the
+        # whole point of the panel should not be one click on a bar away from
+        # being gone -- least of all a click on a bar named Adjustments, which
+        # is what the disc now is.
+        self._preview = MatcapPreview()
+        column.addWidget(self._preview)
+
+        # The two settings a disc cannot be dragged into: a tint is a colour
+        # and wants a picker, and a flip is a yes or a no.
         box, form = form_group("Adjustments")
+        self._tint = ColorButton((1.0, 1.0, 1.0))
+        self._flip_y = QCheckBox("Flip vertically")
+        form.addRow("Tint", self._tint)
+        form.addRow("", self._flip_y)
+        column.addWidget(box)
+
+        # The same five numbers the disc sets, for when a number is what you
+        # want -- to type an exact rotation, or to pull one of them out into a
+        # panel of your own, which a copy of the disc could not do one at a
+        # time.  Folded, because reaching for them is the exception now.
+        fine, numbers = collapsible_group("Fine Adjustments")
         self._rotation = SliderSpin(-180.0, 180.0, 0.0, decimals=0, step=1.0, suffix=" deg")
         self._contrast = SliderSpin(0.0, 3.0, 1.0)
         self._gamma = SliderSpin(0.1, 3.0, 1.0)
         self._brightness = SliderSpin(0.0, 3.0, 1.0)
         self._saturation = SliderSpin(0.0, 3.0, 1.0)
-        self._tint = ColorButton((1.0, 1.0, 1.0))
-        self._flip_y = QCheckBox("Flip vertically")
-
-        form.addRow("Rotation", self._rotation)
-        form.addRow("Contrast", self._contrast)
-        form.addRow("Gamma", self._gamma)
-        form.addRow("Brightness", self._brightness)
-        form.addRow("Saturation", self._saturation)
-        form.addRow("Tint", self._tint)
-        form.addRow("", self._flip_y)
-        column.addWidget(box)
+        numbers.addRow("Rotation", self._rotation)
+        numbers.addRow("Contrast", self._contrast)
+        numbers.addRow("Gamma", self._gamma)
+        numbers.addRow("Brightness", self._brightness)
+        numbers.addRow("Saturation", self._saturation)
+        column.addWidget(fine)
 
         reset = QPushButton("Reset Adjustments")
         reset.clicked.connect(self._reset)
@@ -108,7 +139,14 @@ class MatcapPanel(Panel):
         self._tint.colorChanged.connect(lambda v: self._apply("tint", v))
         self._flip_y.toggled.connect(lambda v: self._apply("flip_y", v))
 
+        # The disc writes the settings itself, being pointed at the same
+        # object the sliders write; what is left to do is tell the renderer
+        # and put the numbers back in line with what the drag did.
+        self._preview.changed.connect(self._preview_changed)
+        self.state.matcap_changed.connect(self._matcap_changed)
+
         self.reload_gallery()
+        self._matcap_changed()
 
     # -- gallery --------------------------------------------------------
 
@@ -185,14 +223,34 @@ class MatcapPanel(Panel):
         if self._busy:
             return
         setattr(self.state.render.matcap, field, value)
+        self._preview.refresh()
         self.state.notify_render()
+
+    def _preview_changed(self) -> None:
+        """The disc was dragged: show the renderer and the numbers what it did."""
+        if self._busy:
+            return
+        self._sync_adjustments()
+        self.state.notify_render()
+
+    def _matcap_changed(self) -> None:
+        """A different matcap: the disc draws whichever one is on the model."""
+        self._preview.set_settings(self.state.render.matcap)
+        self._preview.set_source(self.state.matcap_pixels)
 
     def _reset(self) -> None:
         self.state.render.matcap = MatcapSettings()
         self.state.notify_render()
         self.refresh()
 
-    def refresh(self) -> None:
+    def _sync_adjustments(self) -> None:
+        """Put the numbers back in line with the settings, and redraw the disc.
+
+        Separate from :meth:`refresh` because this runs on every event of a
+        drag across the disc, and walking the gallery looking for the selected
+        thumbnail -- which cannot have changed -- is not work worth doing sixty
+        times a second.
+        """
         matcap = self.state.render.matcap
         with self._suppressed():
             self._rotation.set_value(matcap.rotation_deg)
@@ -202,4 +260,8 @@ class MatcapPanel(Panel):
             self._saturation.set_value(matcap.saturation)
             self._tint.set_color(matcap.tint)
             self._flip_y.setChecked(matcap.flip_y)
+        self._preview.set_settings(matcap)
+
+    def refresh(self) -> None:
+        self._sync_adjustments()
         self._select_current()

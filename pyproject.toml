@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "1.12.0"
-description = "A 3D reference viewer for sculpting"
+version = "2.0.0"
+description = "A 3D reference viewer for artists"
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
 license = { text = "MIT" }

@@ -6,13 +6,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen
 
 from . import APP_NAME, __version__
 from .paths import available_matcaps, image_path
 from .ui.main_window import MainWindow
+from .ui.preferences import store as preference_store
 from .ui.theme import apply_dark_theme
 from .ui.viewport import configure_surface_format
 
@@ -34,20 +35,31 @@ def run(argv: list[str] | None = None) -> int:
     """Start the viewer and block until the window closes."""
     arguments = build_parser().parse_args(argv)
 
-    configure_surface_format()
+    # Before the application object, not after: the settings are found by the
+    # organisation and application name, and the first thing read out of them
+    # is the multisample count, which belongs to the GL context and so has to
+    # be decided before there is one.  Setting the two names on QCoreApplication
+    # is how that is done without a QApplication to hang them on yet.
+    QCoreApplication.setApplicationName(APP_NAME)
+    QCoreApplication.setOrganizationName("refview")
+    preferences = preference_store().value
+
+    configure_surface_format(preferences.viewport.samples)
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("refview")
     app.setWindowIcon(QPixmap(str(image_path("icon-large.png"))))
     apply_dark_theme(app)
 
-    splash = _create_splash()
-    splash.show()
-    app.processEvents()
+    splash = _create_splash() if preferences.startup.show_splash else None
+    if splash is not None:
+        splash.show()
+        app.processEvents()
     window = MainWindow()
     _apply_startup_arguments(window, arguments)
     window.show()
-    splash.finish(window)
+    if splash is not None:
+        splash.finish(window)
     return app.exec()
 
 
@@ -108,6 +120,12 @@ def _apply_startup_arguments(window: MainWindow, arguments: argparse.Namespace) 
         window.open_model(arguments.model)
     if arguments.session is not None:
         window.load_session(arguments.session)
+    elif arguments.model is None:
+        # Nothing was asked for, so the artist's own answer applies: carry on
+        # with the session they were last in, if they asked to.  A model named
+        # on the command line beats it, because that is somebody opening this
+        # application *at* something.
+        window.reopen_last_session()
 
     matcap = arguments.matcap
     if matcap is None and window.state.render.matcap_path is None:

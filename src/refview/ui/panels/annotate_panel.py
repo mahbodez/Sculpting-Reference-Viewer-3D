@@ -51,7 +51,7 @@ class AnnotatePanel(Panel):
             button.setToolTip(_TOOLTIPS[mode])
             self._modes.addButton(button, index)
             grid.addWidget(button, index // 2, index % 2)
-        tools_box.layout().addRow(grid)
+        tools_box.form().addRow(grid)
         self._add(tools_box)
 
         brush_box, brush_form = form_group("Brush")

@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1789344018.1817636,
-    "ast_hash": "06f1aa586bbcc684107ad34dbf51ebe2",
+    "mtime": 1789343185.6143708,
+    "ast_hash": "3851476259dcec6c321403945853d543",
     "semantic_hash": ""
   },
   "src/refview/ui/measure_tool.py": {
@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/theme.py": {
-    "mtime": 1789344029.4627306,
-    "ast_hash": "8b1042d70777009747dec246136c0958",
+    "mtime": 1789343610.0010097,
+    "ast_hash": "6042e01446937eb98f06460d0c308913",
     "semantic_hash": ""
   },
   "src/refview/ui/viewport.py": {
@@ -610,8 +610,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/elements/dock.py": {
-    "mtime": 1789343985.338317,
-    "ast_hash": "478da6795be624e138b1ec7aa6bc8ef6",
+    "mtime": 1789343671.0181005,
+    "ast_hash": "3f850a0ce5e668ed77e7185f5eb831b1",
     "semantic_hash": ""
   },
   "src/refview/ui/elements/frame.py": {
@@ -640,8 +640,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/workspace.py": {
-    "mtime": 1789344018.1817636,
-    "ast_hash": "e9df260ecbcc09773088a376ce7ccd22",
+    "mtime": 1789343538.0639563,
+    "ast_hash": "a8144310815fe6e91e91a704132db9e9",
     "semantic_hash": ""
   },
   "tests/test_custom_panels.py": {
@@ -655,8 +655,8 @@
     "semantic_hash": ""
   },
   "tests/test_panel_docks.py": {
-    "mtime": 1789344046.7315,
-    "ast_hash": "578c4ebc7f1f870fc04d6a54150b779f",
+    "mtime": 1789343460.0336354,
+    "ast_hash": "5e37fc1dd5894438150e159c4ad6df05",
     "semantic_hash": ""
   },
   "tests/test_reflow.py": {

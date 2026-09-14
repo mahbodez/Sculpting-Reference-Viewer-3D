@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
-    QTabBar,
-    QTabWidget,
 )
 
 from .. import APP_NAME
@@ -28,10 +24,11 @@ from ..core.update_check import Release
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
 from ..wakelock import WakeLock
+from .elements.clone import carried, in_flight
 from .film_export import ExportVideoDialog
+from .help_window import ControlsWindow
 from .panels.annotate_panel import AnnotatePanel
 from .panels.armature_panel import ArmaturePanel
-from .panels.base import Panel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
 from .panels.forms_panel import FormsPanel
 from .panels.matcap_panel import MatcapPanel
@@ -40,6 +37,9 @@ from .panels.model_panel import ModelPanel
 from .panels.planes_panel import PlanesPanel
 from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
+from .preferences import LAST_MODEL, LAST_SESSION
+from .preferences import store as preference_store
+from .settings_window import GROUPS, SettingsWindow
 from .state import ViewerState
 from .update_notice import (
     UpdateChecker,
@@ -49,7 +49,7 @@ from .update_notice import (
     show_update_dialog,
 )
 from .viewport import Viewport
-from .widgets import scrollable
+from .workspace import Workspace
 
 CONTROLS_TEXT = """
 <h3>Navigation</h3>
@@ -107,8 +107,40 @@ points</td></tr>
 <tr><td><b>Append</b></td><td>Take up the selected freeform again and add landmarks to it</td></tr>
 <tr><td><b>Stage slider</b></td><td>Scrub back through the stages of a head</td></tr>
 <tr><td><b>Symmetrical forms</b></td><td>Build the clay from the landmarks made symmetric</td></tr>
-<tr><td><b>Tab checkbox</b></td><td>Show or hide what a tab puts on the model, from the tab
-itself</td></tr>
+<tr><td><b>Panel switch</b></td><td>Show or hide what a panel puts on the model, from the
+panel's bar or from its tab</td></tr>
+</table>
+<h3>Panels</h3>
+<table cellpadding='3'>
+<tr><td><b>Drag a panel's bar</b></td><td>Move it to any edge, stack it with another,
+or float it off</td></tr>
+<tr><td><b>Alt + drag a control</b></td><td>Take a working copy of it away on the
+cursor</td></tr>
+<tr><td><b>Alt + drag a group's bar</b></td><td>Take a copy of the whole group</td></tr>
+<tr><td><b>Ctrl+Shift+N</b></td><td>Open an empty panel of your own to drop copies
+into</td></tr>
+<tr><td><b>Alt + drag a copy</b></td><td>Move it; drop it on the model to throw it
+away</td></tr>
+<tr><td><b>Right-click a custom panel</b></td><td>Add or rename a group, rename the
+panel</td></tr>
+<tr><td><b>Click a group's name</b></td><td>Fold the group away</td></tr>
+<tr><td><b>Panels &gt; Reset Layout</b></td><td>Put every panel back where it
+started</td></tr>
+</table>
+<h3>Matcap</h3>
+<table cellpadding='3'>
+<tr><td><b>Drag the sphere</b></td><td>Turn the matcap; it follows your hand
+round</td></tr>
+<tr><td><b>Shift + drag</b></td><td>Brightness across, contrast up and down</td></tr>
+<tr><td><b>Ctrl + drag</b></td><td>Saturation across, gamma up and down</td></tr>
+<tr><td><b>Wheel</b></td><td>Turn it in steps of five degrees, or one with Ctrl</td></tr>
+<tr><td><b>Double-click</b></td><td>Put the grading back</td></tr>
+<tr><td><b>Fine Adjustments</b></td><td>The same five numbers, to type into</td></tr>
+</table>
+<h3>Preferences</h3>
+<table cellpadding='3'>
+<tr><td><b>Ctrl+,</b></td><td>Open the preferences</td></tr>
+<tr><td><b>Settings menu</b></td><td>Or straight to one group of them</td></tr>
 </table>
 <h3>Cross-section</h3>
 <table cellpadding='3'>
@@ -180,22 +212,44 @@ normals by PCA, in which case the slider is the fraction of those principal
 directions to keep.  It works on the normals
 rather than on the shading, so it applies whichever shading mode is set, and
 the planes are worked out on the model, so they stay put as you orbit.</p>
+<p>Every panel is its own dock and goes wherever you put it.  Dragged to the
+top or the bottom of the window a panel has width rather than height, so its
+groups break into columns to use it -- nothing about the panel changes, only
+how much room it was given.</p>
+<p>A control can be copied out of the panel it lives in: hold Alt, drag it,
+and drop it into a panel of your own.  The copy is a second pair of hands on
+the same control, not a second setting -- move either and both move, because
+there is only one of them.  That is for the handful of controls a particular
+piece of work keeps reaching for, which are almost never the handful that
+share a panel.  Drop a copy on the model to be rid of it.  Where the panels
+are, and any you have built, are remembered between runs and saved into the
+session file alongside the marks on the model.</p>
+<p>The sphere under the matcap gallery is the matcap, graded exactly as the
+renderer will grade it, and it is also the control: drag it and it turns under
+your hand, drag it with Shift or Ctrl and the light or the colour changes.
+Nobody has ever wanted a gamma of 1.2; they have wanted the shadows to come up
+a little, and this is that, done by looking.  The five numbers are still there,
+folded away underneath, for typing an exact rotation into -- or for copying one
+of them out into a panel of your own.</p>
+<p>What you prefer is kept apart from what the model says.  Anything about the
+piece of work -- the matcap on it, where it is cut, how the planes are fitted
+-- travels in the session file, because handing somebody the session should
+hand them the view you were talking about.  Anything about you -- how fast the
+orbit turns under your hand, how large the type is, which orange the interface
+uses, where your own matcaps are kept, whether opening the application puts
+you back in front of whatever you were last looking at -- stays on this
+machine and follows you from one model to the next.  Settings &gt; Preferences, and every change applies
+as you make it.</p>
 <p>Single-key shortcuts act while the 3D view has focus, so they never
 interfere with typing names into the panels.</p>
 <p>While this window is the one in front, the screen is kept awake: a pose you
 are working from should still be there when you look up from the clay.  Put
-another window in front and the machine sleeps as usual.</p>
+another window in front and the machine sleeps as usual.  A laptop on a train
+is a different proposition, so that can be switched off in the preferences
+along with the splash screen and the check for new releases.</p>
 """
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
-
-#: How narrow the control dock may be pulled.  The panels no longer insist on
-#: a width of their own -- see :func:`~refview.ui.widgets.relax_widths` -- so
-#: this is the only thing left that decides, and it wants to be the smallest
-#: number at which a row is still worth using: a caption, a groove long enough
-#: to drag, and the box beside it.  A panel with a longer caption than that
-#: scrolls the last few pixels rather than holding every other panel wide.
-_DOCK_MIN_WIDTH = 300
 
 
 class MainWindow(QMainWindow):
@@ -212,6 +266,18 @@ class MainWindow(QMainWindow):
 
         self._state = state or ViewerState(self)
         self._session_path: Path | None = None
+        #: The controls reference, once it has been opened; kept so that it
+        #: comes back where it was left rather than being built again.
+        self._controls: ControlsWindow | None = None
+        #: The preferences window, likewise.
+        self._settings: SettingsWindow | None = None
+        #: What the artist prefers, as against what the document says.  Loaded
+        #: off the machine the first time anything asks; see
+        #: :mod:`refview.ui.preferences`.
+        self._preferences = preference_store()
+        #: The matcap folder as last applied, so that changing some other
+        #: preference does not send the gallery back to the disk.
+        self._matcap_folder = self._preferences.value.folders.matcaps
         #: Held while this window is the one in front: an artist reads a pose
         #: for minutes at a time without touching the machine.
         self._wake_lock = WakeLock()
@@ -230,75 +296,62 @@ class MainWindow(QMainWindow):
         self._forms_panel = FormsPanel(self._state)
         self._camera_panel = CameraPanel(self._state)
 
-        self._build_dock()
+        self._workspace = Workspace(self)
+        # The layout is written down a moment after it stops changing rather
+        # than on the way out, so that a panel built over an afternoon is not
+        # lost to a crash.  A moment, because dragging a dock across the window
+        # changes it continuously and none of the states it passes through is
+        # worth a write.
+        self._layout_write = QTimer(self)
+        self._layout_write.setSingleShot(True)
+        self._layout_write.setInterval(1500)
+        self._layout_write.timeout.connect(self._save_layout)
+        self._workspace.changed.connect(self._layout_write.start)
+
+        self._build_docks()
         self._build_menus()
         self._build_viewport_shortcuts()
         self._connect()
         self._update_history_actions()
+        self._restore_layout()
+        self._apply_preferences()
+        self._preferences.changed.connect(self._apply_preferences)
 
         self.statusBar().showMessage("Open a model with Ctrl+O, then press M to measure.")
 
-        self._start_update_check(manual=False)
+        if self._preferences.value.startup.check_updates:
+            self._start_update_check(manual=False)
 
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
 
-    def _build_dock(self) -> None:
-        tabs = QTabWidget()
-        tabs.setDocumentMode(True)
-        # Every panel scrolls, because several are taller than the dock on a
-        # laptop screen.  The matcap panel is the exception: it manages its own
-        # scrolling so that its gallery can take the space the artist drags it.
-        tabs.addTab(self._matcap_panel, "Matcap")
-        #: The switch on each tab that draws something, with the panel it speaks for.
-        self._tab_switches: list[tuple[QCheckBox, Panel]] = []
-        for panel, title in (
-            (self._model_panel, "Model"),
-            (self._shading_panel, "Shading"),
-            (self._planes_panel, "Planes"),
-            (self._section_panel, "Section"),
-            (self._measure_panel, "Measure"),
-            (self._annotate_panel, "Annotate"),
-            (self._armature_panel, "Armature"),
-            (self._forms_panel, "Forms"),
-            (self._camera_panel, "Camera"),
-        ):
-            index = tabs.addTab(scrollable(panel), title)
-            if panel.shown() is not None:
-                self._add_tab_switch(tabs, index, title, panel)
+    def _build_docks(self) -> None:
+        """Give each panel a dock of its own, tabbed together on the right.
 
-        dock = QDockWidget("Controls", self)
-        dock.setObjectName("controls_dock")
-        dock.setWidget(tabs)
-        dock.setAllowedAreas(
-            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
-        )
-        dock.setMinimumWidth(_DOCK_MIN_WIDTH)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-        self._dock = dock
-
-    def _add_tab_switch(self, tabs: QTabWidget, index: int, title: str, panel: Panel) -> None:
-        """A checkbox on the tab that shows or hides what the panel draws.
-
-        The same switch the panel keeps in its Display group, brought out to
-        where it can be reached without opening the tab: the planes, the cut,
-        the measurements, the annotations, the armature and the forms can each
-        be taken off the model from the row of tabs.
+        Ten docks rather than one dock of ten tabs: the arrangement they start
+        in is the one the application always had, and every panel in it can
+        now be pulled out to an edge of its own or floated off, which is the
+        only way two panels can be worked between without a click each time.
         """
-        switch = QCheckBox()
-        switch.setToolTip(f"Show or hide what the {title} tab puts on the model")
-        switch.setChecked(bool(panel.shown()))
-        switch.toggled.connect(panel.set_shown)
-        tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.LeftSide, switch)
-        self._tab_switches.append((switch, panel))
+        for key, title, panel in (
+            ("matcap", "Matcap", self._matcap_panel),
+            ("model", "Model", self._model_panel),
+            ("shading", "Shading", self._shading_panel),
+            ("planes", "Planes", self._planes_panel),
+            ("section", "Section", self._section_panel),
+            ("measure", "Measure", self._measure_panel),
+            ("annotate", "Annotate", self._annotate_panel),
+            ("armature", "Armature", self._armature_panel),
+            ("forms", "Forms", self._forms_panel),
+            ("camera", "Camera", self._camera_panel),
+        ):
+            self._workspace.add_panel(key, title, panel)
+        self._workspace.raise_first()
 
     def _sync_tab_switches(self) -> None:
-        """Keep every tab's switch agreeing with the panel it speaks for."""
-        for switch, panel in self._tab_switches:
-            switch.blockSignals(True)
-            switch.setChecked(bool(panel.shown()))
-            switch.blockSignals(False)
+        """Keep every dock's switch agreeing with the panel it speaks for."""
+        self._workspace.sync_switches()
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -336,8 +389,8 @@ class MainWindow(QMainWindow):
         self._menu_action(
             view_menu, "Section Plane From &View", self._section_panel.set_plane_from_view
         )
-        view_menu.addSeparator()
-        view_menu.addAction(self._dock.toggleViewAction())
+        panels_menu = self.menuBar().addMenu("&Panels")
+        self._build_panels_menu(panels_menu)
 
         measure_menu = self.menuBar().addMenu("&Measure")
         self._measure_action = self._menu_action(
@@ -404,9 +457,52 @@ class MainWindow(QMainWindow):
                 f"Ctrl+{slot}",
             )
 
+        settings_menu = self.menuBar().addMenu("&Settings")
+        self._menu_action(settings_menu, "&Preferences...", self._show_settings, "Ctrl+,")
+        settings_menu.addSeparator()
+        for key in GROUPS:
+            self._menu_action(
+                settings_menu,
+                f"{key.title()}...",
+                lambda _=False, group=key: self._show_settings(group),
+            )
+        settings_menu.addSeparator()
+        self._menu_action(settings_menu, "&Restore Defaults", self._reset_preferences)
+
         help_menu = self.menuBar().addMenu("&Help")
         self._menu_action(help_menu, "&Controls", self._show_controls, "F1")
         self._menu_action(help_menu, "Check for &Updates...", self._check_for_updates)
+
+    def _build_panels_menu(self, menu) -> None:
+        """Which panels are open, and the panels the artist builds.
+
+        Rebuilt every time it is opened, because the list of panels built by
+        hand is not fixed and a menu that listed the ones that existed when
+        the window was made would go stale the first time one was added.
+        """
+
+        def fill() -> None:
+            menu.clear()
+            self._menu_action(
+                menu, "&New Custom Panel", self._new_custom_panel, "Ctrl+Shift+N"
+            )
+            custom = self._workspace.custom_panels()
+            if custom:
+                remove = menu.addMenu("&Remove Custom Panel")
+                for key, panel in custom.items():
+                    self._menu_action(
+                        remove,
+                        panel.title(),
+                        lambda _=False, k=key: self._workspace.remove_custom_panel(k),
+                    )
+            menu.addSeparator()
+            for dock in self._workspace.docks():
+                menu.addAction(dock.toggleViewAction())
+            menu.addSeparator()
+            self._menu_action(menu, "Reset &Layout", self._reset_layout)
+
+        menu.aboutToShow.connect(fill)
+        fill()
 
     def _menu_action(self, menu, text, slot, shortcut=None, checkable: bool = False) -> QAction:
         """Add a menu entry, optionally with a window-wide shortcut."""
@@ -654,7 +750,111 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(camera.projection.label, 2000)
 
     def _show_controls(self) -> None:
-        QMessageBox.information(self, "Controls", CONTROLS_TEXT)
+        """Open the controls reference.
+
+        A message box was the wrong container for this: it grows to fit
+        whatever it is given, has no scroll bar when that is taller than the
+        screen, and cannot be left open beside the thing it is describing.
+        This is a window -- scrolled, resizable, and not modal, so the
+        shortcut you just looked up can be tried while it is still on screen.
+        """
+        if self._controls is None:
+            self._controls = ControlsWindow(CONTROLS_TEXT, self)
+        self._controls.show()
+        self._controls.raise_()
+        self._controls.activateWindow()
+
+    # ------------------------------------------------------------------
+    # Preferences
+    # ------------------------------------------------------------------
+
+    def _show_settings(self, group: str | None = None) -> None:
+        """Open the preferences, on one group when the menu asked for one."""
+        if self._settings is None:
+            self._settings = SettingsWindow(self._preferences, self)
+        # What the driver actually gave us, which is the only honest answer to
+        # "did changing that do anything": a QOpenGLWidget reports nought for
+        # its own sample count whatever it is really drawing with.
+        self._settings.set_samples_in_use(self._viewport.samples_in_use())
+        if isinstance(group, str) and group in GROUPS:
+            self._settings.show_group(group)
+        self._settings.show()
+        self._settings.raise_()
+        self._settings.activateWindow()
+
+    def _reset_preferences(self) -> None:
+        self._preferences.reset()
+        self.statusBar().showMessage("Preferences are back to how they ship.", 4000)
+
+    def _apply_preferences(self) -> None:
+        """Push the preferences that this window's own parts hold a copy of.
+
+        The store has already dealt with the ones belonging to the process --
+        the accent, the type size, the folder the matcaps come from.  What is
+        left is everything owned by a widget, which the store has no business
+        knowing about.  Run once on the way up and again on every change, so
+        there is one path rather than two that have to agree.
+        """
+        prefs = self._preferences.value
+        navigation = self._viewport.navigation
+        navigation.orbit_speed = prefs.navigation.orbit_speed
+        navigation.zoom_speed = prefs.navigation.zoom_speed
+        navigation.invert_orbit_x = prefs.navigation.invert_orbit_x
+        navigation.invert_orbit_y = prefs.navigation.invert_orbit_y
+        # Switching this off while it is held has to let go now, not at the
+        # next time the window changes hands.
+        self._wake_lock.set_held(prefs.viewport.keep_awake and self.isActiveWindow())
+        # Where the matcaps are read from is a preference, and the gallery is
+        # a list of what was in that folder when it was last looked at.  Only
+        # when it has actually moved: rereading a folder of images is not
+        # something to do every time somebody nudges the accent colour.
+        folder = prefs.folders.matcaps
+        if folder != self._matcap_folder:
+            self._matcap_folder = folder
+            self._matcap_panel.reload_gallery()
+
+    def reopen_last_session(self) -> bool:
+        """Pick up whatever was last being worked on, if that was asked for.
+
+        A session first, because a session carries the marks on the model as
+        well as the model; the model on its own when there is no session,
+        because most of what gets looked at never becomes one -- an afternoon
+        spent turning a figure over saves nothing and is still the thing you
+        expect to find in the morning.
+
+        Called on the way up, after anything named on the command line has
+        been dealt with: something asked for explicitly always beats something
+        remembered.  A remembered path that has since been moved or deleted is
+        not an error worth a dialog on startup, so it is passed over in
+        silence and the next one is tried.
+        """
+        if not self._preferences.value.startup.reopen_last_session:
+            return False
+        settings = QSettings()
+        session = _remembered(settings.value(LAST_SESSION, ""))
+        if session is not None:
+            self.load_session(session)
+            return True
+        model = _remembered(settings.value(LAST_MODEL, ""))
+        if model is not None:
+            self.open_model(model)
+            return True
+        return False
+
+    def _remember_session(self, path: str | Path) -> None:
+        """Write down the session just saved or loaded, for the next start."""
+        QSettings().setValue(LAST_SESSION, str(path))
+
+    def _remember_model(self, path: str | Path) -> None:
+        """Write down the model just opened, for when there is no session.
+
+        This also clears the remembered session: opening a different model is
+        moving on to another piece of work, and coming back to the session
+        belonging to the last one would be the wrong answer said confidently.
+        """
+        settings = QSettings()
+        settings.setValue(LAST_MODEL, str(path))
+        settings.remove(LAST_SESSION)
 
     # ------------------------------------------------------------------
     # Updates
@@ -707,6 +907,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open Model", str(error))
             return
         self._session_path = self._state.default_session_path()
+        self._remember_model(path)
         self.setWindowTitle(f"{APP_NAME} - {Path(path).name}")
         self._refresh_panels()
 
@@ -726,8 +927,9 @@ class MainWindow(QMainWindow):
         if target is None:
             self._save_session_as()
             return
-        self._state.save_session(target)
+        self._state.save_session(target, layout=self._workspace.to_dict())
         self._session_path = Path(target)
+        self._remember_session(target)
 
     def _save_session_as(self) -> None:
         suggestion = self._session_path or self._state.default_session_path()
@@ -738,8 +940,9 @@ class MainWindow(QMainWindow):
             f"Reference Viewer session (*{SESSION_SUFFIX});;JSON (*.json)",
         )
         if path:
-            self._state.save_session(path)
+            self._state.save_session(path, layout=self._workspace.to_dict())
             self._session_path = Path(path)
+            self._remember_session(path)
 
     def _load_session(self) -> None:
         suggestion = self._session_path or self._state.default_session_path()
@@ -759,22 +962,49 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load Session", str(error))
             return
         self._session_path = Path(path)
+        self._remember_session(path)
         self._refresh_panels()
+        # A session carries the panels the artist had built for that piece of
+        # work.  Only when it has some: a file saved before panels were part
+        # of one, or by someone who never built any, must not be able to
+        # sweep away the ones the window already has.
+        if self._state.session_layout.get("custom"):
+            self._workspace.restore(self._state.session_layout)
 
     def _refresh_panels(self) -> None:
-        for panel in (
-            self._model_panel,
-            self._matcap_panel,
-            self._shading_panel,
-            self._planes_panel,
-            self._measure_panel,
-            self._annotate_panel,
-            self._armature_panel,
-            self._forms_panel,
-            self._section_panel,
-            self._camera_panel,
-        ):
+        for panel in self._workspace.panels():
             panel.refresh()
+
+    # ------------------------------------------------------------------
+    # The layout
+    # ------------------------------------------------------------------
+
+    def _new_custom_panel(self) -> None:
+        """Open an empty panel of the artist's own and bring it to the front."""
+        self._workspace.reveal(self._workspace.new_custom_panel())
+        self.statusBar().showMessage(
+            "Alt-drag any control into the new panel; drag it into the view to "
+            "take it out again.",
+            8000,
+        )
+
+    def _restore_layout(self) -> None:
+        """Put the docks and the hand-built panels back where they were.
+
+        Unless the artist would rather every session started from the
+        arrangement the application ships with, which is what a shared machine
+        or a teaching room wants.
+        """
+        if self._preferences.value.interface.restore_layout:
+            self._workspace.load()
+
+    def _save_layout(self) -> None:
+        self._workspace.save()
+
+    def _reset_layout(self) -> None:
+        """Put the panels back where they started, now."""
+        self._workspace.reset()
+        self.statusBar().showMessage("The panels are back where they started.", 4000)
 
     # ------------------------------------------------------------------
     # Window state
@@ -784,9 +1014,11 @@ class MainWindow(QMainWindow):
         """Follow the machine's sleep to whether this window is in front."""
         super().changeEvent(event)
         if event.type() == QEvent.Type.ActivationChange:
-            self._wake_lock.set_held(self.isActiveWindow())
+            awake = self._preferences.value.viewport.keep_awake
+            self._wake_lock.set_held(awake and self.isActiveWindow())
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._save_layout()
         self._wake_lock.release()
         # A recording still running when the interpreter tears its modules
         # down is a crash on the way out, so the window does not leave
@@ -799,10 +1031,57 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        # A copied control is let in wherever it arrives, and where it may
+        # actually land is decided on the way past instead.  Refusing it here
+        # would take this window out of the drag for good -- a drag refused at
+        # the door gets no further events from it -- so a copy that entered
+        # over the menu bar could never then be dropped on the model.
+        if self._carrying_a_copy(event):
+            event.acceptProposedAction()
+            return
         if any(self._droppable(url) for url in event.mimeData().urls()):
             event.acceptProposedAction()
 
+    def dragMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._discarding(event):
+            event.acceptProposedAction()
+            return
+        # Refusing one position says only that; the moves keep coming.
+        event.ignore()
+
+    @staticmethod
+    def _carrying_a_copy(event) -> bool:
+        """Whether the drag is a copy being moved out of a hand-built panel."""
+        note = carried(event.mimeData())
+        return bool(note is not None and note.get("moving") and in_flight() is not None)
+
+    def _discarding(self, event) -> bool:
+        """Whether this drag is a copied control being let go over the model.
+
+        Dragging a copy out of the panel it was put in and letting go over the
+        view is how it is thrown away: the view is the one large target that
+        is never a place a control could land, so dropping one there can only
+        mean getting rid of it.  Anywhere else -- the menu bar, the status bar,
+        another panel's dock -- the drop is refused and the copy stays where it
+        was, which is the safe answer for a gesture that destroys something.
+        """
+        if not self._carrying_a_copy(event):
+            return False
+        return self._over_the_view(event.position().toPoint())
+
+    def _over_the_view(self, point) -> bool:
+        """Whether a point in the window's own coordinates is on the model."""
+        central = self.centralWidget()
+        if central is None:
+            return False
+        corner = central.mapTo(self, central.rect().topLeft())
+        return central.rect().translated(corner).contains(point)
+
     def dropEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._discarding(event):
+            self._discard(in_flight())
+            event.acceptProposedAction()
+            return
         for url in event.mimeData().urls():
             path = Path(url.toLocalFile())
             suffix = path.suffix.lower()
@@ -817,8 +1096,31 @@ class MainWindow(QMainWindow):
                 continue
             event.acceptProposedAction()
             return
+        # Nothing here wanted it.  Saying so matters for a copy let go
+        # somewhere that is not the model: the copy has to stay where it was,
+        # and a drop that quietly did nothing would read as one that worked.
+        event.ignore()
+
+    def _discard(self, holder) -> bool:
+        """Take a copied control out of whichever hand-built panel holds it."""
+        if holder is None:
+            return False
+        for panel in self._workspace.custom_panels().values():
+            if panel.isAncestorOf(holder):
+                panel.drop_holder(holder)
+                self.statusBar().showMessage("Removed the copied control.", 4000)
+                return True
+        return False
 
     @staticmethod
     def _droppable(url) -> bool:
         path = Path(url.toLocalFile())
         return path.suffix.lower() in (*MESH_SUFFIXES, ".json", *_IMAGE_SUFFIXES)
+
+
+def _remembered(written) -> Path | None:
+    """A path written down last time, if it is one and it is still there."""
+    if not isinstance(written, str) or not written.strip():
+        return None
+    path = Path(written)
+    return path if path.is_file() else None

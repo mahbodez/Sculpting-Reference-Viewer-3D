@@ -1,254 +1,61 @@
-"""Small reusable controls shared by the side panels."""
+"""The controls the side panels are built from.
+
+Most of what was once here now lives in :mod:`refview.ui.elements`, because a
+control that can be copied out of its panel and dropped into another one needs
+rather more behind it than a widget did.  What is left is the names the panels
+already call things by, pointed at the new controls, and the two rules that
+apply to a panel as a whole rather than to any one control in it: that it may
+be squeezed narrower than the sentences inside it, and that it scrolls when it
+is taller than the dock.
+"""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractButton,
-    QColorDialog,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QFrame,
-    QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSlider,
-    QToolButton,
-    QVBoxLayout,
     QWidget,
 )
 
+from .elements.controls import ColorButton, PointEdit
+from .elements.frame import Frame, frame_form, framed
+from .elements.slider import ValueSlider
+from .icons import glyph
 
-class SliderSpin(QWidget):
-    """A float slider paired with a spin box, kept in sync.
+__all__ = [
+    "SQUEEZED_CHARS",
+    "SQUEEZED_WIDTH",
+    "ColorButton",
+    "Frame",
+    "PointEdit",
+    "SliderSpin",
+    "ValueSlider",
+    "collapsible_group",
+    "form_group",
+    "frame_form",
+    "framed",
+    "name_sliders",
+    "relax_widths",
+    "scrollable",
+    "symbol_button",
+]
 
-    The slider works in integer steps internally; ``decimals`` controls both
-    the spin box display and the slider resolution.
 
-    A control may be given a ``ceiling`` above its ``maximum``, which makes the
-    slider's end a soft one: the box will accept a number typed past it, and
-    the slider grows to reach whatever was typed.  That is for the settings
-    where the useful range and the possible range are different sizes -- where
-    a slider covering the whole of what is possible would spend most of its
-    travel on values nobody wants, and a slider covering only what is useful
-    would be a wall.  Typing past the end says "further than this", and from
-    then on the slider can be dragged over the wider range as well.  It only
-    ever grows, because a range that shrank back would throw away the room the
-    artist just asked for.
+class SliderSpin(ValueSlider):
+    """What the panels call :class:`~refview.ui.elements.slider.ValueSlider`.
+
+    It was a slider next to a spin box, which is where the name came from; it
+    is now one bar with the number written into it.  The name is kept because
+    a dozen panels say it, and because what it means -- one row that both
+    shows a number and sets it -- has not changed.
     """
-
-    #: Every change, including each pixel of a drag.  What most controls want.
-    valueChanged = Signal(float)
-    #: Only where the value comes to rest: the end of a drag, or a number
-    #: typed into the box.  For settings whose change costs real work, so that
-    #: dragging one does not pay that cost at every value it passes through.
-    valueCommitted = Signal(float)
-
-    def __init__(
-        self,
-        minimum: float,
-        maximum: float,
-        value: float,
-        decimals: int = 2,
-        step: float | None = None,
-        suffix: str = "",
-        ceiling: float | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._scale = 10**decimals
-        self._minimum = minimum
-        self._maximum = maximum
-        self._ceiling = maximum if ceiling is None else max(float(ceiling), maximum)
-
-        self._slider = QSlider(Qt.Orientation.Horizontal)
-        self._slider.setRange(int(minimum * self._scale), int(maximum * self._scale))
-        self._slider.setSingleStep(max(1, int((step or (maximum - minimum) / 100) * self._scale)))
-        # A groove narrower than this is not worth dragging, and anything
-        # wider than it is room the row is welcome to give back.
-        self._slider.setMinimumWidth(48)
-
-        self._spin = QDoubleSpinBox()
-        self._spin.setDecimals(decimals)
-        self._spin.setRange(minimum, self._ceiling)
-        self._spin.setSingleStep(step or (maximum - minimum) / 100)
-        self._spin.setSuffix(suffix)
-        self._spin.setMinimumWidth(70)
-        self._spin.setKeyboardTracking(False)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(self._slider, 1)
-        layout.addWidget(self._spin, 0)
-
-        self._slider.valueChanged.connect(self._on_slider)
-        self._slider.sliderReleased.connect(self._on_release)
-        self._spin.valueChanged.connect(self._on_spin)
-        self.set_value(value)
-
-    def value(self) -> float:
-        return self._spin.value()
-
-    def set_range(
-        self, minimum: float, maximum: float, ceiling: float | None = None
-    ) -> None:
-        """Re-scale the control, e.g. once a model's size is known."""
-        self._minimum, self._maximum = minimum, maximum
-        self._ceiling = maximum if ceiling is None else max(float(ceiling), maximum)
-        current = self.value()
-        for widget, converted in (
-            (self._slider, (int(minimum * self._scale), int(maximum * self._scale))),
-            (self._spin, (minimum, self._ceiling)),
-        ):
-            blocked = widget.blockSignals(True)
-            widget.setRange(*converted)
-            widget.blockSignals(blocked)
-        self.set_value(current)
-
-    def _reach(self, value: float) -> None:
-        """Grow the slider to take in a value from beyond its end."""
-        if value <= self._maximum:
-            return
-        self._maximum = min(value, self._ceiling)
-        blocked = self._slider.blockSignals(True)
-        self._slider.setRange(
-            int(self._minimum * self._scale), int(self._maximum * self._scale)
-        )
-        self._slider.blockSignals(blocked)
-
-    def set_value(self, value: float) -> None:
-        value = min(max(value, self._minimum), self._ceiling)
-        self._reach(value)
-        for widget, converted in ((self._slider, int(value * self._scale)), (self._spin, value)):
-            blocked = widget.blockSignals(True)
-            widget.setValue(converted)
-            widget.blockSignals(blocked)
-
-    def _on_slider(self, raw: int) -> None:
-        value = raw / self._scale
-        blocked = self._spin.blockSignals(True)
-        self._spin.setValue(value)
-        self._spin.blockSignals(blocked)
-        self.valueChanged.emit(value)
-        # A change that did not come from a drag -- an arrow key, the wheel, a
-        # click on the groove -- has already come to rest.
-        if not self._slider.isSliderDown():
-            self.valueCommitted.emit(value)
-
-    def _on_release(self) -> None:
-        self.valueCommitted.emit(self.value())
-
-    def _on_spin(self, value: float) -> None:
-        self._reach(value)
-        blocked = self._slider.blockSignals(True)
-        self._slider.setValue(int(value * self._scale))
-        self._slider.blockSignals(blocked)
-        self.valueChanged.emit(value)
-        # The box does not track keystrokes, so this is already the final word.
-        self.valueCommitted.emit(value)
-
-
-class PointEdit(QWidget):
-    """Three spin boxes for one point in space.
-
-    Keyboard tracking is off, so a typed number arrives once it is finished
-    rather than at every digit: each change here is an undo step, and the edit
-    it drives can be as large as rebuilding a whole armature.  The arrows and
-    the wheel still step live, which is what makes nudging a point by hand
-    feel like nudging it.
-    """
-
-    #: The whole point, whichever axis moved.
-    valueChanged = Signal(tuple)
-
-    #: Far enough to hold any scene, in any unit anyone is likely to choose.
-    REACH = 1e7
-
-    def __init__(self, decimals: int = 2, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._boxes: list[QDoubleSpinBox] = []
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        for axis in ("X", "Y", "Z"):
-            label = QLabel(axis)
-            label.setStyleSheet("color: #8f939b;")
-            box = QDoubleSpinBox()
-            box.setDecimals(decimals)
-            box.setRange(-self.REACH, self.REACH)
-            box.setSingleStep(0.1)
-            box.setKeyboardTracking(False)
-            box.setMinimumWidth(58)
-            box.valueChanged.connect(self._emit)
-            layout.addWidget(label, 0)
-            layout.addWidget(box, 1)
-            self._boxes.append(box)
-
-    def value(self) -> tuple[float, float, float]:
-        first, second, third = (box.value() for box in self._boxes)
-        return (first, second, third)
-
-    def set_value(self, point) -> None:
-        for box, value in zip(self._boxes, point, strict=True):
-            blocked = box.blockSignals(True)
-            box.setValue(float(value))
-            box.blockSignals(blocked)
-
-    def set_decimals(self, decimals: int) -> None:
-        for box in self._boxes:
-            box.setDecimals(decimals)
-
-    def set_step(self, step: float) -> None:
-        """Match the arrows to the size of the thing being moved."""
-        for box in self._boxes:
-            box.setSingleStep(max(step, 10.0**-box.decimals()))
-
-    def _emit(self) -> None:
-        self.valueChanged.emit(self.value())
-
-
-class ColorButton(QPushButton):
-    """A swatch button that opens a colour picker.
-
-    Colours are exchanged as 0-1 RGB tuples, matching the settings dataclasses.
-    """
-
-    colorChanged = Signal(tuple)
-
-    def __init__(self, color: tuple[float, float, float], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._color = color
-        self.setFixedHeight(24)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clicked.connect(self._choose)
-        self._refresh()
-
-    def color(self) -> tuple[float, float, float]:
-        return self._color
-
-    def set_color(self, color: tuple[float, float, float]) -> None:
-        self._color = tuple(float(c) for c in color)
-        self._refresh()
-
-    def _refresh(self) -> None:
-        r, g, b = (int(round(min(max(c, 0.0), 1.0) * 255)) for c in self._color)
-        border = "#1c1d21" if (r + g + b) > 200 else "#8a8d95"
-        self.setStyleSheet(
-            f"background-color: rgb({r},{g},{b}); border: 1px solid {border}; border-radius: 3px;"
-        )
-
-    def _choose(self) -> None:
-        r, g, b = (int(round(min(max(c, 0.0), 1.0) * 255)) for c in self._color)
-        chosen = QColorDialog.getColor(QColor(r, g, b), self, "Select colour")
-        if chosen.isValid():
-            self.set_color((chosen.redF(), chosen.greenF(), chosen.blueF()))
-            self.colorChanged.emit(self._color)
 
 
 #: How many characters of a combo box's own text it is allowed to insist on
@@ -263,6 +70,68 @@ SQUEEZED_CHARS = 8
 #: pulled in.  Nought would be tidier arithmetic and would let a control
 #: disappear entirely.
 SQUEEZED_WIDTH = 40
+
+#: How wide a button carrying a drawing rather than a word is.  Square enough
+#: to read as an icon, and narrow enough that a row of three of them leaves
+#: the rest of the row to whatever it is acting on.
+SYMBOL_WIDTH = 30
+
+
+def symbol_button(name: str, meaning: str) -> QPushButton:
+    """A button that carries a drawing instead of a word.
+
+    For the few actions that already have a picture everybody knows -- a bin,
+    a plus, a target.  The word it replaces becomes the tooltip, so nothing is
+    lost to anyone who does not recognise the drawing, and what is gained is
+    the width: three of these fit where "Centre View" alone was.
+
+    Only where the drawing is unambiguous on its own.  A verb with no picture
+    -- Dissolve, Rebuild Nodes, Append Landmarks -- stays a verb, because a
+    symbol nobody can read is a button nobody presses.
+    """
+    button = QPushButton()
+    button.setIcon(glyph(name))
+    button.setIconSize(QSize(14, 14))
+    button.setToolTip(meaning)
+    button.setFixedWidth(SYMBOL_WIDTH)
+    return button
+
+
+def name_sliders(root: QWidget) -> None:
+    """Move each slider's caption off the row and into the slider itself.
+
+    A slider draws its own name down the left of its bar, so a panel that also
+    puts that name in the column beside it says everything twice and pays a
+    column's width for the privilege.  Taking the caption inside gives the bar
+    the whole row: a wider bar is a finer one to drag, and a panel of them is
+    half as wide as it was for the same controls.
+
+    Done here, once, rather than in the dozen panels that build the rows,
+    because it is a rule about how a row looks and not about what any
+    particular row is for -- and because a panel that forgot would be the one
+    row in the application shaped differently from the rest.
+
+    A slider given a caption when it was built keeps it; a row whose caption
+    is empty is left alone, because there was nothing to move.
+    """
+    for form in root.findChildren(QFormLayout):
+        for row in reversed(range(form.rowCount())):
+            item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+            slider = item.widget() if item is not None else None
+            if not isinstance(slider, ValueSlider) or slider.caption():
+                continue
+            label = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+            holder = label.widget() if label is not None else None
+            if not isinstance(holder, QLabel) or not holder.text().strip():
+                continue
+            slider.set_caption(holder.text().strip())
+            if not slider.toolTip():
+                slider.setToolTip(holder.text().strip())
+            form.takeRow(row)
+            holder.setParent(None)
+            holder.deleteLater()
+            slider.setParent(None)
+            form.insertRow(row, slider)
 
 
 def relax_widths(root: QWidget) -> None:
@@ -346,72 +215,18 @@ def scrollable(widget: QWidget) -> QScrollArea:
     return area
 
 
-def _panel_form(parent: QWidget) -> QFormLayout:
-    """The row layout every group in the side panels is built on."""
-    layout = QFormLayout(parent)
-    layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-    layout.setContentsMargins(10, 10, 10, 10)
-    layout.setSpacing(6)
-    return layout
-
-
-def form_group(title: str) -> tuple[QGroupBox, QFormLayout]:
-    """A titled group box with a form layout, ready to be filled."""
-    box = QGroupBox(title)
-    return box, _panel_form(box)
-
-
-class CollapsibleGroup(QWidget):
-    """A group whose rows fold away behind its title.
-
-    For settings that are worth having but not worth reading past: they stay
-    out of the way of the controls an artist actually reaches for, and the
-    panel is no longer than it was until someone asks for them.
-    """
-
-    def __init__(self, title: str, expanded: bool = False, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._header = QToolButton()
-        self._header.setText(title)
-        self._header.setCheckable(True)
-        self._header.setAutoRaise(True)
-        self._header.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._header.setStyleSheet("QToolButton { border: none; padding: 2px; }")
-
-        self._body = QFrame()
-        self._body.setFrameShape(QFrame.Shape.StyledPanel)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        layout.addWidget(self._header)
-        layout.addWidget(self._body)
-
-        self._header.toggled.connect(self._on_toggled)
-        self.set_expanded(expanded)
-
-    def body(self) -> QFrame:
-        return self._body
-
-    def is_expanded(self) -> bool:
-        return self._header.isChecked()
-
-    def set_expanded(self, expanded: bool) -> None:
-        self._header.setChecked(expanded)
-        self._on_toggled(expanded)
-
-    def _on_toggled(self, expanded: bool) -> None:
-        self._header.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
-        self._body.setVisible(expanded)
+def form_group(title: str) -> tuple[Frame, QFormLayout]:
+    """A named group with a form layout in it, ready to be filled."""
+    return framed(title, expanded=True)
 
 
 def collapsible_group(
     title: str, expanded: bool = False
-) -> tuple[CollapsibleGroup, QFormLayout]:
-    """A folded-away group with a form layout, shaped like :func:`form_group`."""
-    group = CollapsibleGroup(title, expanded)
-    return group, _panel_form(group.body())
+) -> tuple[Frame, QFormLayout]:
+    """A group that starts folded away, shaped like :func:`form_group`.
+
+    Every group folds now, so this differs from :func:`form_group` only in
+    where it starts.  It is still worth saying at the call site which groups
+    are the ones nobody reads past.
+    """
+    return framed(title, expanded=expanded)
