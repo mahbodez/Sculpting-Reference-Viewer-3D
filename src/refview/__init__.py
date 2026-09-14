@@ -8,7 +8,7 @@ from pathlib import Path
 APP_NAME = "Reference Viewer 3D"
 
 #: Used when ``pyproject.toml`` is not shipped next to us; keep in step with it.
-_FALLBACK_VERSION = "2.0.0"
+_FALLBACK_VERSION = "2.0.1"
 
 
 def _read_version() -> str:
