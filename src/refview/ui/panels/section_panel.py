@@ -18,7 +18,7 @@ class SectionPanel(Panel):
     def _build(self) -> None:
         box, form = form_group("Cross-section")
         self._enabled = QCheckBox("Cut the model")
-        self._enabled.setToolTip("Slice the scene with a plane (Ctrl+K)")
+        self._enabled.setToolTip("Slice the scene with a plane")
         self._axis = QComboBox()
         for axis in SectionAxis:
             self._axis.addItem(axis.label, axis.value)

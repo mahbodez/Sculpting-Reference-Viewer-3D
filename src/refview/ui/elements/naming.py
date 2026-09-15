@@ -35,6 +35,11 @@ from .frame import Frame
 #: custom panel does not keep the controls it copied alive.
 _REGISTRY: WeakValueDictionary[str, QWidget] = WeakValueDictionary()
 
+#: Property a widget can carry to say outright what it is called, for one
+#: that sits in no form row and says nothing on itself -- the switch on a
+#: dock's bar is a square with no text, and "Shown" is not a name.
+CAPTION_PROPERTY = "refview_caption"
+
 
 def slug(text: str) -> str:
     """A name out of a piece of prose: lower case, words joined by ``_``."""
@@ -134,7 +139,9 @@ def caption_for(widget: QWidget) -> str:
     it.  Most controls sit in a form row whose left-hand side is exactly that
     caption; the rest say it on themselves, or fall back to their id.
     """
+    given = widget.property(CAPTION_PROPERTY)
     for candidate in (
+        given.strip() if isinstance(given, str) else "",
         _asked(widget, "caption"),
         _row_label(widget),
         _asked(widget, "text"),

@@ -136,6 +136,7 @@ class ViewportOverlay:
 
         self._visibility.prepare(SurfacePicker(state.camera, state.mesh, width, height),
                                  state.render.section)
+        self._visibility.prefetch(self._marked_points(state, parts, forms is not None))
         settings = state.measurement_settings
         if parts.measurements and settings.show_all:
             for index, measurement in enumerate(state.measurements):
@@ -162,12 +163,37 @@ class ViewportOverlay:
     def buried_nodes(self, state, width, height):
         self._visibility.prepare(SurfacePicker(state.camera, state.mesh, width, height),
                                  state.render.section)
+        self._visibility.prefetch(self._marked_points(state, ALL_PARTS, False))
         return frozenset(
             (index, position)
             for index, armature in enumerate(state.armatures) if armature.visible
             for position, node in enumerate(armature.nodes)
             if self._visibility.buried(node.at)
         )
+
+    def _marked_points(self, state: ViewerState, parts: OverlayParts, forms: bool) -> list:
+        """Every point the frame will ask the surface about, so it is asked once.
+
+        Casting the rays one at a time made a visible wire cost more than
+        the model behind it; gathered up they cost one pass.
+        """
+        points = []
+        if parts.measurements and state.measurement_settings.show_all:
+            for measurement in state.measurements:
+                if measurement.visible:
+                    points += [measurement.endpoint(0), measurement.endpoint(1)]
+        if parts.armature and state.armature_settings.show_all:
+            for armature in state.armatures:
+                if armature.visible:
+                    points += [node.at for node in armature.nodes]
+                    if state.armature_settings.show_landmarks:
+                        points += [landmark.at for landmark in armature.landmarks]
+        settings = state.form_settings
+        if parts.forms and forms and settings.show_all and settings.show_landmarks:
+            for form in state.forms:
+                if form.visible:
+                    points += [landmark.at for landmark in form.landmarks]
+        return points
 
     def draw_caption(
         self,

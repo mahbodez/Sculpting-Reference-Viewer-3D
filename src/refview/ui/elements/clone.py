@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
 
 from .controls import ColorButton, PointEdit
 from .frame import Frame, frame_form
+from .keys import watch_keys
 from .naming import caption_for, element_id
 from .slider import ValueSlider
 
@@ -629,8 +630,11 @@ class CloneGesture(QObject):
             if (
                 event.button() == Qt.MouseButton.LeftButton
                 and event.modifiers() & Qt.KeyboardModifier.AltModifier
+                and not event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 and isinstance(watched, QWidget)
             ):
+                # Ctrl as well as Alt is the other gesture, the one that
+                # puts a key on the control; see :mod:`.keys`.
                 self._armed = watched
                 self._origin = event.globalPosition().toPoint()
                 return True
@@ -685,3 +689,8 @@ def watch_tree(root: QWidget) -> None:
             gesture.watch(widget.bar(), widget)
         elif can_clone(widget):
             gesture.watch(widget)
+    # The buttons take the other gesture too, the one that puts a key on
+    # them.  Installed after the copier's filter so that it is asked first:
+    # a press with Ctrl and Alt down is a key being asked for, whatever else
+    # it might have been.
+    watch_keys(root)

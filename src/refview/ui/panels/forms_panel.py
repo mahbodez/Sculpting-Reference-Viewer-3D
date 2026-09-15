@@ -143,7 +143,7 @@ class FormsPanel(Panel):
     def _build(self) -> None:
         self._tool = None
 
-        self._toggle = QPushButton("Forms  (G)")
+        self._toggle = QPushButton("Forms")
         self._toggle.setCheckable(True)
         self._toggle.setToolTip(_TOGGLE_TIP)
         self._toggle.toggled.connect(self._on_toggled)

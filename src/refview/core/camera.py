@@ -40,6 +40,10 @@ class Camera:
     projection: Projection = Projection.PERSPECTIVE
     scene_radius: float = 1.0
     scene_center: np.ndarray = field(default_factory=lambda: vec3(0.0, 0.0, 0.0))
+    #: The last view-projection built, with the state it was built from.  The
+    #: overlay projects every marker on every frame, and building the matrix
+    #: afresh for each cost more than the projection itself.
+    _projector: tuple | None = field(default=None, init=False, repr=False, compare=False)
 
     #: Zoom limits, expressed as multiples of the scene radius.
     MIN_DISTANCE_FACTOR = 1e-3
@@ -106,7 +110,23 @@ class Camera:
         return perspective(self.fov_deg, aspect, near, far)
 
     def view_projection(self, aspect: float) -> np.ndarray:
-        return self.projection_matrix(aspect) @ self.view_matrix()
+        # Keyed on the arrays' bytes rather than their identity, because the
+        # navigation gestures move ``eye`` and ``target`` in place.
+        key = (
+            self.eye.tobytes(),
+            self.target.tobytes(),
+            self.world_up.tobytes(),
+            self.scene_center.tobytes(),
+            self.fov_deg,
+            self.projection,
+            self.scene_radius,
+            aspect,
+        )
+        cached = self._projector
+        if cached is None or cached[0] != key:
+            cached = (key, self.projection_matrix(aspect) @ self.view_matrix())
+            self._projector = cached
+        return cached[1]
 
     # ------------------------------------------------------------------
     # Screen <-> world
@@ -117,25 +137,44 @@ class Camera:
 
         ``x``/``y`` are Qt widget coordinates, with the origin at the top-left.
         """
+        origins, directions = self.rays(np.array([x]), np.array([y]), width, height)
+        return origins[0], directions[0]
+
+    def rays(
+        self, xs: np.ndarray, ys: np.ndarray, width: int, height: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Rays through a batch of pixels, as ``(origins, unit directions)``, ``(N, 3)`` each."""
+        xs = np.asarray(xs, dtype=np.float64).reshape(-1, 1)
+        ys = np.asarray(ys, dtype=np.float64).reshape(-1, 1)
         aspect = max(width, 1) / max(height, 1)
-        ndc_x = (2.0 * x / max(width, 1)) - 1.0
-        ndc_y = 1.0 - (2.0 * y / max(height, 1))
+        ndc_x = (2.0 * xs / max(width, 1)) - 1.0
+        ndc_y = 1.0 - (2.0 * ys / max(height, 1))
         right, up, forward = self.right, self.up, self.forward
         if self.projection is Projection.ORTHOGRAPHIC:
             half_h = self.ortho_half_height
-            origin = self.eye + right * (ndc_x * half_h * aspect) + up * (ndc_y * half_h)
-            return origin, forward
+            origins = self.eye + right * (ndc_x * half_h * aspect) + up * (ndc_y * half_h)
+            return origins, np.broadcast_to(forward, origins.shape).copy()
         tan_half = math.tan(math.radians(self.fov_deg) * 0.5)
-        direction = forward + right * (ndc_x * tan_half * aspect) + up * (ndc_y * tan_half)
-        return self.eye.copy(), normalize(direction)
+        directions = forward + right * (ndc_x * tan_half * aspect) + up * (ndc_y * tan_half)
+        directions /= np.maximum(np.linalg.norm(directions, axis=1, keepdims=True), 1e-12)
+        return np.broadcast_to(self.eye, directions.shape).copy(), directions
 
     def project(self, point: np.ndarray, width: int, height: int) -> tuple[float, float, float]:
         """Project a world point to ``(x, y, ndc_depth)`` in widget pixels."""
+        xs, ys, depths = self.project_many(np.asarray(point, dtype=np.float64)[None], width, height)
+        return float(xs[0]), float(ys[0]), float(depths[0])
+
+    def project_many(
+        self, points: np.ndarray, width: int, height: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Project ``(N, 3)`` world points to ``(xs, ys, ndc_depths)`` in widget pixels."""
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         aspect = max(width, 1) / max(height, 1)
-        clip = self.view_projection(aspect) @ np.append(np.asarray(point, dtype=np.float64), 1.0)
-        w = clip[3] if abs(clip[3]) > 1e-9 else 1e-9
-        ndc = clip[:3] / w
-        return (ndc[0] * 0.5 + 0.5) * width, (0.5 - ndc[1] * 0.5) * height, float(ndc[2])
+        clip = np.hstack((points, np.ones((len(points), 1)))) @ self.view_projection(aspect).T
+        w = clip[:, 3]
+        w = np.where(np.abs(w) > 1e-9, w, 1e-9)
+        ndc = clip[:, :3] / w[:, None]
+        return (ndc[:, 0] * 0.5 + 0.5) * width, (0.5 - ndc[:, 1] * 0.5) * height, ndc[:, 2]
 
     def plane_point_under_cursor(
         self,

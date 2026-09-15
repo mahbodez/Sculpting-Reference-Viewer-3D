@@ -31,7 +31,7 @@ class AnnotatePanel(Panel):
     annotate_toggled = Signal(bool)
 
     def _build(self) -> None:
-        self._toggle = QPushButton("Annotate  (A)")
+        self._toggle = QPushButton("Annotate")
         self._toggle.setCheckable(True)
         self._toggle.setToolTip(
             "Sketch on the surface: muscle masses, bony landmarks, plane breaks.\n"

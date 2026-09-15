@@ -20,6 +20,10 @@ Four ideas, in the order they depend on each other:
 ``clone`` and ``custom``
     Alt-drag a control and a working copy comes away, to be dropped into a
     panel you built.  The copy drives the original; it is not a second one.
+
+``keys``
+    Ctrl-Alt-click a button and a key can be put on it.  The gesture only
+    says which button; what the key does about it is the window's business.
 """
 
 from .clone import can_clone, watch_tree
@@ -28,21 +32,25 @@ from .controls import ColorButton, PointEdit
 from .custom import CustomPanel
 from .dock import PanelDock
 from .frame import Frame, frame_form, framed
+from .keys import COMMAND_PROPERTY, KeyGesture, can_take_key, watch_keys
 from .naming import caption_for, lookup, name_tree, register
 from .reflow import COLUMN_WIDTH, Reflow, ReflowLayout
 from .slider import ValueSlider
 
 __all__ = [
     "COLUMN_WIDTH",
+    "COMMAND_PROPERTY",
     "ColorButton",
     "CustomPanel",
     "Frame",
+    "KeyGesture",
     "PanelDock",
     "PointEdit",
     "Reflow",
     "ReflowLayout",
     "ValueSlider",
     "can_clone",
+    "can_take_key",
     "caption_for",
     "clone_of",
     "frame_form",
@@ -50,5 +58,6 @@ __all__ = [
     "lookup",
     "name_tree",
     "register",
+    "watch_keys",
     "watch_tree",
 ]

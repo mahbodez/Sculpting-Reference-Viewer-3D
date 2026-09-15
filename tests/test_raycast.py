@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from refview.core.mesh import Mesh
-from refview.core.raycast import Hit, raycast_mesh, snap_to_vertex
+from refview.core.raycast import Hit, raycast_many, raycast_mesh, snap_to_vertex
 
 
 @pytest.fixture
@@ -55,6 +55,43 @@ def test_closest_of_two_surfaces_wins():
     hit = raycast_mesh(np.array([0.0, 0.0, 10.0]), np.array([0.0, 0.0, -1.0]), mesh)
     assert hit is not None
     assert hit.point[2] == pytest.approx(2.0)
+
+
+def test_a_batch_of_rays_answers_as_the_single_casts_do(quad):
+    origins = np.array([[0.3, 0.4, 5.0], [5.0, 5.0, 5.0], [0.3, 0.4, -5.0], [0.3, 0.4, 5.0]])
+    directions = np.array([[0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
+    hits = raycast_many(origins, directions, quad)
+    assert len(hits) == 4
+    for hit, origin, direction in zip(hits, origins, directions, strict=True):
+        alone = raycast_mesh(origin, direction, quad)
+        if alone is None:
+            assert hit is None
+            continue
+        assert hit is not None
+        assert np.allclose(hit.point, alone.point)
+        assert np.allclose(hit.normal, alone.normal)
+        assert hit.triangle == alone.triangle
+        assert hit.distance == pytest.approx(alone.distance)
+
+
+def test_each_ray_of_a_batch_keeps_its_own_nearest_surface():
+    positions = np.array(
+        [
+            [-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0],
+            [-1.0, -1.0, 2.0], [1.0, -1.0, 2.0], [0.0, 1.0, 2.0],
+        ],
+        dtype=np.float32,
+    )
+    normals = np.tile([0.0, 0.0, 1.0], (6, 1)).astype(np.float32)
+    indices = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.uint32)
+    mesh = Mesh(positions, normals, indices)
+    hits = raycast_many(
+        np.array([[0.0, 0.0, 10.0], [0.0, 0.0, -10.0]]),
+        np.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]]),
+        mesh,
+    )
+    assert hits[0].point[2] == pytest.approx(2.0)
+    assert hits[1].point[2] == pytest.approx(0.0)
 
 
 def test_snapping_prefers_a_nearby_corner(quad):

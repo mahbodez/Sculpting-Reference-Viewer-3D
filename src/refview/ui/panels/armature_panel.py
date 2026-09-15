@@ -122,7 +122,7 @@ class ArmaturePanel(Panel):
         self._tool = None
         self._previous_node: tuple[int, int] | None = None
 
-        self._toggle = QPushButton("Armature  (R)")
+        self._toggle = QPushButton("Armature")
         self._toggle.setCheckable(True)
         self._toggle.setToolTip(_TOGGLE_TIP)
         self._toggle.toggled.connect(self._on_toggled)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "2.0.1"
+version = "2.1.0"
 description = "A 3D reference viewer for artists"
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
@@ -14,6 +14,9 @@ dependencies = [
     # Qt 6.8+ needs a newer MSVC runtime than many Windows machines carry.
     "PySide6>=6.6,<6.8",
     "PyOpenGL>=3.1.7",
+    # Root certificates for the release check: a frozen app, and Python on a
+    # Mac, cannot otherwise verify GitHub's certificate.
+    "certifi>=2024.2.2",
 ]
 
 [project.optional-dependencies]

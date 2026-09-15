@@ -56,9 +56,31 @@ exe = EXE(
 )
 
 if sys.platform == "darwin":
+    # What Finder may hand the bundle: the model formats, a saved session and
+    # the matcap images.  Without these the app is not offered under "Open
+    # with", and a file dragged onto it is refused.  The file itself arrives
+    # as a QFileOpenEvent, which refview.application.Application handles.
+    def document_type(name, extensions, role="Viewer"):
+        return {
+            "CFBundleTypeName": name,
+            "CFBundleTypeExtensions": list(extensions),
+            "CFBundleTypeRole": role,
+            "LSHandlerRank": "Alternate",
+        }
+
     app = BUNDLE(
         exe,
         name="Reference Viewer.app",
         icon=icon,
         bundle_identifier="com.refview.referenceviewer",
+        info_plist={
+            "CFBundleDocumentTypes": [
+                document_type("Wavefront OBJ model", ["obj"]),
+                document_type("STL model", ["stl"]),
+                document_type("glTF model", ["glb", "gltf"]),
+                document_type("Reference Viewer session", ["json"], role="Editor"),
+                document_type("Matcap image", ["png", "jpg", "jpeg", "bmp", "tif", "tiff", "webp"]),
+            ],
+            "NSHighResolutionCapable": True,
+        },
     )

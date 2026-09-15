@@ -6,9 +6,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 
 from . import APP_NAME, __version__
 from .paths import available_matcaps, image_path
@@ -24,7 +24,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="A 3D reference viewer for clay sculpting: matcaps, shading and measurements.",
     )
     parser.add_argument(
-        "model", nargs="?", type=Path, help="model to open on startup (OBJ, STL, GLB or glTF)"
+        "files",
+        nargs="*",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "files to open on startup: a model (OBJ, STL, GLB or glTF), a session "
+            "(JSON) or a matcap image.  This is also how a file arrives when the "
+            "desktop opens it with the viewer or it is dragged onto the application."
+        ),
     )
     parser.add_argument("--matcap", type=Path, help="matcap image to apply on startup")
     parser.add_argument("--session", type=Path, help="session file to restore on startup")
@@ -45,7 +53,7 @@ def run(argv: list[str] | None = None) -> int:
     preferences = preference_store().value
 
     configure_surface_format(preferences.viewport.samples)
-    app = QApplication(sys.argv[:1])
+    app = Application(sys.argv[:1])
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("refview")
     app.setWindowIcon(QPixmap(str(image_path("icon-large.png"))))
@@ -57,10 +65,60 @@ def run(argv: list[str] | None = None) -> int:
         app.processEvents()
     window = MainWindow()
     _apply_startup_arguments(window, arguments)
+    app.requests.deliver_to(window)
     window.show()
     if splash is not None:
         splash.finish(window)
     return app.exec()
+
+
+class OpenRequests:
+    """Files the desktop asked the viewer to open, kept until there is a window.
+
+    On Windows and most Linux desktops a file opened with the viewer arrives
+    on the command line.  On macOS it does not: Finder starts the bundle
+    with no arguments and then sends the file as an event, once for the
+    file that launched it and again for every file opened while it is
+    running.  The first of those can land before the window exists, so a
+    request made early is held and delivered with the window.
+    """
+
+    def __init__(self) -> None:
+        self._pending: list[Path] = []
+        self._window: MainWindow | None = None
+
+    def open(self, path: str | Path) -> None:
+        """Open ``path`` in the window, or hold it until there is one."""
+        path = Path(path)
+        if self._window is None:
+            self._pending.append(path)
+            return
+        self._window.open_path(path)
+
+    def deliver_to(self, window: MainWindow) -> None:
+        """Name the window files go to, and hand over any that came early."""
+        self._window = window
+        pending, self._pending = self._pending, []
+        for path in pending:
+            self.open(path)
+
+    @property
+    def pending(self) -> tuple[Path, ...]:
+        return tuple(self._pending)
+
+
+class Application(QApplication):
+    """The Qt application, listening for the desktop's way of handing over a file."""
+
+    def __init__(self, argv: list[str]) -> None:
+        super().__init__(argv)
+        self.requests = OpenRequests()
+
+    def event(self, event) -> bool:  # noqa: N802 - Qt naming
+        if event.type() == QEvent.Type.FileOpen:
+            self.requests.open(event.file())
+            return True
+        return super().event(event)
 
 
 def _fitted_title_font(width: int) -> QFont:
@@ -116,13 +174,21 @@ def _create_splash() -> QSplashScreen:
 
 def _apply_startup_arguments(window: MainWindow, arguments: argparse.Namespace) -> None:
     """Open whatever the command line asked for, falling back to sane defaults."""
-    if arguments.model is not None:
-        window.open_model(arguments.model)
+    opened = False
+    for path in arguments.files:
+        if not window.open_path(path):
+            QMessageBox.warning(
+                window,
+                "Open",
+                f"{path.name} is not a model, session or matcap the viewer can open.",
+            )
+            continue
+        opened = True
     if arguments.session is not None:
         window.load_session(arguments.session)
-    elif arguments.model is None:
+    elif not opened:
         # Nothing was asked for, so the artist's own answer applies: carry on
-        # with the session they were last in, if they asked to.  A model named
+        # with the session they were last in, if they asked to.  A file named
         # on the command line beats it, because that is somebody opening this
         # application *at* something.
         window.reopen_last_session()

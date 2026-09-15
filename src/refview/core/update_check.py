@@ -8,8 +8,12 @@ off the UI thread.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import ssl
+import subprocess
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -22,6 +26,9 @@ RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases/latest"
 _VERSION_PATTERN = re.compile(r"^\s*v?(\d+(?:\.\d+)*)(.*)$")
 
 _TIMEOUT_SECONDS = 6.0
+
+#: Where macOS keeps the root certificates every other application trusts.
+_MACOS_ROOTS = "/System/Library/Keychains/SystemRootCertificates.keychain"
 
 
 class UpdateCheckError(RuntimeError):
@@ -64,6 +71,50 @@ def _padded(version: tuple[int, ...], length: int) -> tuple[int, ...]:
     return version + (0,) * (length - len(version))
 
 
+def trusted_roots() -> ssl.SSLContext:
+    """A TLS context that can actually verify GitHub's certificate.
+
+    Python's own context trusts whatever OpenSSL was pointed at when it was
+    built, which on a Mac -- and in a frozen app on any platform -- can be a
+    directory that is not there, so every HTTPS request fails with "unable
+    to get local issuer certificate".  The ``certifi`` bundle is the usual
+    answer and is used when it is installed; failing that, on a Mac the
+    system's own root certificates are read out of the keychain, which is
+    what every other application on the machine trusts.
+    """
+    try:
+        import certifi
+    except ImportError:
+        certifi = None
+    if certifi is not None:
+        try:
+            return ssl.create_default_context(cafile=certifi.where())
+        except (OSError, ssl.SSLError):
+            pass
+    context = ssl.create_default_context()
+    if context.cert_store_stats().get("x509", 0) == 0 and sys.platform == "darwin":
+        roots = _macos_root_certificates()
+        if roots:
+            with contextlib.suppress(ssl.SSLError):
+                context.load_verify_locations(cadata=roots)
+    return context
+
+
+def _macos_root_certificates() -> str:
+    """The system root certificates as PEM text, or ``""`` if they cannot be read."""
+    try:
+        done = subprocess.run(
+            ["security", "find-certificate", "-a", "-p", _MACOS_ROOTS],
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout if done.returncode == 0 else ""
+
+
 def fetch_latest_release(timeout: float = _TIMEOUT_SECONDS) -> Release:
     """Return the newest published release, or raise :class:`UpdateCheckError`."""
     request = urllib.request.Request(
@@ -74,7 +125,10 @@ def fetch_latest_release(timeout: float = _TIMEOUT_SECONDS) -> Release:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        context = trusted_roots()
+        with urllib.request.urlopen(  # noqa: S310
+            request, timeout=timeout, context=context
+        ) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
         raise UpdateCheckError(str(error)) from error

@@ -44,10 +44,25 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     direction = np.asarray(direction, dtype=np.float64)
     if mesh.triangle_count == 0 or not intersects_bounds(origin, direction, mesh.bounds):
         return None
+    return raycast_many(origin[None], direction[None], mesh)[0]
 
-    candidates = mesh.spatial_index.candidates(origin, direction)
+
+def raycast_many(origins: np.ndarray, directions: np.ndarray, mesh: Mesh) -> list[Hit | None]:
+    """The closest hit along each of a batch of rays, ``None`` where one misses.
+
+    One pass over every ray's candidates together, rather than a pass per
+    ray: the overlay asks about every armature node on every frame of an
+    orbit, and for two dozen short questions the bookkeeping around the
+    maths was costing more than the maths.
+    """
+    origins = np.asarray(origins, dtype=np.float64).reshape(-1, 3)
+    directions = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
+    hits: list[Hit | None] = [None] * len(origins)
+    if mesh.triangle_count == 0 or len(origins) == 0:
+        return hits
+    ray, candidates = mesh.spatial_index.candidates_many(origins, directions)
     if candidates.size == 0:
-        return None
+        return hits
 
     # Only the candidate triangles are expanded to float64; on a large mesh
     # materialising the whole corner array per ray costs far more than the
@@ -56,12 +71,14 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     v0, v1, v2 = corners[:, 0], corners[:, 1], corners[:, 2]
     edge1 = v1 - v0
     edge2 = v2 - v0
+    origin = origins[ray]
+    direction = directions[ray]
 
-    pvec = np.cross(direction, edge2)
+    pvec = _cross(direction, edge2)
     det = np.einsum("ij,ij->i", edge1, pvec)
     valid = np.abs(det) > _EPSILON
     if not valid.any():
-        return None
+        return hits
 
     inv_det = np.zeros_like(det)
     inv_det[valid] = 1.0 / det[valid]
@@ -70,30 +87,46 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     u = np.einsum("ij,ij->i", tvec, pvec) * inv_det
     valid &= (u >= 0.0) & (u <= 1.0)
     if not valid.any():
-        return None
+        return hits
 
-    qvec = np.cross(tvec, edge1)
-    v = (qvec @ direction) * inv_det
+    qvec = _cross(tvec, edge1)
+    v = np.einsum("ij,ij->i", qvec, direction) * inv_det
     valid &= (v >= 0.0) & (u + v <= 1.0)
     if not valid.any():
-        return None
+        return hits
 
     t = np.einsum("ij,ij->i", edge2, qvec) * inv_det
     valid &= t > 1e-9
     if not valid.any():
-        return None
+        return hits
 
+    # The nearest reachable triangle of each ray: sort the survivors by ray
+    # and then by distance, and the first of every ray's run is its hit.
     reachable = np.flatnonzero(valid)
-    best = int(reachable[np.argmin(t[reachable])])
-    distance = float(t[best])
-    point = origin + direction * distance
+    reachable = reachable[np.lexsort((t[reachable], ray[reachable]))]
+    _, first = np.unique(ray[reachable], return_index=True)
+    for best in reachable[first]:
+        which = int(ray[best])
+        distance = float(t[best])
+        point = origins[which] + directions[which] * distance
+        normal = np.cross(edge1[best], edge2[best])
+        length = float(np.linalg.norm(normal))
+        normal = normal / length if length > _EPSILON else np.array([0.0, 0.0, 1.0])
+        if float(np.dot(normal, directions[which])) > 0.0:
+            normal = -normal
+        hits[which] = Hit(
+            point=point, normal=normal, triangle=int(candidates[best]), distance=distance
+        )
+    return hits
 
-    normal = np.cross(edge1[best], edge2[best])
-    length = float(np.linalg.norm(normal))
-    normal = normal / length if length > _EPSILON else np.array([0.0, 0.0, 1.0])
-    if float(np.dot(normal, direction)) > 0.0:
-        normal = -normal
-    return Hit(point=point, normal=normal, triangle=int(candidates[best]), distance=distance)
+
+def _cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Row-wise cross product, without :func:`numpy.cross`'s axis shuffling."""
+    out = np.empty_like(a)
+    out[:, 0] = a[:, 1] * b[:, 2] - a[:, 2] * b[:, 1]
+    out[:, 1] = a[:, 2] * b[:, 0] - a[:, 0] * b[:, 2]
+    out[:, 2] = a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+    return out
 
 
 def snap_to_vertex(hit: Hit, mesh: Mesh, max_distance: float) -> np.ndarray:

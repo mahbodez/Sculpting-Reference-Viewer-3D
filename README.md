@@ -647,6 +647,19 @@ it.
 Where the panels are, and any you have built, are remembered between runs and
 written into the session file alongside the marks on the model.
 
+**Hotkeys**
+
+Every key is yours to move. **Ctrl+Alt-click** (Cmd+Option on a Mac) any
+button or switch in a panel — the switch on a dock's bar that takes the
+armature off the model, a "Clear All", a form's "Start" — and press the key
+you want on it; from then on the key does what the click did, wherever you
+are in the window, and the control's tooltip says so. The menus' entries and
+the single letters the view answers to (`F`, `M`, `1`…`6` and the rest) are
+listed under **Settings › Hotkeys**, each with a box to press a new key into.
+One key does one thing: assign a key that is already in use and you are told
+what it does now and asked before it is moved. What you change is kept on the
+machine, apart from the session, like the rest of the preferences.
+
 **The matcap is its own control**
 
 A matcap is a picture of a sphere, and the sphere is the whole of what it says
@@ -689,8 +702,9 @@ undo useless in a 3D viewer.
 Camera, shading, matcap choice, measurements, annotations and saved views are
 written to a JSON file. Saving with `Ctrl+S` writes `<model>.refview.json` next
 to the model, and that sidecar is picked up automatically the next time the
-model is opened. Files written by an older build still load. OBJ, session and
-image files can also be dropped onto the window.
+model is opened. Files written by an older build still load. Model, session and
+image files can also be dropped onto the window, opened with the viewer from
+the desktop's **Open with…** menu, or dragged onto the application itself.
 
 ---
 
@@ -720,7 +734,10 @@ pip install -e .
 refview resources/models/Pose_02.obj --matcap resources/matcaps/clay_terracotta.png
 ```
 
-`refview --help` lists the startup options (`model`, `--matcap`, `--session`).
+`refview --help` lists the startup options. Any number of files may be named:
+each opens as what it is — a model, a session (`.json`) or a matcap image — so
+the same command serves the desktop's **Open with…** and a file dragged onto
+the executable. `--matcap` and `--session` name the two explicitly.
 
 ### Desktop releases
 

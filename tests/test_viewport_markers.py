@@ -151,6 +151,34 @@ def test_marker_occlusion_distinguishes_surface_inside_and_front(projection):
     assert visibility.buried((0, 0, -0.1))
 
 
+def test_a_batch_of_markers_is_tested_in_one_pass_and_answered_alike(monkeypatch):
+    """One frame asks about every node together; the answers match the one-by-one ones."""
+    from refview.core import raycast
+    from refview.ui import markers
+
+    points = np.array([[-1, -1, 0], [1, -1, 0], [0, 1, 0]], dtype=np.float32)
+    faces = np.array([[0, 1, 2]], dtype=np.uint32)
+    mesh = Mesh(points, compute_vertex_normals(points, faces), faces)
+    picker = SurfacePicker(Camera(), mesh, 800, 600)
+    asked = [(0, 0, 0), (0, 0, 0.1), (0, 0, -0.1), (0, 0, -0.2), (3, 3, -0.1)]
+    alone = MarkerVisibility()
+    alone.prepare(picker, SectionSettings())
+    expected = [alone.buried(point) for point in asked]
+
+    casts = []
+    def counted(origins, directions, mesh):
+        casts.append(len(origins))
+        return raycast.raycast_many(origins, directions, mesh)
+    monkeypatch.setattr(markers, "raycast_many", counted)
+    together = MarkerVisibility()
+    together.prepare(picker, SectionSettings())
+    together.prefetch(asked + asked[:2])
+    assert casts == [len(asked)]
+    answers = [together.buried(point) for point in asked]
+    assert answers == expected == [False, False, True, True, False]
+    assert casts == [len(asked)]
+
+
 def test_section_rail_is_a_screen_space_cue_at_the_right_edge():
     """The rail stands still while the camera moves, and never leaves the frame."""
     settings = SectionSettings(enabled=True, axis=SectionAxis.Y)

@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1789489708.811858,
-    "ast_hash": "ee84c99c09a100f7dc76a4e99808a7a7",
+    "mtime": 1789488082.5130806,
+    "ast_hash": "0baf0f46cad041ecab930d1648d27398",
     "semantic_hash": ""
   },
   "run.py": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
-    "mtime": 1789489708.811858,
-    "ast_hash": "7f91d2ce37e617d948e00ba630f18bc6",
+    "mtime": 1789488082.5130806,
+    "ast_hash": "1b67e031e8cf927fd899ce1625b5272d",
     "semantic_hash": ""
   },
   "README.md": {
@@ -350,9 +350,9 @@
     "semantic_hash": ""
   },
   "environment.yml": {
-    "mtime": 1789489708.811858,
-    "ast_hash": "7cbba20caa7e45a7c860d3e71d1e3c1d",
-    "semantic_hash": ""
+    "mtime": 1788351152.232194,
+    "ast_hash": "00cbfaa78f3dc4f1b46f91808d94e7ed",
+    "semantic_hash": "00cbfaa78f3dc4f1b46f91808d94e7ed"
   },
   "resources/matcaps/charcoal.png": {
     "mtime": 1788351136.581271,
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "src/refview/core/update_check.py": {
-    "mtime": 1789489739.5143995,
-    "ast_hash": "f629c8b4de5f52330bc9811a56d699fc",
+    "mtime": 1788455423.2926717,
+    "ast_hash": "a25b9443488456f7e9441c34a3f74d1f",
     "semantic_hash": ""
   },
   "src/refview/ui/update_notice.py": {
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "tests/test_update_check.py": {
-    "mtime": 1789489708.811858,
-    "ast_hash": "8d42cb44d40cc356ee87abade7bd7814",
+    "mtime": 1788455548.5246832,
+    "ast_hash": "d42a14954c5ab176446b0e53c628abfd",
     "semantic_hash": ""
   },
   "src/refview/ui/panels/planes_panel.py": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/markers.py": {
-    "mtime": 1789488259.360416,
-    "ast_hash": "2c52c69b541885ba372128d43df324a8",
+    "mtime": 1789487779.31762,
+    "ast_hash": "821e6466ea7f70b4a1297672543122c1",
     "semantic_hash": ""
   },
   "src/refview/ui/matcap_preview.py": {

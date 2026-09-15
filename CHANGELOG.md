@@ -4,6 +4,45 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.1.0]
+
+### Added
+
+- **Hotkeys.** Every key is yours to move. Ctrl+Alt-click (Cmd+Option on a
+  Mac) any button or switch in a panel and press the key to put on it; the
+  menus' entries and the view's single letters are listed under
+  **Settings > Hotkeys**, each with a box to press a new key into. A key that
+  is already in use is not taken silently: you are told what it does and
+  asked. A control with a key on it says so in its tooltip, and the buttons
+  that arm the tools show the letter after their name, as the menu entries
+  do. What you change is kept on the machine, apart from the session.
+
+- **Open a file from the desktop.** A model, a session or a matcap image
+  opened with the viewer from the desktop's "Open with" menu, or dragged onto
+  the application itself, opens as what it is. The macOS bundle declares the
+  file types so that Finder offers it. Any number of files may be named on
+  the command line, in place of the single model it took before.
+
+### Fixed
+
+- **Showing an armature no longer halves the frame rate.** The overlay tests
+  every node against the surface on every frame of an orbit, and on a large
+  scan each of those tests swept every leaf of the picking index. The index
+  now boxes its leaves up in levels and descends only into what the ray
+  enters; the rays for a frame's nodes are cast together in one pass; and the
+  camera keeps the projection it last built rather than rebuilding it for
+  every marker. On a two-million-triangle scan the cost of a visible wire
+  with two dozen nodes falls from around a third of a second a frame to a few
+  milliseconds. Hovering and painting are faster for the same reason.
+
+- **Dropping a file on the window works again.** The window let a file in
+  and then refused it on every move, which is where a drop is decided.
+
+- **The release check works on macOS.** Python there, and a frozen build
+  anywhere, could not verify GitHub's certificate and reported an SSL error.
+  The check now trusts the `certifi` bundle, which is shipped with the app,
+  and falls back to the Mac's own system root certificates.
+
 ## [2.0.0]
 
 The interface is rebuilt around the way ZBrush is worked: every panel goes

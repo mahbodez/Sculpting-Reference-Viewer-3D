@@ -6,7 +6,7 @@ import numpy as np
 
 from refview.core.mesh import Mesh, compute_vertex_normals
 from refview.core.raycast import raycast_mesh
-from refview.core.spatial import TriangleIndex
+from refview.core.spatial import FANOUT, TriangleIndex
 
 
 def _grid(cells: int = 24) -> Mesh:
@@ -65,3 +65,32 @@ def test_a_ray_that_misses_the_model_is_pruned_away():
 def test_the_index_is_built_once_and_kept():
     mesh = _grid()
     assert mesh.spatial_index is mesh.spatial_index
+
+
+def test_the_levels_above_the_leaves_each_box_up_the_one_below():
+    """Every parent must enclose its children, or a ray could slip past a leaf."""
+    index = _grid(60).spatial_index
+    assert index.leaf_count > FANOUT * FANOUT
+    levels = index._levels
+    assert len(levels) >= 3
+    assert len(levels[0][0]) <= FANOUT
+    assert levels[-1][0] is index.minimum and levels[-1][1] is index.maximum
+    for (coarse_min, coarse_max), (fine_min, fine_max) in zip(levels, levels[1:], strict=False):
+        parent = np.arange(len(fine_min)) // FANOUT
+        assert np.all(coarse_min[parent] <= fine_min)
+        assert np.all(coarse_max[parent] >= fine_max)
+
+
+def test_a_batch_of_rays_gets_the_same_candidates_as_one_at_a_time():
+    mesh = _grid()
+    rng = np.random.default_rng(3)
+    origins = np.stack([[rng.uniform(-0.9, 0.9), 2.0, rng.uniform(-0.9, 0.9)] for _ in range(12)])
+    origins[-1] = [5.0, 5.0, 5.0]  # one that misses everything
+    directions = np.tile([0.0, -1.0, 0.0], (12, 1))
+    ray, triangles = mesh.spatial_index.candidates_many(origins, directions)
+    assert ray.shape == triangles.shape
+    for which in range(12):
+        together = set(triangles[ray == which].tolist())
+        alone = set(mesh.spatial_index.candidates(origins[which], directions[which]).tolist())
+        assert together == alone
+    assert not (ray == 11).any()

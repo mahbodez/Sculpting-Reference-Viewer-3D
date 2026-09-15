@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QSettings, QTimer
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -25,8 +25,12 @@ from ..paths import model_dir
 from ..render.texture import MatcapLoadError
 from ..wakelock import WakeLock
 from .elements.clone import carried, in_flight
+from .elements.keys import COMMAND_PROPERTY, KeyGesture
+from .elements.naming import lookup, slug
 from .film_export import ExportVideoDialog
 from .help_window import ControlsWindow
+from .hotkeys import HotkeyBinder, ask_for
+from .hotkeys import store as hotkey_store
 from .panels.annotate_panel import AnnotatePanel
 from .panels.armature_panel import ArmaturePanel
 from .panels.camera_panel import STANDARD_VIEWS, CameraPanel
@@ -142,6 +146,17 @@ round</td></tr>
 <tr><td><b>Ctrl+,</b></td><td>Open the preferences</td></tr>
 <tr><td><b>Settings menu</b></td><td>Or straight to one group of them</td></tr>
 </table>
+<h3>Hotkeys</h3>
+<table cellpadding='3'>
+<tr><td><b>Ctrl/Cmd + Alt/Option + click</b></td><td>Put a key on any button or
+switch in a panel: press the key you want, and it is kept</td></tr>
+<tr><td><b>Settings &gt; Hotkeys</b></td><td>Every menu entry and every letter the
+view answers to, each with a box to press a new key into; and the buttons you
+have put keys on</td></tr>
+<tr><td><b>A key that is taken</b></td><td>You are told what it does now, and asked
+before it is moved</td></tr>
+<tr><td><b>Tooltips</b></td><td>A control with a key on it says so in its tooltip</td></tr>
+</table>
 <h3>Cross-section</h3>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+K</b></td><td>Cut the model with a plane</td></tr>
@@ -253,6 +268,18 @@ along with the splash screen and the check for new releases.</p>
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
 
 
+def opens_as(path: str | Path) -> str | None:
+    """What a file would open as -- ``"model"``, ``"session"`` or ``"matcap"`` -- by its suffix."""
+    suffix = Path(path).suffix.lower()
+    if suffix in MESH_SUFFIXES:
+        return "model"
+    if suffix == ".json":
+        return "session"
+    if suffix in _IMAGE_SUFFIXES:
+        return "matcap"
+    return None
+
+
 class MainWindow(QMainWindow):
     """Wires the viewport, the panels and the document together."""
 
@@ -285,6 +312,11 @@ class MainWindow(QMainWindow):
 
         self._viewport = Viewport(self._state)
         self.setCentralWidget(self._viewport)
+        #: Which keys do what, as the artist has set them; see
+        #: :mod:`refview.ui.hotkeys`.  The binder turns the store into this
+        #: window's shortcuts and re-keys them whenever the store moves.
+        self._hotkeys = hotkey_store()
+        self._binder = HotkeyBinder(self, self._viewport, self._hotkeys)
 
         self._model_panel = ModelPanel(self._state)
         self._shading_panel = ShadingPanel(self._state)
@@ -312,6 +344,9 @@ class MainWindow(QMainWindow):
         self._build_docks()
         self._build_menus()
         self._build_viewport_shortcuts()
+        self._speak_for_commands()
+        self._binder.rebind()
+        KeyGesture.instance().requested.connect(self._assign_hotkey)
         self._connect()
         self._update_history_actions()
         self._restore_layout()
@@ -356,98 +391,149 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        self._menu_action(file_menu, "&Open Model...", self._open_model, "Ctrl+O")
-        self._menu_action(file_menu, "Load &Matcap...", self._matcap_panel.browse)
-        file_menu.addSeparator()
-        self._menu_action(file_menu, "Export &Video...", self._export_film, "Ctrl+E")
-        file_menu.addSeparator()
-        self._menu_action(file_menu, "&Save Session", self._save_session, "Ctrl+S")
-        self._menu_action(file_menu, "Save Session &As...", self._save_session_as, "Ctrl+Shift+S")
-        self._menu_action(file_menu, "&Load Session...", self._load_session)
-        file_menu.addSeparator()
-        self._menu_action(file_menu, "E&xit", self.close, "Ctrl+Q")
-
-        edit_menu = self.menuBar().addMenu("&Edit")
-        self._undo_action = self._menu_action(edit_menu, "&Undo", self._state.undo, "Ctrl+Z")
-        self._redo_action = self._menu_action(edit_menu, "&Redo", self._state.redo, "Ctrl+Shift+Z")
-        self._redo_alternate = QShortcut(QKeySequence("Ctrl+Y"), self)
-        self._redo_alternate.activated.connect(self._state.redo)
-
-        view_menu = self.menuBar().addMenu("&View")
-        self._menu_action(view_menu, "&Frame Object  (F)", self._state.frame_object)
-        self._menu_action(view_menu, "Toggle &Projection  (P)", self._toggle_projection)
-        view_menu.addSeparator()
-        for index, (label, direction) in enumerate(STANDARD_VIEWS, start=1):
-            self._menu_action(
-                view_menu,
-                f"{label}  ({index})",
-                lambda _=False, d=direction: self._camera_panel.look_along(d),
-            )
-        view_menu.addSeparator()
-        self._section_action = self._menu_action(
-            view_menu, "Cross-&section", self._toggle_section, "Ctrl+K", checkable=True
+        self._menu_action(
+            file_menu, "&Open Model...", self._open_model, "Ctrl+O", command="file.open_model"
         )
         self._menu_action(
-            view_menu, "Section Plane From &View", self._section_panel.set_plane_from_view
+            file_menu, "Load &Matcap...", self._matcap_panel.browse, command="file.load_matcap"
+        )
+        file_menu.addSeparator()
+        self._menu_action(
+            file_menu, "Export &Video...", self._export_film, "Ctrl+E", command="file.export_video"
+        )
+        file_menu.addSeparator()
+        self._menu_action(
+            file_menu, "&Save Session", self._save_session, "Ctrl+S", command="file.save_session"
+        )
+        self._menu_action(
+            file_menu, "Save Session &As...", self._save_session_as, "Ctrl+Shift+S",
+            command="file.save_session_as",
+        )
+        self._menu_action(
+            file_menu, "&Load Session...", self._load_session, command="file.load_session"
+        )
+        file_menu.addSeparator()
+        self._menu_action(file_menu, "E&xit", self.close, "Ctrl+Q", command="file.exit")
+
+        edit_menu = self.menuBar().addMenu("&Edit")
+        self._undo_action = self._menu_action(
+            edit_menu, "&Undo", self._state.undo, "Ctrl+Z", command="edit.undo"
+        )
+        self._redo_action = self._menu_action(
+            edit_menu, "&Redo", self._state.redo, "Ctrl+Shift+Z", command="edit.redo"
+        )
+        self._binder.add_key(
+            "edit.redo_again", "Redo (second key)", self._state.redo, "Ctrl+Y", "Edit"
+        )
+
+        view_menu = self.menuBar().addMenu("&View")
+        self._frame_action = self._menu_action(view_menu, "&Frame Object", self._state.frame_object)
+        self._projection_action = self._menu_action(
+            view_menu, "Toggle &Projection", self._toggle_projection
+        )
+        view_menu.addSeparator()
+        self._view_actions = [
+            self._menu_action(
+                view_menu, label, lambda _=False, d=direction: self._camera_panel.look_along(d)
+            )
+            for label, direction in STANDARD_VIEWS
+        ]
+        view_menu.addSeparator()
+        self._section_action = self._menu_action(
+            view_menu, "Cross-&section", self._toggle_section, "Ctrl+K", checkable=True,
+            command="view.section",
+        )
+        self._menu_action(
+            view_menu, "Section Plane From &View", self._section_panel.set_plane_from_view,
+            command="view.section_from_view",
         )
         panels_menu = self.menuBar().addMenu("&Panels")
         self._build_panels_menu(panels_menu)
 
         measure_menu = self.menuBar().addMenu("&Measure")
         self._measure_action = self._menu_action(
-            measure_menu, "&Measure Tool  (M)", self._toggle_measure, checkable=True
+            measure_menu, "&Measure Tool", self._toggle_measure, checkable=True
         )
-        self._menu_action(measure_menu, "&Cancel Current  (Esc)", self._viewport.cancel_tools)
-        self._menu_action(measure_menu, "Clear &All", self._measure_panel.clear_all)
+        self._cancel_action = self._menu_action(
+            measure_menu, "&Cancel Current", self._viewport.cancel_tools
+        )
+        self._menu_action(
+            measure_menu, "Clear &All", self._measure_panel.clear_all, command="measure.clear_all"
+        )
 
         armature_menu = self.menuBar().addMenu("A&rmature")
         self._armature_action = self._menu_action(
-            armature_menu, "A&rmature Tool  (R)", self._toggle_armature, checkable=True
+            armature_menu, "A&rmature Tool", self._toggle_armature, checkable=True
         )
         armature_menu.addSeparator()
         self._menu_action(
-            armature_menu, "&New Armature", self._armature_panel.new_armature
+            armature_menu, "&New Armature", self._armature_panel.new_armature,
+            command="armature.new",
         )
         self._menu_action(
-            armature_menu, "Start &Guided Preset", self._armature_panel.start_guide
+            armature_menu, "Start &Guided Preset", self._armature_panel.start_guide,
+            command="armature.start_guide",
         )
-        self._menu_action(armature_menu, "&Finish Preset", self._armature_panel.end_guide)
+        self._menu_action(
+            armature_menu, "&Finish Preset", self._armature_panel.end_guide,
+            command="armature.end_guide",
+        )
         armature_menu.addSeparator()
-        self._menu_action(armature_menu, "Clear &All", self._armature_panel.clear_all)
+        self._menu_action(
+            armature_menu, "Clear &All", self._armature_panel.clear_all,
+            command="armature.clear_all",
+        )
 
         forms_menu = self.menuBar().addMenu("F&orms")
         self._forms_action = self._menu_action(
-            forms_menu, "F&orms Tool  (G)", self._toggle_forms, checkable=True
+            forms_menu, "F&orms Tool", self._toggle_forms, checkable=True
         )
         forms_menu.addSeparator()
-        self._menu_action(forms_menu, "&Start Form", self._forms_panel.start_guide)
-        self._menu_action(forms_menu, "&Append Landmarks", self._forms_panel.append_landmarks)
-        self._menu_action(forms_menu, "&Finish Form", self._forms_panel.end_guide)
+        self._menu_action(
+            forms_menu, "&Start Form", self._forms_panel.start_guide, command="forms.start"
+        )
+        self._menu_action(
+            forms_menu, "&Append Landmarks", self._forms_panel.append_landmarks,
+            command="forms.append",
+        )
+        self._menu_action(
+            forms_menu, "&Finish Form", self._forms_panel.end_guide, command="forms.finish"
+        )
         forms_menu.addSeparator()
-        self._menu_action(forms_menu, "Clear &All", self._forms_panel.clear_all)
+        self._menu_action(
+            forms_menu, "Clear &All", self._forms_panel.clear_all, command="forms.clear_all"
+        )
 
         annotate_menu = self.menuBar().addMenu("&Annotate")
         self._annotate_action = self._menu_action(
-            annotate_menu, "&Annotate Tool  (A)", self._toggle_annotate, checkable=True
+            annotate_menu, "&Annotate Tool", self._toggle_annotate, checkable=True
         )
         annotate_menu.addSeparator()
         for mode in AnnotateMode:
             self._menu_action(
-                annotate_menu, mode.label, lambda _=False, m=mode: self._set_annotate_mode(m)
+                annotate_menu, mode.label, lambda _=False, m=mode: self._set_annotate_mode(m),
+                command=f"annotate.mode.{mode.value}", label=f"Draw: {mode.label}",
             )
         annotate_menu.addSeparator()
-        self._menu_action(annotate_menu, "Clear A&ll", self._annotate_panel.clear_all)
+        self._menu_action(
+            annotate_menu, "Clear A&ll", self._annotate_panel.clear_all,
+            command="annotate.clear_all",
+        )
 
         camera_menu = self.menuBar().addMenu("&Camera")
         self._menu_action(
-            camera_menu, "&Save Current View", self._camera_panel.save_current_view, "Ctrl+B"
+            camera_menu, "&Save Current View", self._camera_panel.save_current_view, "Ctrl+B",
+            command="camera.save_view",
         )
         self._menu_action(
-            camera_menu, "&Rename Selected View  (F2)", self._camera_panel.rename_selected
+            camera_menu, "&Rename Selected View", self._camera_panel.rename_selected,
+            command="camera.rename_view",
         )
-        self._menu_action(camera_menu, "&Next Saved View  (])", lambda: self._camera_panel.cycle(1))
-        self._menu_action(
-            camera_menu, "&Previous Saved View  ([)", lambda: self._camera_panel.cycle(-1)
+        self._next_view_action = self._menu_action(
+            camera_menu, "&Next Saved View", lambda: self._camera_panel.cycle(1)
+        )
+        self._previous_view_action = self._menu_action(
+            camera_menu, "&Previous Saved View", lambda: self._camera_panel.cycle(-1)
         )
         camera_menu.addSeparator()
         for slot in range(1, 10):
@@ -456,23 +542,33 @@ class MainWindow(QMainWindow):
                 f"Recall View {slot}",
                 lambda _=False, index=slot - 1: self._camera_panel.recall(index),
                 f"Ctrl+{slot}",
+                command=f"camera.recall_{slot}",
             )
 
         settings_menu = self.menuBar().addMenu("&Settings")
-        self._menu_action(settings_menu, "&Preferences...", self._show_settings, "Ctrl+,")
+        self._menu_action(
+            settings_menu, "&Preferences...", self._show_settings, "Ctrl+,", command="settings.open"
+        )
         settings_menu.addSeparator()
         for key in GROUPS:
             self._menu_action(
                 settings_menu,
                 f"{key.title()}...",
                 lambda _=False, group=key: self._show_settings(group),
+                command=f"settings.open_{key}",
             )
         settings_menu.addSeparator()
-        self._menu_action(settings_menu, "&Restore Defaults", self._reset_preferences)
+        self._menu_action(
+            settings_menu, "&Restore Defaults", self._reset_preferences, command="settings.restore"
+        )
 
         help_menu = self.menuBar().addMenu("&Help")
-        self._menu_action(help_menu, "&Controls", self._show_controls, "F1")
-        self._menu_action(help_menu, "Check for &Updates...", self._check_for_updates)
+        self._menu_action(
+            help_menu, "&Controls", self._show_controls, "F1", command="help.controls"
+        )
+        self._menu_action(
+            help_menu, "Check for &Updates...", self._check_for_updates, command="help.updates"
+        )
 
     def _build_panels_menu(self, menu) -> None:
         """Which panels are open, and the panels the artist builds.
@@ -485,7 +581,8 @@ class MainWindow(QMainWindow):
         def fill() -> None:
             menu.clear()
             self._menu_action(
-                menu, "&New Custom Panel", self._new_custom_panel, "Ctrl+Shift+N"
+                menu, "&New Custom Panel", self._new_custom_panel, "Ctrl+Shift+N",
+                command="panels.new_custom",
             )
             custom = self._workspace.custom_panels()
             if custom:
@@ -498,50 +595,124 @@ class MainWindow(QMainWindow):
                     )
             menu.addSeparator()
             for dock in self._workspace.docks():
-                menu.addAction(dock.toggleViewAction())
+                action = dock.toggleViewAction()
+                menu.addAction(action)
+                # A dock's own action, which lives as long as the dock does,
+                # so a key put on it stays put across the menu being rebuilt.
+                self._binder.add_action(
+                    f"panels.open.{dock.key()}", f"Open {dock.windowTitle()} Panel", action,
+                    group="Panels",
+                )
             menu.addSeparator()
-            self._menu_action(menu, "Reset &Layout", self._reset_layout)
+            self._menu_action(menu, "Reset &Layout", self._reset_layout, command="panels.reset")
+            # The entries made afresh just now have to be keyed like the rest.
+            self._binder.rebind()
 
         menu.aboutToShow.connect(fill)
         fill()
 
-    def _menu_action(self, menu, text, slot, shortcut=None, checkable: bool = False) -> QAction:
-        """Add a menu entry, optionally with a window-wide shortcut."""
+    def _menu_action(
+        self,
+        menu,
+        text,
+        slot,
+        shortcut=None,
+        checkable: bool = False,
+        command: str | None = None,
+        label: str | None = None,
+    ) -> QAction:
+        """Add a menu entry, optionally with a window-wide shortcut.
+
+        Given a ``command`` id the entry is the artist's to re-key: it is
+        declared to the hotkey store with ``shortcut`` as what it ships with,
+        and the binder puts whatever the store says on it.  Without one the
+        shortcut, if any, is fixed -- for an entry made afresh each time a
+        menu opens, which is no place to keep a key.
+        """
         action = QAction(text, self)
         action.setCheckable(checkable)
-        if shortcut is not None:
-            action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
         menu.addAction(action)
+        if command is not None:
+            self._binder.add_action(
+                command, label or _plain(text), action, shortcut or "", _plain(menu.title())
+            )
+        elif shortcut is not None:
+            action.setShortcut(QKeySequence(shortcut))
         return action
 
     def _build_viewport_shortcuts(self) -> None:
         """Single-key shortcuts, scoped so they never eat text input.
 
         They only fire while the 3D view has focus, which keeps keys like ``1``
-        available for renaming measurements and typing unit labels.
+        available for renaming measurements and typing unit labels.  Each is
+        a command of the hotkey store, so the letter is the artist's to
+        change; the menu entry beside each shows the key in its text rather
+        than carrying it, because an entry carrying a key answers anywhere.
         """
-        bindings: list[tuple[str, object]] = [
-            ("F", self._state.frame_object),
-            ("P", self._toggle_projection),
-            ("M", self._toggle_measure),
-            ("A", self._toggle_annotate),
-            ("E", self._toggle_eraser),
-            ("R", self._toggle_armature),
-            ("G", self._toggle_forms),
-            ("Esc", self._viewport.cancel_tools),
-            ("[", lambda: self._camera_panel.cycle(-1)),
-            ("]", lambda: self._camera_panel.cycle(1)),
-        ]
-        for index, (_, direction) in enumerate(STANDARD_VIEWS, start=1):
-            bindings.append((str(index), lambda d=direction: self._camera_panel.look_along(d)))
+        add = self._binder.add_view_key
+        add("view.frame", "Frame Object", self._state.frame_object, "F", self._frame_action)
+        add("view.projection", "Toggle Projection", self._toggle_projection, "P",
+            self._projection_action)
+        add("measure.tool", "Measure Tool", self._toggle_measure, "M", self._measure_action,
+            "Measure")
+        add("annotate.tool", "Annotate Tool", self._toggle_annotate, "A", self._annotate_action,
+            "Annotate")
+        add("annotate.eraser", "Brush / Eraser", self._toggle_eraser, "E", None, "Annotate")
+        add("armature.tool", "Armature Tool", self._toggle_armature, "R", self._armature_action,
+            "Armature")
+        add("forms.tool", "Forms Tool", self._toggle_forms, "G", self._forms_action, "Forms")
+        add("tools.cancel", "Cancel Current", self._viewport.cancel_tools, "Esc",
+            self._cancel_action, "Measure")
+        add("camera.previous_view", "Previous Saved View", lambda: self._camera_panel.cycle(-1),
+            "[", self._previous_view_action, "Camera")
+        add("camera.next_view", "Next Saved View", lambda: self._camera_panel.cycle(1), "]",
+            self._next_view_action, "Camera")
+        for index, ((label, direction), action) in enumerate(
+            zip(STANDARD_VIEWS, self._view_actions, strict=True), start=1
+        ):
+            add(
+                f"view.look.{slug(label)}",
+                f"Look: {label}",
+                lambda d=direction: self._camera_panel.look_along(d),
+                str(index),
+                action,
+            )
 
-        self._shortcuts = []
-        for key, slot in bindings:
-            shortcut = QShortcut(QKeySequence(key), self._viewport)
-            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            shortcut.activated.connect(slot)
-            self._shortcuts.append(shortcut)
+    def _speak_for_commands(self) -> None:
+        """Say which panel buttons are the same thing as a menu entry.
+
+        The button that arms the measuring tool and the ``M`` that arms it
+        are one command, not two: the button shows the letter after its
+        name, its tooltip says the key, and Ctrl-Alt-clicking it re-keys the
+        letter itself rather than putting a second key on the same thing.
+        """
+        for element, command in (
+            ("measure.toggle", "measure.tool"),
+            ("annotate.toggle", "annotate.tool"),
+            ("armature.toggle", "armature.tool"),
+            ("forms.toggle", "forms.tool"),
+            ("section.enabled", "view.section"),
+        ):
+            control = lookup(element)
+            if control is not None:
+                control.setProperty(COMMAND_PROPERTY, command)
+
+    def _assign_hotkey(self, widget) -> None:
+        """The gesture's other half: Ctrl-Alt-click on a button asks for a key.
+
+        The gesture is one object for the process, so every window hears
+        it; only the one the button lives in answers.
+        """
+        top = widget.window()
+        while top is not None and top is not self:
+            top = top.parentWidget()
+        if top is None:
+            return
+        if not ask_for(widget, self._hotkeys, self):
+            self.statusBar().showMessage(
+                "That control has no name a key could be kept under.", 4000
+            )
 
     def _connect(self) -> None:
         self._state.status_message.connect(self.statusBar().showMessage)
@@ -774,7 +945,7 @@ class MainWindow(QMainWindow):
     def _show_settings(self, group: str | None = None) -> None:
         """Open the preferences, on one group when the menu asked for one."""
         if self._settings is None:
-            self._settings = SettingsWindow(self._preferences, self)
+            self._settings = SettingsWindow(self._preferences, self, self._hotkeys)
         # What the driver actually gave us, which is the only honest answer to
         # "did changing that do anything": a QOpenGLWidget reports nought for
         # its own sample count whatever it is really drawing with.
@@ -1045,15 +1216,25 @@ class MainWindow(QMainWindow):
         if self._carrying_a_copy(event):
             event.acceptProposedAction()
             return
-        if any(self._droppable(url) for url in event.mimeData().urls()):
+        if self._carrying_a_file(event):
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if self._discarding(event):
             event.acceptProposedAction()
             return
+        # A file the window can open is welcome anywhere over it.  This has
+        # to be said on every move, not only at the door: a drop lands only
+        # where the last move was accepted, so a file that was let in and
+        # then refused on the way past could never be dropped at all.
+        if not self._carrying_a_copy(event) and self._carrying_a_file(event):
+            event.acceptProposedAction()
+            return
         # Refusing one position says only that; the moves keep coming.
         event.ignore()
+
+    def _carrying_a_file(self, event) -> bool:
+        return any(self._droppable(url) for url in event.mimeData().urls())
 
     @staticmethod
     def _carrying_a_copy(event) -> bool:
@@ -1089,19 +1270,9 @@ class MainWindow(QMainWindow):
             event.acceptProposedAction()
             return
         for url in event.mimeData().urls():
-            path = Path(url.toLocalFile())
-            suffix = path.suffix.lower()
-            if suffix in MESH_SUFFIXES:
-                self.open_model(path)
-            elif suffix == ".json":
-                self.load_session(path)
-            elif suffix in _IMAGE_SUFFIXES:
-                self._state.load_matcap(path)
-                self._matcap_panel.refresh()
-            else:
-                continue
-            event.acceptProposedAction()
-            return
+            if self.open_path(url.toLocalFile()):
+                event.acceptProposedAction()
+                return
         # Nothing here wanted it.  Saying so matters for a copy let go
         # somewhere that is not the model: the copy has to stay where it was,
         # and a drop that quietly did nothing would read as one that worked.
@@ -1120,8 +1291,34 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _droppable(url) -> bool:
-        path = Path(url.toLocalFile())
-        return path.suffix.lower() in (*MESH_SUFFIXES, ".json", *_IMAGE_SUFFIXES)
+        return opens_as(url.toLocalFile()) is not None
+
+    def open_path(self, path: str | Path) -> bool:
+        """Open a file by what it is: a model, a session or a matcap.
+
+        The one door every file arrives through, whether dropped on the
+        window, named on the command line, handed over by the desktop's
+        "Open with" or dragged onto the application itself.  Returns whether
+        the file was one of ours; a file that is but will not load reports
+        that to the artist and still counts as taken, so a drop or a launch
+        does not go on looking for somewhere else to put it.
+        """
+        path = Path(path)
+        kind = opens_as(path)
+        if kind == "model":
+            self.open_model(path)
+        elif kind == "session":
+            self.load_session(path)
+        elif kind == "matcap":
+            self.load_matcap(path)
+        else:
+            return False
+        return True
+
+
+def _plain(text: str) -> str:
+    """A menu entry's text as a name: no accelerator ampersand, no trailing dots."""
+    return text.replace("&", "").rstrip(".").strip()
 
 
 def _remembered(written) -> Path | None:

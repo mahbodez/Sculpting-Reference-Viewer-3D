@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ssl
+
 import pytest
 
+from refview.core import update_check
 from refview.core.update_check import (
     RELEASES_PAGE,
     Release,
@@ -11,7 +14,48 @@ from refview.core.update_check import (
     is_newer,
     parse_version,
     release_from_payload,
+    trusted_roots,
 )
+
+
+def test_the_release_check_trusts_a_certificate_bundle():
+    """Whatever the interpreter was built with, the context has roots in it."""
+    context = trusted_roots()
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode is ssl.CERT_REQUIRED
+    assert context.cert_store_stats()["x509"] > 0
+
+
+def test_the_fetch_hands_urlopen_the_trusted_context(monkeypatch):
+    seen = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"tag_name": "v9.9.9", "html_url": "https://example.test/r"}'
+
+    def fake_urlopen(request, timeout, context):
+        seen["context"] = context
+        return _Response()
+
+    monkeypatch.setattr(update_check.urllib.request, "urlopen", fake_urlopen)
+    release = update_check.fetch_latest_release()
+    assert release == Release("9.9.9", "https://example.test/r")
+    assert isinstance(seen["context"], ssl.SSLContext)
+
+
+def test_a_certificate_failure_is_reported_not_raised(monkeypatch):
+    def failing(request, timeout, context):
+        raise ssl.SSLCertVerificationError("unable to get local issuer certificate")
+
+    monkeypatch.setattr(update_check.urllib.request, "urlopen", failing)
+    with pytest.raises(UpdateCheckError, match="local issuer"):
+        update_check.fetch_latest_release()
 
 
 @pytest.mark.parametrize(

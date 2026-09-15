@@ -26,13 +26,17 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -50,6 +54,8 @@ from ..core.preferences import (
 from .elements.clone import watch_tree
 from .elements.naming import name_tree, register
 from .elements.reflow import Reflow
+from .hotkeys import HotkeyStore, KeyBox, assign, describe, group_of, listed
+from .hotkeys import store as hotkey_store
 from .preferences import PreferenceStore
 from .widgets import ColorButton, SliderSpin, form_group, name_sliders, relax_widths, scrollable
 
@@ -59,11 +65,12 @@ _GEOMETRY = "preferences/geometry"
 #: The groups, in the order they appear, and what each one is called in the
 #: Settings menu.  One list so that the menu and the window cannot come to
 #: disagree about what the groups are.
-GROUPS = ("interface", "navigation", "startup", "viewport", "folders")
+GROUPS = ("interface", "navigation", "hotkeys", "startup", "viewport", "folders")
 
 _TITLES = {
     "interface": "Interface",
     "navigation": "Navigation",
+    "hotkeys": "Hotkeys",
     "startup": "Startup",
     "viewport": "Viewport",
     "folders": "Folders",
@@ -73,12 +80,18 @@ _TITLES = {
 class SettingsWindow(QWidget):
     """Every preference, in groups, applied as it is changed."""
 
-    def __init__(self, store: PreferenceStore, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        store: PreferenceStore,
+        parent: QWidget | None = None,
+        hotkeys: HotkeyStore | None = None,
+    ) -> None:
         super().__init__(parent, Qt.WindowType.Window)
         self.setWindowTitle("Preferences")
         self.resize(460, 640)
 
         self._store = store
+        self._hotkeys = hotkeys or hotkey_store()
         self._busy = False
         self._groups: dict[str, QWidget] = {}
 
@@ -99,6 +112,7 @@ class SettingsWindow(QWidget):
         watch_tree(self._body)
 
         self._store.changed.connect(self.refresh)
+        self._hotkeys.changed.connect(self._refresh_hotkeys)
         self.refresh()
 
         close = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
@@ -121,6 +135,7 @@ class SettingsWindow(QWidget):
         """
         self._build_interface()
         self._build_navigation()
+        self._build_hotkeys()
         self._build_startup()
         self._build_viewport()
         self._build_folders()
@@ -184,6 +199,80 @@ class SettingsWindow(QWidget):
         self._invert_y.toggled.connect(
             lambda value: self._write("navigation", "invert_orbit_y", value)
         )
+
+    def _build_hotkeys(self) -> None:
+        """Every command with its keys, each key a box that takes one keystroke.
+
+        The list is the menus' entries and the view's letters, and after them
+        whichever of the panels' buttons the artist has put a key on.  The
+        rest of the buttons are not listed -- there are hundreds -- because
+        the way to put a key on one is to Ctrl-Alt-click it where it is, and
+        the note under the table says so.
+        """
+        box, form = form_group(_TITLES["hotkeys"])
+        self._hotkey_table = QTableWidget(0, 2)
+        table = self._hotkey_table
+        table.setHorizontalHeaderLabels(["Command", "Key"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(1, 150)
+        table.verticalHeader().setVisible(False)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setMinimumHeight(360)
+        table.setToolTip(
+            "Click a box and press the keys.  Assign a key that is already in use\n"
+            "and you are asked before it is taken away from what had it."
+        )
+        note = QLabel(
+            "Ctrl+Alt-click any button or switch in a panel to put a key on it "
+            "(Cmd+Option on a Mac)."
+        )
+        note.setWordWrap(True)
+        reset = QPushButton("Reset Hotkeys")
+        reset.setToolTip("Every key back to how it ships.")
+        reset.clicked.connect(lambda: self._hotkeys.reset())
+
+        form.addRow(table)
+        form.addRow(note)
+        form.addRow(reset)
+        self._add("hotkeys", box)
+        self._refresh_hotkeys()
+
+    def _refresh_hotkeys(self) -> None:
+        """Rebuild the table from the store.
+
+        Rebuilt rather than patched, because the set of rows moves: a key put
+        on a panel's button adds one, taking it away removes one.
+        """
+        table = self._hotkey_table
+        commands = listed(self._hotkeys)
+        table.setRowCount(0)
+        table.setRowCount(len(commands))
+        for row, command_id in enumerate(commands):
+            label = describe(self._hotkeys, command_id)
+            group = group_of(self._hotkeys, command_id)
+            # The menu it is in, or the panel: "Clear All" on its own could
+            # be any of five.
+            name = QTableWidgetItem(f"{group}  ›  {label}" if group else label)
+            name.setToolTip(name.text())
+            table.setItem(row, 0, name)
+            edit = KeyBox(self._hotkeys.keys_for(command_id))
+            edit.committed.connect(
+                lambda keys, command_id=command_id, edit=edit: self._hotkey_edited(
+                    command_id, keys, edit
+                )
+            )
+            table.setCellWidget(row, 1, edit)
+        table.resizeRowsToContents()
+
+    def _hotkey_edited(self, command_id: str, keys: str, edit: KeyBox) -> None:
+        """One box was typed into: assign, asking first if the key is taken."""
+        if keys == self._hotkeys.keys_for(command_id):
+            return
+        if not assign(self._hotkeys, command_id, keys, self):
+            # Declined: the box goes back to what the command has.
+            edit.hold(self._hotkeys.keys_for(command_id))
 
     def _build_startup(self) -> None:
         box, form = form_group(_TITLES["startup"])

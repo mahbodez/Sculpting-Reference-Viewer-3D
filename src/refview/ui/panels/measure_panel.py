@@ -47,7 +47,7 @@ class MeasurePanel(Panel):
     selection_changed = Signal(object)
 
     def _build(self) -> None:
-        self._toggle = QPushButton("Measure  (M)")
+        self._toggle = QPushButton("Measure")
         self._toggle.setCheckable(True)
         self._toggle.setToolTip(
             "Click two points on the model to record a distance.\n"

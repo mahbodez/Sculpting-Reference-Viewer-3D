@@ -15,6 +15,7 @@ what is tested is the round trip through the settings, not the two halves.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -289,6 +290,59 @@ def test_the_drop_is_only_offered_over_the_model(window, monkeypatch):
     window.dragMoveEvent(over_the_model)
     assert over_the_model.isAccepted()
     del mime_a, mime_b
+
+
+def _file_drag(window, path, kind):
+    """A file being dragged over the middle of the view, as ``kind`` of event."""
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+    point = _middle_of_the_view(window)
+    # A drop is given the fractional position; the two before it are not.
+    return kind(
+        QPointF(point) if kind is QDropEvent else point,
+        Qt.DropAction.CopyAction,
+        mime,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    ), mime
+
+
+def test_a_model_file_is_welcome_at_every_step_of_its_drag(window, tmp_path, monkeypatch):
+    """Entering, moving and dropping: a drop lands only where the move before it was accepted."""
+    from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+
+    path = tmp_path / "figure.obj"
+    path.write_text(chr(10).join(("v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3", "")))
+    opened = []
+    monkeypatch.setattr(window, "open_model", lambda where: opened.append(Path(where)))
+
+    entering, mime_a = _file_drag(window, path, QDragEnterEvent)
+    window.dragEnterEvent(entering)
+    assert entering.isAccepted()
+
+    moving, mime_b = _file_drag(window, path, QDragMoveEvent)
+    window.dragMoveEvent(moving)
+    assert moving.isAccepted()
+
+    dropping, mime_c = _file_drag(window, path, QDropEvent)
+    window.dropEvent(dropping)
+    assert dropping.isAccepted()
+    assert opened == [path]
+    del mime_a, mime_b, mime_c
+
+
+def test_a_file_the_window_cannot_open_is_refused_on_the_way_past(window, tmp_path):
+    from PySide6.QtGui import QDragMoveEvent
+
+    path = tmp_path / "notes.txt"
+    path.write_text("nothing the viewer reads")
+    moving, mime = _file_drag(window, path, QDragMoveEvent)
+    window.dragMoveEvent(moving)
+    assert not moving.isAccepted()
+    del mime
 
 
 def test_resetting_forgets_the_saved_layout(window):

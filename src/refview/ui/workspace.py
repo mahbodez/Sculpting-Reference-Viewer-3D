@@ -23,10 +23,12 @@ from contextlib import suppress
 from PySide6.QtCore import QByteArray, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import QCheckBox, QMainWindow, QTabBar, QWidget
 
+from ..core.hotkeys import CONTROL_PREFIX
 from .elements.clone import watch_tree
 from .elements.custom import CustomPanel
 from .elements.dock import PanelDock, make_switch
-from .elements.naming import forget, name_tree, register
+from .elements.keys import COMMAND_PROPERTY, watch_keys
+from .elements.naming import CAPTION_PROPERTY, forget, name_tree, register
 from .panels.base import Panel
 from .widgets import scrollable
 
@@ -85,6 +87,12 @@ class Workspace(QObject):
             switch.setChecked(bool(panel.shown()))
             switch.toggled.connect(panel.set_shown)
             self._switches.append((switch, panel))
+            # Named, so that a key can be put on it: "take the armature off
+            # the model" is worth a key more than most things are.
+            switch.setObjectName("shown")
+            switch.setProperty(CAPTION_PROPERTY, f"Show {title}")
+            register(switch, f"dock.{key}")
+            watch_keys(switch)
         return dock
 
     def panel(self, key: str) -> Panel | None:
@@ -139,15 +147,25 @@ class Workspace(QObject):
                 )
                 switch.setChecked(bool(panel.shown()))
                 switch.toggled.connect(panel.set_shown)
+                # The tab's switch speaks for the same panel as the bar's, so
+                # a key put on either is the same key.
+                key = self._key_titled(bar.tabText(index))
+                if key is not None:
+                    switch.setProperty(COMMAND_PROPERTY, f"{CONTROL_PREFIX}dock.{key}.shown")
+                    watch_keys(switch)
                 bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, switch)
                 bar.setTabToolTip(index, bar.tabText(index))
                 self._switches.append((switch, panel))
 
     def _panel_titled(self, title: str) -> Panel | None:
         """The panel whose dock is called ``title``, if there is one."""
+        key = self._key_titled(title)
+        return self._panels.get(key) if key is not None else None
+
+    def _key_titled(self, title: str) -> str | None:
         for key, dock in self._docks.items():
             if dock.windowTitle() == title:
-                return self._panels.get(key)
+                return key
         return None
 
     def _dress_soon(self) -> None:

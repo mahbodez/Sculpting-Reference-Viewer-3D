@@ -44,7 +44,7 @@ from .preferences import (
     StartupPreferences,
     ViewportPreferences,
 )
-from .raycast import Hit, raycast_mesh, snap_to_vertex
+from .raycast import Hit, raycast_many, raycast_mesh, snap_to_vertex
 from .section import SectionAxis, SectionMode, SectionSettings, section_segments
 from .session import SESSION_SUFFIX, Session, sidecar_path
 from .settings import (
@@ -121,6 +121,7 @@ __all__ = [
     "median_plane",
     "mirror_landmarks",
     "mirror_point",
+    "raycast_many",
     "raycast_mesh",
     "rebuild",
     "section_segments",

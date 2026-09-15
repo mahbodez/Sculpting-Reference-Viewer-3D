@@ -15,6 +15,8 @@ from PySide6.QtGui import (
     QPen,
 )
 
+from ..core.raycast import raycast_many
+
 TEXT_HALO = QColor(0, 0, 0, 215)
 DEPTH_COLOR = QColor(120, 200, 255)
 
@@ -233,16 +235,38 @@ class MarkerVisibility:
     def buried(self, point):
         key = tuple(float(v) for v in point)
         if key not in self._cache:
-            picker = self.picker
-            x, y, _ = picker.camera.project(point, picker.width, picker.height)
-            hit = picker.hit(x, y)
+            self.prefetch([key])
+        return self._cache[key]
+
+    def prefetch(self, points) -> None:
+        """Answer for a batch of points at once, ahead of being asked one by one.
+
+        Every point still unanswered gets its ray cast in the same pass, so
+        the overlay pays the price of one occlusion test for a whole wire of
+        nodes rather than once per node on every frame of an orbit.
+        """
+        wanted = dict.fromkeys(tuple(float(v) for v in point) for point in points)
+        missing = [key for key in wanted if key not in self._cache]
+        if not missing:
+            return
+        picker = self.picker
+        camera = picker.camera
+        if len(self._cache) + len(missing) > 4096:
+            self._cache.clear()
+        if picker.mesh is None:
+            self._cache.update(dict.fromkeys(missing, False))
+            return
+        targets = np.array(missing, dtype=np.float64)
+        xs, ys, _ = camera.project_many(targets, picker.width, picker.height)
+        origins, directions = camera.rays(xs, ys, picker.width, picker.height)
+        hits = raycast_many(origins, directions, picker.mesh)
+        planes = self.section.planes()
+        forward = camera.forward
+        tolerance = max(camera.scene_radius * 1e-4, 1e-7)
+        for key, target, hit in zip(missing, targets, hits, strict=True):
             sunk = False
             if hit is not None:
-                clipped = any(plane.distances(hit.point) > 0 for plane in self.section.planes())
-                depth = np.dot(np.asarray(point) - hit.point, picker.camera.forward)
-                tolerance = max(picker.camera.scene_radius * 1e-4, 1e-7)
+                clipped = any(plane.distances(hit.point) > 0 for plane in planes)
+                depth = np.dot(target - hit.point, forward)
                 sunk = not clipped and depth > tolerance
-            if len(self._cache) > 4096:
-                self._cache.clear()
             self._cache[key] = bool(sunk)
-        return self._cache[key]
