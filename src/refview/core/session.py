@@ -14,6 +14,7 @@ from .measurement import Measurement, MeasurementSettings
 from .orientation import OrientationSettings
 from .serialization import decode, encode
 from .settings import NavigationSettings, RenderSettings
+from .skeleton import Skeleton, SkeletonSettings
 
 #: Suffix used for the sidecar file saved next to a model.
 SESSION_SUFFIX = ".refview.json"
@@ -26,9 +27,10 @@ class Session:
     #: 1: the original format.  2 added the annotation layer.  3 added the
     #: cross-section, pedestal, high-quality and navigation settings, 4 the
     #: model orientation, 5 the armature and the landmarks behind it, 6 the
-    #: primary forms, and 7 the arrangement of the panels.  Older files still
-    #: load: :func:`decode` fills anything missing from the defaults.
-    version: int = 7
+    #: primary forms, 7 the arrangement of the panels, and 8 the skeletons
+    #: and their pose.  Older files still load: :func:`decode` fills anything
+    #: missing from the defaults.
+    version: int = 8
     mesh_path: str | None = None
     camera: dict = field(default_factory=dict)
     render: RenderSettings = field(default_factory=RenderSettings)
@@ -41,6 +43,11 @@ class Session:
     armatures: list[Armature] = field(default_factory=list)
     form_settings: FormSettings = field(default_factory=FormSettings)
     forms: list[PrimaryForm] = field(default_factory=list)
+    skeleton_settings: SkeletonSettings = field(default_factory=SkeletonSettings)
+    #: The skeletons and the pose each stands in.  The skin weights of a
+    #: rigged model are not here: they are the model's, and are read back
+    #: out of the model file and matched to the joints by name.
+    skeletons: list[Skeleton] = field(default_factory=list)
     navigation: NavigationSettings = field(default_factory=NavigationSettings)
     orientation: OrientationSettings = field(default_factory=OrientationSettings)
     #: Where the panels were, and any the artist had built by hand.  Opaque

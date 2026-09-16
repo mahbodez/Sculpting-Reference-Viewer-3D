@@ -19,6 +19,7 @@ ANNOTATIONS = "annotations"
 BOOKMARKS = "bookmarks"
 ARMATURE = "armature"
 FORMS = "forms"
+SKELETON = "skeleton"
 
 
 class Command:

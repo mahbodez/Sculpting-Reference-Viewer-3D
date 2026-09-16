@@ -460,10 +460,14 @@ _NAMES: dict[str, str] = {
 }
 
 
-def _node_name(role: str) -> str:
+def role_name(role: str) -> str:
+    """What to call the joint filling a humanoid slot: ``"knee.L"`` is ``"Knee L"``."""
     base, _, side = role.partition(".")
     name = _NAMES.get(base, base.replace("_", " ").title())
     return f"{name} {side}" if side else name
+
+
+_node_name = role_name
 
 
 def _humanoid_bones(build: _Build) -> list[tuple[str, str, str]]:

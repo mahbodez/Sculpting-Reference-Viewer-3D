@@ -166,9 +166,9 @@ def test_a_batch_of_markers_is_tested_in_one_pass_and_answered_alike(monkeypatch
     expected = [alone.buried(point) for point in asked]
 
     casts = []
-    def counted(origins, directions, mesh):
+    def counted(origins, directions, mesh, reach=None):
         casts.append(len(origins))
-        return raycast.raycast_many(origins, directions, mesh)
+        return raycast.raycast_many(origins, directions, mesh, reach)
     monkeypatch.setattr(markers, "raycast_many", counted)
     together = MarkerVisibility()
     together.prepare(picker, SectionSettings())
@@ -177,6 +177,59 @@ def test_a_batch_of_markers_is_tested_in_one_pass_and_answered_alike(monkeypatch
     answers = [together.buried(point) for point in asked]
     assert answers == expected == [False, False, True, True, False]
     assert casts == [len(asked)]
+
+
+def test_a_moving_view_reads_the_last_pass_and_asks_again_once_it_has_settled(monkeypatch):
+    """Frames within the throttle reuse the answers; the first frame after it recasts."""
+    from refview.core import raycast
+    from refview.ui import markers
+
+    points = np.array([[-1, -1, 0], [1, -1, 0], [0, 1, 0]], dtype=np.float32)
+    faces = np.array([[0, 1, 2]], dtype=np.uint32)
+    mesh = Mesh(points, compute_vertex_normals(points, faces), faces)
+    asked = [(0, 0, 0.1), (0, 0, -0.1)]
+    casts = []
+
+    def counted(origins, directions, mesh, reach=None):
+        casts.append(len(origins))
+        return raycast.raycast_many(origins, directions, mesh, reach)
+
+    monkeypatch.setattr(markers, "raycast_many", counted)
+    clock = [100.0]
+    monkeypatch.setattr(markers, "perf_counter", lambda: clock[0])
+    visibility = MarkerVisibility()
+
+    def frame(eye_x):
+        visibility.prepare(SurfacePicker(Camera(eye=np.array([eye_x, 0.0, 5.0])), mesh, 800, 600),
+                           SectionSettings())
+        visibility.prefetch(asked)
+        return [visibility.buried(point) for point in asked]
+
+    assert frame(0.0) == [False, True] and casts == [2] and not visibility.pending
+    clock[0] += 0.02
+    assert frame(0.1) == [False, True] and casts == [2] and visibility.pending
+    clock[0] += 0.2
+    assert frame(0.2) == [False, True] and casts == [2, 2] and not visibility.pending
+    # A point the last pass never saw is cast even while the throttle holds.
+    clock[0] += 0.02
+    visibility.prepare(SurfacePicker(Camera(eye=np.array([0.3, 0.0, 5.0])), mesh, 800, 600),
+                       SectionSettings())
+    visibility.prefetch([*asked, (0, 0, -0.2)])
+    assert casts == [2, 2, 1]
+
+
+def test_the_occlusion_ray_stops_at_the_marker():
+    """A surface behind a marker is never gathered, and never counts as burying it."""
+    from refview.core.raycast import raycast_many
+
+    points = np.array([[-1, -1, -1], [1, -1, -1], [0, 1, -1]], dtype=np.float32)
+    faces = np.array([[0, 1, 2]], dtype=np.uint32)
+    mesh = Mesh(points, compute_vertex_normals(points, faces), faces)
+    origin = np.array([[0.0, 0.0, 5.0]])
+    direction = np.array([[0.0, 0.0, -1.0]])
+    assert raycast_many(origin, direction, mesh)[0] is not None
+    assert raycast_many(origin, direction, mesh, np.array([5.0]))[0] is None
+    assert raycast_many(origin, direction, mesh, np.array([6.5]))[0] is not None
 
 
 def test_section_rail_is_a_screen_space_cue_at_the_right_edge():

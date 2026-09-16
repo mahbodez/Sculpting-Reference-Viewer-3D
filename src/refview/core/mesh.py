@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .spatial import TriangleIndex
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle, types only
+    from .skeleton import Rig
 
 
 class MeshLoadError(RuntimeError):
@@ -77,6 +81,7 @@ class Mesh:
         "name",
         "source_offset",
         "units",
+        "rig",
         "_bounds",
         "_index",
     )
@@ -89,6 +94,7 @@ class Mesh:
         name: str = "mesh",
         source_offset: np.ndarray | None = None,
         units: MeshUnits | None = None,
+        rig: Rig | None = None,
     ) -> None:
         self.positions = np.ascontiguousarray(positions, dtype=np.float32).reshape(-1, 3)
         self.normals = np.ascontiguousarray(normals, dtype=np.float32).reshape(-1, 3)
@@ -102,6 +108,10 @@ class Mesh:
             np.zeros(3) if source_offset is None else np.asarray(source_offset, dtype=np.float64)
         )
         self.units = units
+        #: The skeleton and skin weights the file came with, in this mesh's
+        #: own coordinates, or ``None`` for a model that has no bones.  See
+        #: :class:`refview.core.skeleton.Rig`.
+        self.rig = rig
         self._bounds: Bounds | None = None
         self._index: TriangleIndex | None = None
 
@@ -142,6 +152,8 @@ class Mesh:
         rotation = np.asarray(rotation, dtype=np.float64)
         if np.allclose(rotation, np.eye(3)):
             return self
+        turn = np.eye(4)
+        turn[:3, :3] = rotation
         return Mesh(
             self.positions @ rotation.T.astype(np.float32),
             self.normals @ rotation.T.astype(np.float32),
@@ -149,6 +161,7 @@ class Mesh:
             self.name,
             source_offset=rotation @ self.source_offset,
             units=self.units,
+            rig=None if self.rig is None else self.rig.transformed(turn),
         )
 
     def recentered(self) -> "Mesh":
@@ -156,6 +169,8 @@ class Mesh:
         offset = self.bounds.center
         if np.allclose(offset, 0.0):
             return self
+        shift = np.eye(4)
+        shift[:3, 3] = -offset
         return Mesh(
             self.positions - offset.astype(np.float32),
             self.normals,
@@ -163,6 +178,7 @@ class Mesh:
             self.name,
             source_offset=self.source_offset + offset,
             units=self.units,
+            rig=None if self.rig is None else self.rig.transformed(shift),
         )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid

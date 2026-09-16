@@ -11,7 +11,9 @@ the stroke in progress is previewed here, where it costs nothing.
 An armature is drawn here too, and for the opposite reason: it lives *inside*
 the form, so geometry the model could hide would be a wire nobody ever saw.
 It is drawn over the model instead, and the part standing behind the surface
-is dimmed rather than cut away, which says where it is without losing it.
+is dimmed rather than cut away, which says where it is without losing it.  A
+skeleton is drawn the same way, its bones as the tapered lozenges a rigging
+application draws so that which end is the joint can be read at a glance.
 """
 
 from __future__ import annotations
@@ -27,12 +29,14 @@ from ..core.armature import Armature, ArmatureSettings, BoneLabels
 from ..core.camera import Camera
 from ..core.forms import form_spec
 from ..core.measurement import Measurement, MeasurementSettings
+from ..core.skeleton import Skeleton, SkeletonSettings
 from .annotate_tool import AnnotateTool
 from .armature_tool import ArmatureTool, Handle
 from .form_tool import FormTool
 from .markers import MarkerVisibility, VisualMarker, draw_text
 from .measure_tool import MeasureTool
 from .picking import SurfacePicker
+from .pose_tool import PoseTool
 from .state import ViewerState
 
 _AXIS_COLORS = (QColor(226, 92, 92), QColor(126, 200, 108), QColor(96, 152, 228))
@@ -78,6 +82,8 @@ class OverlayParts:
     #: The landmarks the forms were built from.  The clay itself is
     #: geometry and is drawn by the renderer whatever this says.
     forms: bool = True
+    #: The skeletons: joints and the bones between them.
+    skeleton: bool = True
     #: The axis cross in the corner.
     gizmo: bool = True
     #: The readout: model name, triangle count, projection, tool hints.
@@ -105,6 +111,17 @@ def project_visible(camera: Camera, point, width: int, height: int) -> QPointF |
     return QPointF(x, y)
 
 
+def project_visible_many(camera: Camera, points, width: int, height: int) -> list:
+    """Every point of a batch in widget pixels, ``None`` where one is behind the camera."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(points) == 0:
+        return []
+    ahead = (points - camera.eye) @ camera.forward > 0.0
+    xs, ys, depth = camera.project_many(points, width, height)
+    shown = ahead & (depth >= -1.0) & (depth <= 1.0)
+    return [QPointF(x, y) if ok else None for x, y, ok in zip(xs, ys, shown, strict=True)]
+
+
 class ViewportOverlay:
     """Draws measurements, tool previews, the orientation gizmo and the readout."""
 
@@ -116,6 +133,24 @@ class ViewportOverlay:
         # Where this frame's readout box ended up, so a caption asked to
         # share its corner can sit under it rather than on it.
         self._hud_rect: QRectF | None = None
+        #: Each skeleton's joint positions, worked out once per frame and
+        #: read by everything in the frame that wants them.
+        self._joints: dict[int, np.ndarray] = {}
+
+    @property
+    def pending(self) -> bool:
+        """Whether the last frame drew from stale occlusion answers."""
+        return self._visibility.pending
+
+    @property
+    def THROTTLE(self) -> float:  # noqa: N802 - named for the constant it forwards
+        return self._visibility.THROTTLE
+
+    def _joint_positions(self, skeleton: Skeleton) -> np.ndarray:
+        held = self._joints.get(id(skeleton))
+        if held is None:
+            held = self._joints[id(skeleton)] = skeleton.positions()
+        return held
 
     def draw(
         self,
@@ -129,14 +164,32 @@ class ViewportOverlay:
         buried: frozenset[Handle] = frozenset(),
         parts: OverlayParts = ALL_PARTS,
         forms: FormTool | None = None,
+        pose: PoseTool | None = None,
+        occlude: bool = True,
     ) -> None:
+        """Draw everything over the scene.
+
+        ``occlude`` off skips asking the surface which markers stand behind
+        it, and draws them all at full strength.  For the frames of a pose
+        drag: the model is re-posed at every one, the test would have to
+        index the fresh surface each time, and the wire being pulled is
+        what the artist is watching, not its depth.
+        """
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         self._hud_rect = None
+        self._joints = {}
 
         self._visibility.prepare(SurfacePicker(state.camera, state.mesh, width, height),
                                  state.render.section)
-        self._visibility.prefetch(self._marked_points(state, parts, forms is not None))
+        if occlude:
+            self._visibility.prefetch(
+                self._marked_points(state, parts, forms is not None, pose is not None)
+            )
+        else:
+            self._visibility.assume_seen(
+                self._marked_points(state, parts, forms is not None, pose is not None)
+            )
         settings = state.measurement_settings
         if parts.measurements and settings.show_all:
             for index, measurement in enumerate(state.measurements):
@@ -150,12 +203,14 @@ class ViewportOverlay:
             self._draw_armature(painter, state, armature, width, height, buried)
         if parts.forms and forms is not None:
             self._draw_forms(painter, state, forms, width, height)
+        if parts.skeleton and pose is not None:
+            self._draw_skeletons(painter, state, pose, width, height)
         if parts.tools:
             self._draw_annotation(painter, state, annotate, width, height)
         if parts.gizmo:
             self._draw_gizmo(painter, state.camera, width, height)
         if parts.readout:
-            self._draw_hud(painter, state, tool, annotate, armature, width, height, forms)
+            self._draw_hud(painter, state, tool, annotate, armature, width, height, forms, pose)
 
     def invalidate_visibility(self) -> None:
         self._visibility = MarkerVisibility()
@@ -171,7 +226,9 @@ class ViewportOverlay:
             if self._visibility.buried(node.at)
         )
 
-    def _marked_points(self, state: ViewerState, parts: OverlayParts, forms: bool) -> list:
+    def _marked_points(
+        self, state: ViewerState, parts: OverlayParts, forms: bool, pose: bool = False
+    ) -> list:
         """Every point the frame will ask the surface about, so it is asked once.
 
         Casting the rays one at a time made a visible wire cost more than
@@ -193,6 +250,10 @@ class ViewportOverlay:
             for form in state.forms:
                 if form.visible:
                     points += [landmark.at for landmark in form.landmarks]
+        if parts.skeleton and pose and state.skeleton_settings.show_all:
+            for skeleton in state.skeletons:
+                if skeleton.visible:
+                    points += [tuple(at) for at in self._joint_positions(skeleton)]
         return points
 
     def draw_caption(
@@ -527,6 +588,128 @@ class ViewportOverlay:
         VisualMarker(point, color, 5, "cross", hollow=hollow, buried=buried).draw(painter)
 
     # ------------------------------------------------------------------
+    # Skeletons
+    # ------------------------------------------------------------------
+
+    def _draw_skeletons(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        tool: PoseTool,
+        width: int,
+        height: int,
+    ) -> None:
+        settings = state.skeleton_settings
+        if not settings.show_all:
+            return
+        for index, skeleton in enumerate(state.skeletons):
+            if skeleton.visible:
+                self._draw_bones(painter, state, skeleton, index, tool, width, height)
+        if tool.active and tool.hover_point is not None:
+            hover = project_visible(state.camera, tool.hover_point, width, height)
+            if hover is not None:
+                self._draw_crosshair(painter, hover, _PENDING_COLOR)
+
+    def _draw_bones(
+        self,
+        painter: QPainter,
+        state: ViewerState,
+        skeleton: Skeleton,
+        index: int,
+        tool: PoseTool,
+        width: int,
+        height: int,
+    ) -> None:
+        settings = state.skeleton_settings
+        camera = state.camera
+        color = to_qcolor(skeleton.color)
+        faded = to_qcolor(skeleton.color, settings.buried_alpha)
+        at = self._joint_positions(skeleton)
+        screen = project_visible_many(camera, at, width, height)
+        sunk = [self._visibility.buried(point) for point in at]
+
+        held = tool.grabbed or tool.hover_bone
+        for parent, child in skeleton.bones():
+            start, end = screen[parent], screen[child]
+            if start is None or end is None:
+                continue
+            buried = sunk[parent] and sunk[child]
+            lit = held == (index, child) or tool.selected == (index, child)
+            self._draw_bone(painter, start, end, faded if buried else color, settings, lit)
+
+        active = tool.grabbed or tool.hover_joint
+        for position, joint in enumerate(skeleton.joints):
+            point = screen[position]
+            if point is None:
+                continue
+            if settings.show_radii and joint.radius > 0.0:
+                self._draw_ring(painter, point, color, self._joint_pixels(
+                    camera, at[position], joint.radius, width, height, settings.joint_radius
+                ))
+            # A buried joint is faded rather than ringed: half a rig's joints
+            # stand inside the body at all times, and a dashed ring on every
+            # one of them would be the loudest thing on the screen.
+            here = faded if sunk[position] else color
+            chosen = tool.selected == (index, position)
+            lit = active == (index, position) or chosen
+            radius = settings.joint_radius if joint.locked else settings.handle_radius
+            # One ellipse per joint rather than the marker with its drop
+            # shadow: a rig has a hundred of these, drawn at every frame.
+            if lit:
+                radius += 2.0
+            painter.setPen(QPen(_HANDLE_HOVER if lit else _HANDLE_OUTLINE, 1.4))
+            painter.setBrush(here)
+            painter.drawEllipse(point, radius, radius)
+            if chosen:
+                self._draw_ring(painter, point, _PENDING_COLOR, settings.handle_radius + 5.0)
+            if settings.show_names:
+                self._draw_label(
+                    painter, point, joint.name, state.measurement_settings.label_size, color
+                )
+
+    def _draw_bone(
+        self,
+        painter: QPainter,
+        start: QPointF,
+        end: QPointF,
+        color: QColor,
+        settings: SkeletonSettings,
+        lit: bool,
+    ) -> None:
+        """A bone as a lozenge: wide near the joint it hangs from, tapering to its end.
+
+        The shape says which end is which, which a plain line cannot, and it
+        is how every rigging application draws one, so an artist arriving
+        from Max or Blender reads it without being told.
+        """
+        along = end - start
+        length = float(np.hypot(along.x(), along.y()))
+        if length < 1e-6:
+            return
+        direction = along / length
+        normal = QPointF(-direction.y(), direction.x())
+        half = min(settings.bone_width * 1.6, length * 0.12) + (1.5 if lit else 0.0)
+        waist = start + direction * min(length * 0.18, 18.0)
+        path = QPainterPath(start)
+        path.lineTo(waist + normal * half)
+        path.lineTo(end)
+        path.lineTo(waist - normal * half)
+        path.closeSubpath()
+        fill = QColor(color)
+        fill.setAlphaF(fill.alphaF() * (0.6 if lit else 0.4))
+        painter.setPen(QPen(_HANDLE_HOVER if lit else color, 1.4 if lit else 1.1))
+        painter.setBrush(fill)
+        painter.drawPath(path)
+
+    @staticmethod
+    def _joint_pixels(camera, at, radius, width, height, floor) -> float:
+        centre = project_visible(camera, at, width, height)
+        edge = project_visible(camera, np.asarray(at) + camera.right * radius, width, height)
+        if centre is None or edge is None:
+            return floor
+        return max(float(np.hypot(edge.x() - centre.x(), edge.y() - centre.y())), floor)
+
+    # ------------------------------------------------------------------
     # Forms
     # ------------------------------------------------------------------
 
@@ -722,6 +905,15 @@ class ViewportOverlay:
     # Chrome
     # ------------------------------------------------------------------
 
+    def _pose_hud(self, state: ViewerState, tool: PoseTool) -> list[str]:
+        """What the pose tool is waiting for."""
+        settings = state.skeleton_settings
+        if settings.fit:
+            return ["Pose (fit): drag a joint to move it; its children stay put"]
+        if tool.selected is not None:
+            return ["Pose: drag a joint to swing it, Shift+drag rolls it, click adds a child"]
+        return ["Pose: drag a joint to swing the bone above it, click elsewhere to start one"]
+
     def _armature_hud(self, state: ViewerState, tool: ArmatureTool) -> list[str]:
         """What the armature tool is waiting for, said in as few lines as it takes."""
         settings = state.armature_settings
@@ -780,6 +972,7 @@ class ViewportOverlay:
         width: int,
         height: int,
         forms: FormTool | None = None,
+        pose: PoseTool | None = None,
     ) -> None:
         lines = []
         if state.mesh is None:
@@ -806,6 +999,8 @@ class ViewportOverlay:
             lines.extend(self._armature_hud(state, armature))
         if forms is not None and forms.active:
             lines.extend(self._forms_hud(state, forms))
+        if pose is not None and pose.active:
+            lines.extend(self._pose_hud(state, pose))
 
         font = QFont(painter.font())
         font.setPointSize(10)

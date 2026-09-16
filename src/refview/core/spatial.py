@@ -74,7 +74,7 @@ class TriangleIndex:
         return np.unique(triangles)
 
     def candidates_many(
-        self, origins: np.ndarray, directions: np.ndarray
+        self, origins: np.ndarray, directions: np.ndarray, reach: np.ndarray | None = None
     ) -> tuple[np.ndarray, np.ndarray]:
         """Which triangles are worth intersecting for each of a batch of rays.
 
@@ -84,12 +84,19 @@ class TriangleIndex:
         answer.  Sweeping all the rays' boxes through each level together is
         what makes the overlay's per-node occlusion test cost about as much
         for two dozen nodes as it once did for one.
+
+        ``reach`` is how far along each ray a hit can still matter: a box
+        the ray only enters beyond it is not descended into.  The occlusion
+        test asks about the stretch between the eye and a marker and
+        nothing behind the marker, which on a figure is the whole back of
+        the body.
         """
         origins = np.asarray(origins, dtype=np.float64).reshape(-1, 3)
         directions = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
         empty = np.zeros(0, dtype=np.int64)
         if self.leaf_count == 0 or len(origins) == 0:
             return empty, empty
+        limit = None if reach is None else np.asarray(reach, dtype=np.float64).reshape(-1)
         with np.errstate(divide="ignore", invalid="ignore"):
             inverse = 1.0 / np.where(np.abs(directions) < _EPSILON, _EPSILON, directions)
         top = len(self._levels[0][0])
@@ -109,6 +116,8 @@ class TriangleIndex:
             entry = np.maximum(np.minimum(near, far), 0.0).max(axis=1)
             exit_ = np.maximum(near, far).min(axis=1)
             entered = exit_ >= entry
+            if limit is not None:
+                entered &= entry <= limit[ray]
             box, ray = box[entered], ray[entered]
             if box.size == 0:
                 return empty, empty

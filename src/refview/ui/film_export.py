@@ -173,6 +173,7 @@ class ExportLook:
             tools=False,  # nothing is being drawn while an export runs
             armature=self.armature,
             forms=self.armature,  # the same helper marks, by the same switch
+            skeleton=self.armature,
             gizmo=self.gizmo,
             readout=self.readout,
         )
@@ -574,7 +575,7 @@ class ExportVideoDialog(QDialog):
         self._annotations = QCheckBox("Annotations painted on the surface")
         self._annotations.setChecked(True)
         self._measurements = QCheckBox("Measurements")
-        self._armature = QCheckBox("Armature")
+        self._armature = QCheckBox("Armature and skeleton")
         self._gizmo = QCheckBox("Orientation gizmo")
         self._readout = QCheckBox("Model readout")
         self._caption = QCheckBox("Which stage this is")

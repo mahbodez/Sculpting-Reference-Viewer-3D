@@ -4,6 +4,75 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.2.0]
+
+### Added
+
+- **Pose.** A skeleton in the sense a rigging application means it: every
+  joint but the root hangs from a parent, turning a joint carries everything
+  below it, and a model that came with skin weights follows the bones.  A
+  rigged GLB or glTF brings its skeleton in with it -- the joints, their bind
+  matrices and the weights that tie the vertices to them -- and the figure
+  is posable the moment it opens.  Posing is by pulling, as a bone is turned
+  in 3ds Max once it is picked: drag a joint and the bone above it swings to
+  follow, carrying the limb; drag a root and the figure moves; `Shift`+drag
+  rolls a joint about its own bone, `Ctrl`+drag pulls it in depth.  Each pull
+  is one undo step.  The **Pose** panel lists the joints as the tree they
+  are, turns the selected one by three sliders, re-hangs it from another
+  joint, resets a joint, a branch or the whole pose, and says whether the
+  model follows the skeleton at all.  `B` arms the tool; with it armed, a
+  click that lands on nothing adds a joint under the selected one, so a
+  skeleton can be built by clicking along it as an armature is.
+
+- **A humanoid skeleton preset**, proportioned to the model's height and
+  stood on the bottom of its box, with the same roles the guided armature
+  uses.  A starting point rather than a fit: in **Fit** mode dragging a joint
+  moves where it rests and its children stay put, so the knee is pulled
+  into the knee without the ankle following.
+
+- **Armatures and skeletons convert into one another.**  An armature is a
+  graph and a skeleton is a tree, so a skeleton is *grown* out of an
+  armature from a root -- the node selected in the Armature tab, else the
+  pelvis, else the best-connected node -- and any bone that would close a
+  loop is left out and counted, which the status bar says.  A guided
+  humanoid comes across whole.  The other way, any skeleton lays an
+  armature under itself as it is posed, roles and all, so the clay modes can
+  read a figure off a rig that arrived with the model.
+
+- **Rigs are read as figures by their names.**  Joints named the way Mixamo,
+  3ds Max's Biped, Unreal, Blender's Rigify and Character Creator name them
+  are recognised -- `LeftUpLeg`, `Bip01 L Thigh`, `thigh_l`, `thigh.L`,
+  `CC_Base_L_Thigh` are all the left hip -- and a model whose rig reads as a
+  humanoid is offered the mapping when it opens.  The guess is a guess, and
+  each joint's Role box is where to correct it.  The role vocabulary is the
+  armature's, so the two agree about what a figure is, and a Biped or any
+  other naming that arrives later only needs its names added to one table.
+
+- **Simplify a rig.**  A game rig carries a hundred joints and a pose is
+  read from twenty of them, so **Simplify** takes out the fingers, the toes
+  past the ball, the face, the breasts, and the twist, share, roll and end
+  helpers, by their names, and re-hangs what is left from the nearest joint
+  that stayed.  A joint with a humanoid role always stays, and the skin
+  weights of what went fold onto the joint that took its place, so the model
+  still follows.  One undo step.
+
+- **Sessions keep the pose.**  The skeletons, their roles and the pose each
+  stands in are written into the session; the skin weights are not, since
+  they are the model's, and are read back out of the model file and matched
+  to the joints by the names the file gave them.  A joint you have deleted
+  hands its weights to the nearest ancestor that still exists.  Sessions from
+  earlier versions load unchanged.
+
+### Changed
+
+- The glTF loader reads the first skin of a file and puts the vertices
+  where the file's own joint transforms put them, which is where every other
+  viewer shows them.  A file saved mid-pose opens mid-pose and unbends.
+  Files with no skin load exactly as before.
+- Turning a model with the Model tab carries its skeletons with it, as it
+  does the armature.
+- The video export's "Armature" switch now also covers the skeleton.
+
 ## [2.1.0]
 
 ### Added

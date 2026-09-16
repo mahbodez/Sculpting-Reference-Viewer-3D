@@ -19,7 +19,8 @@ Built with PySide6 and OpenGL 3.3.
 - Loads OBJ, STL (binary or ASCII) and glTF/GLB files, centring the model on
   the origin automatically. glTF is the one common format that declares its
   unit — metres — and the measurement panel adopts it; OBJ and STL declare
-  nothing, so nothing is guessed.
+  nothing, so nothing is guessed. A glTF with a skin arrives with its
+  skeleton, and posable.
 - Matcap shading with adjustable rotation, contrast, gamma, brightness,
   saturation, tint and vertical flip, inside the **Shading** panel when Matcap
   is selected. High-precision textures and subtle dithering reduce colour banding.
@@ -169,6 +170,51 @@ Deleting a landmark takes any guess mirrored from it along with it. An armature
 you have taken over by hand keeps the nodes you made — its landmarks stay an
 editable record of where the anatomy is, and **Rebuild Nodes** is how you hand
 it back to the preset, keeping your names and whatever you locked.
+
+**Pose**
+
+A skeleton in the sense a rigging application means it, and the one thing the
+armature is not: every joint but the root hangs from a parent, turning a joint
+carries everything below it, and a model that came with skin weights follows
+the bones.
+
+- A rigged GLB or glTF brings its skeleton in with it — the joints, their bind
+  matrices, the weights tying each vertex to up to four of them — and is
+  posable the moment it opens. Files with no skin load as they always did.
+- Posing is by pulling, as a bone is turned in 3ds Max once it is picked:
+  drag a joint and the bone above it swings to follow, carrying the limb;
+  drag a root and the whole figure moves; `Shift`+drag rolls a joint about
+  its own bone; `Ctrl`+drag pulls it in depth. Dragging a bone is dragging
+  the joint at its far end. Each pull is one undo step, and `Esc` drops a
+  half-made one.
+- The **Pose** panel lists the joints as the tree they are, turns the
+  selected one by three sliders for a number read off a reference, re-hangs
+  it from another joint, resets a joint, a branch or the whole pose, and has
+  a switch for whether the model follows the skeleton at all — off, the bones
+  pose in the air and the model stands at rest, which is how a pose is
+  compared against the reference it was read from.
+- Press `B` and click to build a skeleton of your own, each joint hung from
+  the selected one; or stand up the **Humanoid** preset, proportioned to the
+  model's height, and pull it into the model in **Fit** mode, where dragging a
+  joint moves where it rests and its children stay put.
+- Armatures and skeletons convert into one another. A skeleton is *grown*
+  out of an armature from a root — the node selected in the Armature tab,
+  else the pelvis, else the best-connected node — and any bone that would
+  close a loop is left out and counted. The other way, any skeleton lays an
+  armature under itself as it is posed, roles and all, so the clay modes can
+  read a figure off a rig that came with the model.
+- Rigs are read as figures by their names: joints named the way Mixamo,
+  Biped, Unreal, Rigify or Character Creator name them are recognised, and a
+  model whose rig reads as a humanoid is offered the mapping when it opens.
+  A guess, correctable joint by joint in the Role box.
+- **Simplify** takes the detail out of a rig — the fingers, the toes past the
+  ball, the face, the breasts, the twist and share and end helpers — and
+  re-hangs what is left, weights folding onto the joints that stayed. A
+  hundred-joint game rig comes down to the two dozen a pose is read from.
+- The session keeps the skeletons and the pose; the skin weights stay in the
+  model file and are matched back to the joints by the names the file gave
+  them, so renaming a joint costs nothing and deleting one hands its weights
+  to the nearest ancestor left.
 
 **Forms**
 
@@ -783,11 +829,13 @@ src/refview/
              index, camera, raycasting, cross-sections, the pedestal,
              measurements, annotations, the armature and its landmark
              presets, the forms and the convex solids they are built from,
+             the skeleton, its skinning and the rigging that grows one out
+             of an armature or reads one off a file's joint names,
              bookmarks, undo commands, settings, session persistence
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
-             armature and forms tools, the 2D overlay, the observable
+             armature, forms and pose tools, the 2D overlay, the observable
              document, panels, the docks they live in and the main window
   ui/elements/
              the controls the panels are built from: the reflowing layout,
@@ -811,7 +859,8 @@ Three rules keep the pieces apart:
 - **Every document edit is a command.** Four generic commands — set attributes,
   add, remove, replace — cover measurements, annotations, armatures and
   bookmarks alike, so undo needs no new code when a new kind of object turns
-  up. The armature was added without a fifth, and so were the forms.
+  up. The armature was added without a fifth, and so were the forms and the
+  skeletons.
 
 Measurements are drawn in screen space with `QPainter` rather than as 3D
 geometry. That gives reliable line thickness and antialiasing on every driver,

@@ -19,6 +19,7 @@ from ..core.commands import AddItem
 from ..core.history import MEASUREMENTS
 from ..core.mesh import MeshLoadError
 from ..core.mesh_io import MESH_FILTER, MESH_SUFFIXES
+from ..core.rigging import humanoid_roles, looks_humanoid
 from ..core.session import SESSION_SUFFIX
 from ..core.update_check import Release
 from ..paths import model_dir
@@ -38,6 +39,7 @@ from .panels.forms_panel import FormsPanel
 from .panels.measure_panel import MeasurePanel
 from .panels.model_panel import ModelPanel
 from .panels.planes_panel import PlanesPanel
+from .panels.pose_panel import PosePanel
 from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
 from .preferences import LAST_MODEL, LAST_SESSION
@@ -175,12 +177,32 @@ the bottom or a slice</td></tr>
 <tr><td><b>Planes tab</b></td><td>Record the making, and scrub through it</td></tr>
 <tr><td><b>Ctrl+E</b></td><td>Export the making as a video</td></tr>
 </table>
+<h3>Pose</h3>
+<table cellpadding='3'>
+<tr><td><b>B</b></td><td>Arm the pose tool</td></tr>
+<tr><td><b>Click a joint</b></td><td>Select it — in or out of pose mode</td></tr>
+<tr><td><b>Left drag a joint</b></td><td>Swing the bone above it, carrying everything
+below</td></tr>
+<tr><td><b>Left drag a root</b></td><td>Move the whole figure</td></tr>
+<tr><td><b>Left drag a bone</b></td><td>The same as dragging the joint at its far
+end</td></tr>
+<tr><td><b>Shift + drag a joint</b></td><td>Roll it about its own bone</td></tr>
+<tr><td><b>Ctrl/Cmd-drag a joint</b></td><td>Pull it in depth</td></tr>
+<tr><td><b>Left click elsewhere</b></td><td>Add a joint under the selected one
+(armed)</td></tr>
+<tr><td><b>Fit</b></td><td>Dragging a joint moves where it rests; its children stay
+put</td></tr>
+<tr><td><b>Simplify</b></td><td>Take the fingers, face, breasts and helper bones out of
+a rig</td></tr>
+<tr><td><b>Double-click a row</b></td><td>Rename a joint or a skeleton</td></tr>
+<tr><td><b>Esc</b></td><td>Drop a pull without disarming the tool</td></tr>
+</table>
 <h3>Editing</h3>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+Z</b> / <b>Ctrl+Shift+Z</b></td><td>Undo / redo</td></tr>
 </table>
-<p>Undo covers measurements, annotations, the armature, the forms and
-saved views.
+<p>Undo covers measurements, annotations, the armature, the forms, the
+skeletons and saved views.
 Camera moves are not recorded, so a hundred orbits never bury the edit you
 wanted back.</p>
 <p>The Armature tab lays a wire under the model: a graph of named nodes, each
@@ -211,13 +233,33 @@ breastbone, the widest point of the skull -- and the form is worked out from
 them, growing as they go down.  The head arrives in stages, every stage is
 kept, and the slider scrubs back through them.  The landmarks stay editable
 afterwards; ghost the model to read the clay standing inside it.</p>
+<p>The Pose tab is a skeleton in the sense a rigging application means it:
+every joint but the root hangs from a parent, turning a joint carries
+everything below it, and a model that came with skin weights follows the
+bones.  A rigged GLB or glTF brings its skeleton in with it, bound to the
+skin, and if its joints are named the way Mixamo, Biped, Unreal, Rigify or
+Character Creator name them you are offered a mapping onto the humanoid
+roles the Armature tab uses, and <i>Simplify</i> takes the fingers, the face,
+the breasts and the twist and helper bones out of it, leaving the figure a
+pose is read from.  Posing is by pulling: drag a joint and the bone
+above it swings to follow, as a bone is turned in 3ds Max; drag a root and
+the figure moves; Shift rolls a joint about its own bone.  A skeleton can also
+be built by clicking, stood up from the Humanoid preset and pulled into the
+model in Fit mode, or grown out of an armature -- the guided humanoid comes
+across whole, and a freehand wire is grown from the node you have selected,
+dropping any bone that would close a loop.  The other way round, any
+skeleton lays an armature under itself as it is posed.  A skeleton's pose is
+kept in the session; its skin weights are the model's and are read back out
+of the model file.</p>
 <p>OBJ, STL, GLB and glTF models can be opened or dropped onto the window.
 A glTF file states that its units are metres, so the measurement panel adopts
-that automatically; OBJ and STL declare nothing and are left alone.</p>
+that automatically; OBJ and STL declare nothing and are left alone.  A glTF
+with a skin arrives posable.</p>
 <p>Formats also disagree about which axis points up, so a file can arrive lying
 on its side.  The Model tab turns it upright: pick the up axis the file used,
 flip it if it came in upside down, and spin it a quarter turn to face forwards.
-Measurements, annotations and the armature turn with the model.</p>
+Measurements, annotations, the armature and the skeletons turn with the
+model.</p>
 <p>The Planes tab breaks the surface into the flat planes a form is blocked
 in with, from a six-sided box down to a barely faceted surface.  Its detail
 slider moves the size of a plane evenly, so it bites as hard at the coarse end
@@ -327,6 +369,7 @@ class MainWindow(QMainWindow):
         self._annotate_panel = AnnotatePanel(self._state)
         self._armature_panel = ArmaturePanel(self._state)
         self._forms_panel = FormsPanel(self._state)
+        self._pose_panel = PosePanel(self._state)
         self._camera_panel = CameraPanel(self._state)
 
         self._workspace = Workspace(self)
@@ -377,6 +420,7 @@ class MainWindow(QMainWindow):
             ("annotate", "Annotate", self._annotate_panel),
             ("armature", "Armature", self._armature_panel),
             ("forms", "Forms", self._forms_panel),
+            ("pose", "Pose", self._pose_panel),
             ("camera", "Camera", self._camera_panel),
         ):
             self._workspace.add_panel(key, title, panel)
@@ -502,6 +546,41 @@ class MainWindow(QMainWindow):
         forms_menu.addSeparator()
         self._menu_action(
             forms_menu, "Clear &All", self._forms_panel.clear_all, command="forms.clear_all"
+        )
+
+        pose_menu = self.menuBar().addMenu("&Pose")
+        self._pose_action = self._menu_action(
+            pose_menu, "&Pose Tool", self._toggle_pose, checkable=True
+        )
+        pose_menu.addSeparator()
+        self._menu_action(
+            pose_menu, "&New Skeleton", self._pose_panel.new_skeleton, command="pose.new"
+        )
+        self._menu_action(
+            pose_menu, "&Humanoid Skeleton", self._pose_panel.humanoid_preset,
+            command="pose.humanoid",
+        )
+        self._menu_action(
+            pose_menu, "Skeleton From &Armature", self._pose_panel.from_armature,
+            command="pose.from_armature",
+        )
+        self._menu_action(
+            pose_menu, "Armature From &Skeleton", self._pose_panel.to_armature,
+            command="pose.to_armature",
+        )
+        self._menu_action(
+            pose_menu, "&Map to Humanoid", self._pose_panel.map_humanoid,
+            command="pose.map_humanoid",
+        )
+        self._menu_action(
+            pose_menu, "&Simplify Rig", self._pose_panel.simplify, command="pose.simplify"
+        )
+        pose_menu.addSeparator()
+        self._menu_action(
+            pose_menu, "&Reset Pose", self._pose_panel.reset_pose, command="pose.reset"
+        )
+        self._menu_action(
+            pose_menu, "Clear &All", self._pose_panel.clear_all, command="pose.clear_all"
         )
 
         annotate_menu = self.menuBar().addMenu("&Annotate")
@@ -662,6 +741,7 @@ class MainWindow(QMainWindow):
         add("armature.tool", "Armature Tool", self._toggle_armature, "R", self._armature_action,
             "Armature")
         add("forms.tool", "Forms Tool", self._toggle_forms, "G", self._forms_action, "Forms")
+        add("pose.tool", "Pose Tool", self._toggle_pose, "B", self._pose_action, "Pose")
         add("tools.cancel", "Cancel Current", self._viewport.cancel_tools, "Esc",
             self._cancel_action, "Measure")
         add("camera.previous_view", "Previous Saved View", lambda: self._camera_panel.cycle(-1),
@@ -692,6 +772,7 @@ class MainWindow(QMainWindow):
             ("annotate.toggle", "annotate.tool"),
             ("armature.toggle", "armature.tool"),
             ("forms.toggle", "forms.tool"),
+            ("pose.toggle", "pose.tool"),
             ("section.enabled", "view.section"),
         ):
             control = lookup(element)
@@ -724,6 +805,10 @@ class MainWindow(QMainWindow):
         # the bones of the chosen one have been reordered or re-derived.
         self._state.armature_changed.connect(self._planes_panel.refresh_armatures)
         self._state.forms_changed.connect(self._forms_panel.refresh_list)
+        self._state.skeleton_changed.connect(self._pose_panel.refresh_list)
+        # The pose panel offers a skeleton grown out of any armature, so it
+        # lists them and has to hear when they come and go.
+        self._state.armature_changed.connect(self._pose_panel.refresh_list)
         self._state.render_changed.connect(self._forms_panel.refresh_display)
         self._state.bookmarks_changed.connect(self._camera_panel.refresh_bookmarks)
         self._state.render_changed.connect(self._shading_panel.update_enabled)
@@ -740,6 +825,7 @@ class MainWindow(QMainWindow):
             self._state.annotations_changed,
             self._state.armature_changed,
             self._state.forms_changed,
+            self._state.skeleton_changed,
         ):
             signal.connect(self._sync_tab_switches)
 
@@ -766,6 +852,12 @@ class MainWindow(QMainWindow):
         self._forms_panel.repaint_requested.connect(self._viewport.update)
         self._viewport.form_edited.connect(self._forms_panel.apply_edit)
         self._viewport.form_landmark_selected.connect(self._forms_panel.select_landmark)
+        self._pose_panel.attach(self._viewport.pose_tool, self._viewport.armature_tool)
+        self._pose_panel.pose_toggled.connect(self._set_posing)
+        self._pose_panel.center_requested.connect(self._viewport.center_on_point)
+        self._pose_panel.repaint_requested.connect(self._viewport.update)
+        self._viewport.skeleton_edited.connect(self._pose_panel.apply_edit)
+        self._viewport.joint_selected.connect(self._pose_panel.select_joint)
 
     # ------------------------------------------------------------------
     # Public surface
@@ -852,12 +944,17 @@ class MainWindow(QMainWindow):
         self._viewport.set_form_active(active)
         self._sync_tools(forming=active)
 
+    def _set_posing(self, active: bool) -> None:
+        self._viewport.set_pose_active(active)
+        self._sync_tools(posing=active)
+
     def _sync_tools(
         self,
         measuring: bool = False,
         annotating: bool = False,
         armaturing: bool = False,
         forming: bool = False,
+        posing: bool = False,
     ) -> None:
         """Put every panel button and menu entry where the tools now stand.
 
@@ -873,6 +970,8 @@ class MainWindow(QMainWindow):
         self._armature_action.setChecked(armaturing)
         self._forms_panel.set_forming(forming)
         self._forms_action.setChecked(forming)
+        self._pose_panel.set_posing(posing)
+        self._pose_action.setChecked(posing)
 
     def _toggle_measure(self) -> None:
         self._set_measuring(not self._viewport.measure_tool.active)
@@ -885,6 +984,9 @@ class MainWindow(QMainWindow):
 
     def _toggle_forms(self) -> None:
         self._set_forming(not self._viewport.form_tool.active)
+
+    def _toggle_pose(self) -> None:
+        self._set_posing(not self._viewport.pose_tool.active)
 
     def _toggle_eraser(self) -> None:
         """Swap between the eraser and the drawing mode it was called from."""
@@ -1087,6 +1189,34 @@ class MainWindow(QMainWindow):
         self._remember_model(path)
         self.setWindowTitle(f"{APP_NAME} - {Path(path).name}")
         self._refresh_panels()
+        self._offer_humanoid_mapping()
+
+    def _offer_humanoid_mapping(self) -> None:
+        """Ask whether a rig that arrived with the model should be read as a figure.
+
+        Only when the names say it is one, only when nothing has mapped it
+        yet -- a session loaded beside the model may already have -- and
+        as a question rather than a deed: the guess is a guess, and the
+        artist may be after the rig's own names.
+        """
+        skeleton = self._state.bound_skeleton()
+        if skeleton is None or any(joint.role for joint in skeleton.joints):
+            return
+        roles = humanoid_roles(skeleton)
+        if not looks_humanoid(roles):
+            return
+        answer = QMessageBox.question(
+            self,
+            "Humanoid rig",
+            f"{skeleton.name} came with {len(skeleton.joints)} joints, and their names "
+            f"read as a humanoid: {len(roles)} of them fit the figure's roles.\n\n"
+            "Map them onto the humanoid roles?  The names are kept; each joint's "
+            "Role box in the Pose tab is where to correct a guess.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._pose_panel.map_humanoid()
 
     def _open_model(self) -> None:
         start = model_dir()

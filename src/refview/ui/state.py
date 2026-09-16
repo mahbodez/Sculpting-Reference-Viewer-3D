@@ -24,6 +24,7 @@ from ..core.history import (
     BOOKMARKS,
     FORMS,
     MEASUREMENTS,
+    SKELETON,
     Command,
     History,
 )
@@ -33,6 +34,7 @@ from ..core.mesh_io import load_mesh as read_mesh
 from ..core.orientation import OrientationSettings
 from ..core.session import Session, sidecar_path
 from ..core.settings import NavigationSettings, RenderSettings
+from ..core.skeleton import Skeleton, SkeletonSettings, SkeletonStore, skinned_mesh
 from ..render.texture import MatcapLoadError, load_matcap_pixels
 
 
@@ -47,6 +49,13 @@ class ViewerState(QObject):
     annotations_changed = Signal()
     armature_changed = Signal()
     forms_changed = Signal()
+    #: A skeleton was made, edited, posed or removed.  The model follows a
+    #: bound skeleton, so this is usually followed by :attr:`mesh_changed`.
+    skeleton_changed = Signal()
+    #: The model has been re-posed under a drag still in progress.  Only
+    #: the geometry moved; the caches built on the model are left to the
+    #: :attr:`mesh_changed` that follows when the button comes up.
+    mesh_deformed = Signal()
     bookmarks_changed = Signal()
     history_changed = Signal()
     #: A film of a form's making gained a stage, or finished.  Carries the
@@ -72,6 +81,8 @@ class ViewerState(QObject):
         self.armatures = ArmatureStore()
         self.form_settings = FormSettings()
         self.forms = FormStore()
+        self.skeleton_settings = SkeletonSettings()
+        self.skeletons = SkeletonStore()
         self.bookmarks = BookmarkStore()
         self.history = History()
         self.orientation = OrientationSettings()
@@ -79,13 +90,23 @@ class ViewerState(QObject):
         #: A passenger: nothing here reads it, and the window takes it off
         #: after a load.  See :attr:`refview.core.session.Session.layout`.
         self.session_layout: dict = {}
+        #: What is drawn: the rest mesh, or the rest mesh as the bound
+        #: skeleton poses it.
         self.mesh: Mesh | None = None
+        #: The model turned and centred but not posed.  What the skinning
+        #: reads, so that one pose is never built on top of another.
+        self.rest_mesh: Mesh | None = None
         #: The mesh exactly as the file stored it.  Every orientation is
         #: applied to this rather than to the last result, so switching back
         #: and forth cannot accumulate drift.
         self.source_mesh: Mesh | None = None
         self.mesh_path: Path | None = None
         self.matcap_pixels: np.ndarray | None = None
+        #: The pose the drawn mesh was last skinned for; see :meth:`_posed`.
+        self._pose_key: tuple | None = None
+        #: Whether the drawn mesh was last announced through
+        #: :attr:`mesh_deformed`, and so still owes a :attr:`mesh_changed`.
+        self._mesh_live = False
 
     # ------------------------------------------------------------------
     # Change notification
@@ -109,6 +130,30 @@ class ViewerState(QObject):
     def notify_forms(self) -> None:
         self.forms_changed.emit()
 
+    def notify_skeleton(self, live: bool = False) -> None:
+        """The skeletons changed; re-pose the model if one of them drives it.
+
+        ``live`` is a drag in progress: the posed geometry is handed on
+        through :attr:`mesh_deformed` rather than :attr:`mesh_changed`, so
+        the pedestal, the section and the planes are not rebuilt at every
+        pixel of the gesture.
+        """
+        self.skeleton_changed.emit()
+        if self.rest_mesh is None:
+            return
+        posed = self._posed(self.rest_mesh)
+        if posed is self.mesh and not (self._mesh_live and not live):
+            return
+        self.mesh = posed
+        if live:
+            self._mesh_live = True
+            self.mesh_deformed.emit()
+        else:
+            # Whatever was built on the model while the drag ran is stale,
+            # even when the last frame of the drag is the pose being kept.
+            self._mesh_live = False
+            self.mesh_changed.emit()
+
     def notify_bookmarks(self) -> None:
         self.bookmarks_changed.emit()
 
@@ -119,6 +164,7 @@ class ViewerState(QObject):
             ANNOTATIONS: self.notify_annotations,
             ARMATURE: self.notify_armature,
             FORMS: self.notify_forms,
+            SKELETON: self.notify_skeleton,
             BOOKMARKS: self.notify_bookmarks,
             "render": self.notify_render,
         }.get(channel)
@@ -169,6 +215,7 @@ class ViewerState(QObject):
         path = Path(path)
         self.source_mesh = read_mesh(path)
         mesh = self._oriented(self.source_mesh)
+        self.rest_mesh = mesh
         self.mesh = mesh
         self.mesh_path = path
         self.camera.scene_radius = mesh.bounds.radius
@@ -177,19 +224,29 @@ class ViewerState(QObject):
         self.annotations.clear()
         self.armatures.clear()
         self.forms.clear()
+        self.skeletons.clear()
         self.bookmarks.clear()
         self.history.clear()
+        # A rigged model brings its skeleton in with it, bound to the skin
+        # and standing at rest.
+        if mesh.rig is not None:
+            self.skeletons.add(mesh.rig.to_skeleton(path.stem))
         self.frame_object()
         self.mesh_changed.emit()
         self.notify_measurements()
         self.notify_annotations()
         self.notify_armature()
         self.notify_forms()
+        self.notify_skeleton()
         self.notify_bookmarks()
         self.history_changed.emit()
         self.adopt_units(mesh)
+        bones = ""
+        if mesh.rig is not None:
+            bones = f", {mesh.rig.joint_count} joints"
         self.status_message.emit(
-            f"Loaded {path.name}: {mesh.vertex_count:,} vertices, {mesh.triangle_count:,} triangles"
+            f"Loaded {path.name}: {mesh.vertex_count:,} vertices, "
+            f"{mesh.triangle_count:,} triangles{bones}"
         )
         if load_sidecar:
             companion = sidecar_path(path)
@@ -199,6 +256,42 @@ class ViewerState(QObject):
     def _oriented(self, source: Mesh) -> Mesh:
         """Turn a freshly read mesh the right way up and centre it."""
         return source.transformed(self.orientation.matrix).recentered()
+
+    def _posed(self, rest: Mesh) -> Mesh:
+        """The rest mesh as the bound skeleton poses it, or the rest mesh itself.
+
+        Skinning is done once per pose: the joints are summed up into a
+        signature and the mesh last built for that signature is handed back
+        again, so that switching the joint names on, or undoing a rename,
+        does not re-skin the model and rebuild everything standing on it.
+        """
+        skeleton = self.skeletons.bound()
+        if (
+            rest.rig is None
+            or skeleton is None
+            or not self.skeleton_settings.deform
+            or not skeleton.deform
+            or not skeleton.posed
+        ):
+            self._pose_key = None
+            return rest
+        key = (
+            id(rest),
+            tuple(
+                (joint.parent, joint.rest, joint.rotation, joint.translation, joint.source)
+                for joint in skeleton.joints
+            ),
+        )
+        if key == self._pose_key and self.mesh is not None and self.mesh is not rest:
+            return self.mesh
+        self._pose_key = key
+        return skinned_mesh(rest, skeleton)
+
+    def bound_skeleton(self) -> Skeleton | None:
+        """The skeleton the model follows, if it has one."""
+        return None if self.rest_mesh is None or self.rest_mesh.rig is None else (
+            self.skeletons.bound()
+        )
 
     def set_orientation(self, orientation: OrientationSettings, move_marks: bool = True) -> None:
         """Turn the model, bringing the marks made on it along.
@@ -217,11 +310,13 @@ class ViewerState(QObject):
             self.orientation = orientation
             return
 
-        previous, was = self.mesh, self.orientation.matrix
+        previous = self.mesh if self.rest_mesh is None else self.rest_mesh
+        was = self.orientation.matrix
         self.orientation = orientation
-        self.mesh = self._oriented(self.source_mesh)
+        self.rest_mesh = self._oriented(self.source_mesh)
         if move_marks and previous is not None:
-            self._move_marks(previous, self.mesh, was)
+            self._move_marks(previous, self.rest_mesh, was)
+        self.mesh = self._posed(self.rest_mesh)
 
         self.camera.scene_radius = self.mesh.bounds.radius
         self.camera.scene_center = np.asarray(self.mesh.bounds.center, dtype=np.float64)
@@ -231,6 +326,7 @@ class ViewerState(QObject):
         self.notify_annotations()
         self.notify_armature()
         self.notify_forms()
+        self.skeleton_changed.emit()
 
     def _move_marks(self, previous: Mesh, current: Mesh, was: np.ndarray) -> None:
         """Rotate the measurements, annotations, armature and forms onto the turned model.
@@ -265,6 +361,12 @@ class ViewerState(QObject):
         for form in self.forms:
             for landmark in form.landmarks:
                 landmark.at = move(landmark.at)
+        # A skeleton is carried by its roots; everything below them follows.
+        carry = np.eye(4)
+        carry[:3, :3] = change
+        carry[:3, 3] = change @ before - after
+        for skeleton in self.skeletons:
+            skeleton.joints = skeleton.transformed(carry)
 
     def adopt_units(self, mesh: Mesh) -> None:
         """Take the display unit from the file when the format declares one.
@@ -315,6 +417,8 @@ class ViewerState(QObject):
             armatures=list(self.armatures),
             form_settings=self.form_settings,
             forms=list(self.forms),
+            skeleton_settings=self.skeleton_settings,
+            skeletons=list(self.skeletons),
         )
 
     def apply_session(self, session: Session) -> None:
@@ -332,6 +436,13 @@ class ViewerState(QObject):
         self.armatures = ArmatureStore(list(session.armatures))
         self.form_settings = session.form_settings
         self.forms = FormStore(list(session.forms))
+        self.skeleton_settings = session.skeleton_settings
+        self.skeletons = SkeletonStore(list(session.skeletons))
+        # A session saved before there were skeletons, or one that had cut
+        # the model's own rig loose, is given it back at rest.
+        rig = None if self.rest_mesh is None else self.rest_mesh.rig
+        if rig is not None and self.skeletons.bound() is None:
+            self.skeletons.add(rig.to_skeleton(self.mesh_path.stem if self.mesh_path else "Rig"))
         self.bookmarks = BookmarkStore(list(session.bookmarks))
         self.history.clear()
         if session.camera:
@@ -349,6 +460,7 @@ class ViewerState(QObject):
         self.notify_annotations()
         self.notify_armature()
         self.notify_forms()
+        self.notify_skeleton()
         self.notify_bookmarks()
         self.history_changed.emit()
 

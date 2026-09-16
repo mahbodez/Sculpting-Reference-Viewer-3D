@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -205,11 +206,31 @@ class VisualMarker:
 
 
 class MarkerVisibility:
-    """Cache surface occlusion by view and position for every kind of marker."""
+    """Cache surface occlusion by view and position for every kind of marker.
+
+    The answers are worked out afresh whenever the view changes, but not at
+    every frame of an orbit: a view that changed within :attr:`THROTTLE` of
+    the last pass keeps the answers the last pass gave, and a frame at
+    least that long after the last pass asks properly again.  A rig with a
+    hundred joints costs a hundred rays through the body per pass, and paid
+    at every frame that was the frame rate; paid ten times a second it is
+    nothing, and the dimming lags the orbit by less than a blink.
+    :attr:`pending` says when stale answers were used, so the viewport can
+    ask for one more frame once the throttle has passed.
+    """
+
+    #: Seconds between fresh passes while the view keeps moving.
+    THROTTLE = 0.1
 
     def __init__(self):
         self._view = None
         self._cache = {}
+        #: The last view's answers, read while the throttle holds.
+        self._stale = {}
+        self._passed_at = 0.0
+        self._holding = False
+        #: Whether this frame drew from stale answers and owes a fresh one.
+        self.pending = False
 
     def prepare(self, picker, section):
         camera = picker.camera
@@ -228,15 +249,36 @@ class MarkerVisibility:
         )
         if key != self._view:
             self._view = key
-            self._cache.clear()
+            now = perf_counter()
+            self._holding = self._stale_ok(now)
+            if not self._holding:
+                self._passed_at = now
+            self._stale = {**self._stale, **self._cache} if self._holding else self._cache
+            self._cache = {}
+            self.pending = False
         self.picker = picker
         self.section = section
+
+    def _stale_ok(self, now: float) -> bool:
+        """Whether the last pass is recent enough to be read instead of repeated."""
+        return bool(self._cache or self._stale) and now - self._passed_at < self.THROTTLE
 
     def buried(self, point):
         key = tuple(float(v) for v in point)
         if key not in self._cache:
             self.prefetch([key])
         return self._cache[key]
+
+    def assume_seen(self, points) -> None:
+        """Mark these points as standing in front of the surface, untested.
+
+        For frames where the test would cost more than it says -- the model
+        being re-posed under a drag -- so that the frame after the drag,
+        with a fresh view key, asks properly again.
+        """
+        for point in points:
+            key = tuple(float(v) for v in point)
+            self._cache.setdefault(key, False)
 
     def prefetch(self, points) -> None:
         """Answer for a batch of points at once, ahead of being asked one by one.
@@ -249,6 +291,16 @@ class MarkerVisibility:
         missing = [key for key in wanted if key not in self._cache]
         if not missing:
             return
+        if self._holding:
+            # The view is still moving: last pass's answers stand in for
+            # any point it answered, and only a point it never saw is cast.
+            known = [key for key in missing if key in self._stale]
+            if known:
+                self._cache.update((key, self._stale[key]) for key in known)
+                self.pending = True
+                missing = [key for key in missing if key not in self._stale]
+                if not missing:
+                    return
         picker = self.picker
         camera = picker.camera
         if len(self._cache) + len(missing) > 4096:
@@ -259,7 +311,10 @@ class MarkerVisibility:
         targets = np.array(missing, dtype=np.float64)
         xs, ys, _ = camera.project_many(targets, picker.width, picker.height)
         origins, directions = camera.rays(xs, ys, picker.width, picker.height)
-        hits = raycast_many(origins, directions, picker.mesh)
+        # Only as far as each marker: what the surface does behind it is no
+        # part of whether it is buried.
+        reach = np.einsum("ij,ij->i", targets - origins, directions) + 1e-6
+        hits = raycast_many(origins, directions, picker.mesh, reach)
         planes = self.section.planes()
         forward = camera.forward
         tolerance = max(camera.scene_radius * 1e-4, 1e-7)

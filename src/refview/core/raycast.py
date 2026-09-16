@@ -47,20 +47,28 @@ def raycast_mesh(origin: np.ndarray, direction: np.ndarray, mesh: Mesh) -> Hit |
     return raycast_many(origin[None], direction[None], mesh)[0]
 
 
-def raycast_many(origins: np.ndarray, directions: np.ndarray, mesh: Mesh) -> list[Hit | None]:
+def raycast_many(
+    origins: np.ndarray,
+    directions: np.ndarray,
+    mesh: Mesh,
+    reach: np.ndarray | None = None,
+) -> list[Hit | None]:
     """The closest hit along each of a batch of rays, ``None`` where one misses.
 
     One pass over every ray's candidates together, rather than a pass per
     ray: the overlay asks about every armature node on every frame of an
     orbit, and for two dozen short questions the bookkeeping around the
     maths was costing more than the maths.
+
+    ``reach``, per ray, says how far along it a hit is still wanted; what
+    lies beyond is neither gathered nor tested.
     """
     origins = np.asarray(origins, dtype=np.float64).reshape(-1, 3)
     directions = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
     hits: list[Hit | None] = [None] * len(origins)
     if mesh.triangle_count == 0 or len(origins) == 0:
         return hits
-    ray, candidates = mesh.spatial_index.candidates_many(origins, directions)
+    ray, candidates = mesh.spatial_index.candidates_many(origins, directions, reach)
     if candidates.size == 0:
         return hits
 

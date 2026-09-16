@@ -1,9 +1,11 @@
 """glTF 2.0 reader for ``.glb`` and ``.gltf`` files.
 
-Only what a reference viewer draws is read: the node hierarchy, so each mesh
-lands where the scene puts it, and the POSITION/NORMAL attributes of every
-triangle primitive.  Materials, animation, skins and morph targets are skipped
--- the viewer shades with matcaps and its own lights.
+Only what a reference viewer draws and poses is read: the node hierarchy, so
+each mesh lands where the scene puts it, the POSITION/NORMAL attributes of
+every triangle primitive, and the first skin -- its joints, their bind
+matrices and the JOINTS_0/WEIGHTS_0 that tie the vertices to them, which is
+what lets the Pose tool move the figure.  Materials, animation and morph
+targets are skipped: the viewer shades with matcaps and its own lights.
 
 glTF is the one common format that states its unit: the specification fixes
 scene coordinates as metres, so the loader reports that and the viewer adopts
@@ -21,6 +23,7 @@ from urllib.parse import unquote
 import numpy as np
 
 from .mesh import Mesh, MeshLoadError, MeshUnits, compute_vertex_normals
+from .skeleton import Rig, Skin, rest_skinned_positions
 
 _GLB_MAGIC = b"glTF"
 _JSON_CHUNK = 0x4E4F534A
@@ -48,7 +51,13 @@ class GltfLoadError(MeshLoadError):
 
 
 def load_gltf(path: str | Path) -> Mesh:
-    """Load a ``.glb`` or ``.gltf`` file and flatten it into one mesh."""
+    """Load a ``.glb`` or ``.gltf`` file and flatten it into one mesh.
+
+    A skinned file comes back with its :class:`~refview.core.skeleton.Rig`
+    attached and its vertices standing where the file's own node transforms
+    put the joints -- which is the bind pose in most files, and the pose the
+    file was saved in otherwise, exactly as any other viewer shows it.
+    """
     path = Path(path)
     try:
         data = path.read_bytes()
@@ -58,19 +67,37 @@ def load_gltf(path: str | Path) -> Mesh:
     document, binary = _split(data, path)
     buffers = _buffers(document, binary, path.parent)
 
+    visited = list(_visit(document))
+    skin_index = _first_skin(document, visited)
+
     positions: list[np.ndarray] = []
     normals: list[np.ndarray] = []
     indices: list[np.ndarray] = []
+    joints: list[np.ndarray] = []
+    weights: list[np.ndarray] = []
     offset = 0
-    for node, transform in _visit(document):
+    for _, node, transform, _ in visited:
+        skinned = skin_index is not None and node.get("skin") == skin_index
         for primitive in _primitives(document, node):
-            block = _primitive_geometry(document, buffers, primitive, transform)
+            # A skinned primitive is carried by its joints alone: the
+            # specification says the mesh node's own transform is ignored.
+            block = _primitive_geometry(
+                document, buffers, primitive, np.eye(4) if skinned else transform
+            )
             if block is None:
                 continue
             block_positions, block_normals, block_indices = block
+            influence = _primitive_skin(document, buffers, primitive) if skinned else None
+            if influence is None:
+                influence = (
+                    np.zeros((len(block_positions), 4), dtype=np.int32),
+                    np.zeros((len(block_positions), 4), dtype=np.float32),
+                )
             positions.append(block_positions)
             normals.append(block_normals)
             indices.append(block_indices + offset)
+            joints.append(influence[0])
+            weights.append(influence[1])
             offset += len(block_positions)
 
     if not positions:
@@ -81,7 +108,26 @@ def load_gltf(path: str | Path) -> Mesh:
     normal_array = np.concatenate(normals).astype(np.float32)
     if not np.any(normal_array):
         normal_array = compute_vertex_normals(vertex_array, index_array)
-    return Mesh(vertex_array, normal_array, index_array, name=path.stem, units=GLTF_UNITS)
+
+    rig = None
+    if skin_index is not None:
+        rig = _rig(
+            document,
+            buffers,
+            skin_index,
+            visited,
+            vertex_array,
+            normal_array,
+            np.concatenate(joints),
+            np.concatenate(weights),
+        )
+        if rig is not None:
+            posed, turned = rest_skinned_positions(rig.skin, rig.rest_world())
+            vertex_array = posed.astype(np.float32)
+            normal_array = turned.astype(np.float32)
+    return Mesh(
+        vertex_array, normal_array, index_array, name=path.stem, units=GLTF_UNITS, rig=rig
+    )
 
 
 # ----------------------------------------------------------------------
@@ -167,20 +213,22 @@ def _accessor(document: dict, buffers: list[bytes], index: int) -> np.ndarray:
 
 
 def _visit(document: dict):
-    """Yield ``(node, world transform)`` for every node in the active scene."""
+    """Yield ``(index, node, world transform, parent index)`` for the active scene."""
     nodes = document.get("nodes", [])
     scenes = document.get("scenes", [])
     scene = scenes[document.get("scene", 0)] if scenes else {"nodes": range(len(nodes))}
 
-    stack = [(index, np.eye(4)) for index in reversed(list(scene.get("nodes", [])))]
+    stack = [(index, np.eye(4), -1) for index in reversed(list(scene.get("nodes", [])))]
+    seen: set[int] = set()
     while stack:
-        index, parent = stack.pop()
-        if not 0 <= index < len(nodes):
+        index, parent, above = stack.pop()
+        if not 0 <= index < len(nodes) or index in seen:
             continue
+        seen.add(index)
         node = nodes[index]
         transform = parent @ _local_transform(node)
-        yield node, transform
-        stack.extend((child, transform) for child in reversed(node.get("children", [])))
+        yield index, node, transform, above
+        stack.extend((child, transform, index) for child in reversed(node.get("children", [])))
 
 
 def _local_transform(node: dict) -> np.ndarray:
@@ -259,3 +307,108 @@ def _triangulate(order: np.ndarray, mode: int) -> np.ndarray | None:
     triangles = np.stack((order[:-2], order[1:-1], order[2:]), axis=1)
     triangles[1::2] = triangles[1::2][:, [1, 0, 2]]
     return triangles
+
+
+# ----------------------------------------------------------------------
+# Skins
+# ----------------------------------------------------------------------
+
+#: Component type -> the value that means "all of it" for a normalized weight.
+_WEIGHT_FULL = {np.uint8: 255.0, np.uint16: 65535.0}
+
+
+def _first_skin(document: dict, visited: list) -> int | None:
+    """The skin the first skinned mesh node uses, or ``None``.
+
+    One skin is read.  A file with several -- a character and a separate
+    rigged prop -- keeps its first figure posable and loads the rest still.
+    """
+    skins = document.get("skins", [])
+    for _, node, _, _ in visited:
+        index = node.get("skin")
+        if index is not None and 0 <= index < len(skins) and node.get("mesh") is not None:
+            return int(index)
+    return None
+
+
+def _primitive_skin(
+    document: dict, buffers: list[bytes], primitive: dict
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """The four joints and four weights of every vertex of a primitive."""
+    attributes = primitive.get("attributes", {})
+    if "JOINTS_0" not in attributes or "WEIGHTS_0" not in attributes:
+        return None
+    joints = _accessor(document, buffers, attributes["JOINTS_0"])[:, :4].astype(np.int32)
+    raw = _accessor(document, buffers, attributes["WEIGHTS_0"])[:, :4]
+    full = _WEIGHT_FULL.get(raw.dtype.type)
+    weights = raw.astype(np.float32) / full if full else raw.astype(np.float32)
+    # Weights are meant to sum to one; a file that rounded them is put right.
+    total = weights.sum(axis=1, keepdims=True)
+    weights = np.where(total > 0.0, weights / np.maximum(total, 1e-12), weights)
+    return joints, weights.astype(np.float32)
+
+
+def _rig(
+    document: dict,
+    buffers: list[bytes],
+    skin_index: int,
+    visited: list,
+    positions: np.ndarray,
+    normals: np.ndarray,
+    joints: np.ndarray,
+    weights: np.ndarray,
+) -> Rig | None:
+    """The file's skeleton and its skin, in the file's own coordinates."""
+    skin = document["skins"][skin_index]
+    joint_nodes = [int(index) for index in skin.get("joints", [])]
+    if not joint_nodes:
+        return None
+    nodes = document.get("nodes", [])
+    world = {index: transform for index, _, transform, _ in visited}
+    above = {index: parent for index, _, _, parent in visited}
+    # A joint the scene never reaches still needs a place; it stands at the
+    # origin, which is wrong but is not a crash.
+    for index in joint_nodes:
+        world.setdefault(index, np.eye(4))
+        above.setdefault(index, -1)
+
+    slot = {node: position for position, node in enumerate(joint_nodes)}
+    parents = []
+    rest_local = np.empty((len(joint_nodes), 4, 4), dtype=np.float64)
+    for position, node in enumerate(joint_nodes):
+        # The parent joint is the nearest ancestor node that is also a joint;
+        # nodes in between (a group, an empty) fold into the rest transform.
+        walk = above.get(node, -1)
+        while walk >= 0 and walk not in slot:
+            walk = above.get(walk, -1)
+        parent = slot.get(walk, -1) if walk >= 0 else -1
+        parents.append(parent)
+        if parent >= 0:
+            rest_local[position] = np.linalg.inv(world[joint_nodes[parent]]) @ world[node]
+        else:
+            rest_local[position] = world[node]
+
+    if "inverseBindMatrices" in skin:
+        # Column-major in the file, like a node's matrix.
+        inverse_bind = (
+            _accessor(document, buffers, skin["inverseBindMatrices"])
+            .astype(np.float64)
+            .reshape(-1, 4, 4)
+            .transpose(0, 2, 1)
+        )
+        if len(inverse_bind) < len(joint_nodes):
+            raise GltfLoadError("The skin has fewer bind matrices than joints")
+        inverse_bind = inverse_bind[: len(joint_nodes)]
+    else:
+        inverse_bind = np.tile(np.eye(4), (len(joint_nodes), 1, 1))
+
+    names = []
+    for position, node in enumerate(joint_nodes):
+        name = nodes[node].get("name") if 0 <= node < len(nodes) else None
+        names.append(name if name else f"joint_{position}")
+    # A vertex claiming a joint the skin does not have is let go of.
+    stray = joints >= len(joint_nodes)
+    if np.any(stray):
+        joints = np.where(stray, 0, joints)
+        weights = np.where(stray, 0.0, weights)
+    return Rig(names, parents, rest_local, Skin(joints, weights, inverse_bind, positions, normals))

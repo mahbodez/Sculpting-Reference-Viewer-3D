@@ -70,6 +70,7 @@ PANELS = (
     "annotate",
     "armature",
     "forms",
+    "pose",
     "camera",
 )
 

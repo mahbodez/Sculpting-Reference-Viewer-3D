@@ -13,8 +13,11 @@ offered before the node beside it, and within a tighter reach, which is what
 settles the two where a preset has put them on top of each other.  With the
 measuring, armature or forms tool armed a left *click* -- as opposed to a drag
 -- places a point, so those gestures too share the button without fighting the
-camera.  Holding Alt always orbits, which is the escape hatch while painting,
-and holding Shift snaps an orbit to round angles.
+camera.  A drag on a skeleton's joint swings the bone above it, or moves the
+figure when the joint is a root, and with Shift rolls the joint about its own
+bone; with the pose tool armed a click adds a joint.  Holding Alt always
+orbits, which is the escape hatch while painting, and holding Shift snaps an
+orbit to round angles.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from dataclasses import astuple, replace
 from time import perf_counter
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QSurfaceFormat
 from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
@@ -42,7 +45,7 @@ from ..core.forms import (
     shown_stages,
     stages_mesh,
 )
-from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS
+from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS, SKELETON
 from ..core.landmarks import landmark_title
 from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
@@ -51,6 +54,7 @@ from ..core.plane_film import shaded as film_shaded
 from ..core.plane_solids import SculptCache, wires_for
 from ..core.section import section_segments
 from ..core.settings import SculptMode
+from ..core.skeleton import Skeleton
 from ..render.framebuffer import bind_default, current_framebuffer, sample_count
 from ..render.mesh_renderer import SceneRenderer
 from ..render.stroke_renderer import build_segment_vertices
@@ -63,6 +67,7 @@ from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
 from .overlay import ViewportOverlay
 from .picking import SurfacePicker
+from .pose_tool import PoseTool
 from .section_gizmo import SectionGizmo
 from .state import ViewerState
 
@@ -110,6 +115,11 @@ class Viewport(QOpenGLWidget):
     form_edited = Signal(object)
     #: A form's landmark was clicked, as ``(form, key)``.
     form_landmark_selected = Signal(object)
+    #: A finished structural edit to a skeleton, as ``(index, joints, text)``.
+    #: An index of ``-1`` means there was no skeleton to put the joint in.
+    skeleton_edited = Signal(object)
+    #: A joint was clicked, as ``(skeleton, joint)``.
+    joint_selected = Signal(object)
     pick_failed = Signal()
 
     def __init__(self, state: ViewerState, parent=None) -> None:
@@ -122,6 +132,7 @@ class Viewport(QOpenGLWidget):
         self.annotate_tool = AnnotateTool()
         self.armature_tool = ArmatureTool()
         self.form_tool = FormTool()
+        self.pose_tool = PoseTool()
         self._ready = False
         self._depth_drag = None
         self._guide_shown = False
@@ -145,6 +156,15 @@ class Viewport(QOpenGLWidget):
         #: A form landmark drag in progress, as ``(form index, key, the
         #: landmark list before it started)``.
         self._form_previous: tuple[int, str, list] | None = None
+        #: A pull on a joint in progress, as ``(skeleton index, the joint
+        #: being written, the attribute, what it held, the x the pull began
+        #: at)``.  The joint written is the parent of the one held when the
+        #: pull is a swing, which is why it is named separately.
+        self._pose_previous: tuple[int, int, str, object, float] | None = None
+        #: Where the held joint stood when the pull began: the plane the
+        #: cursor is read across, so the joint does not chase its own depth.
+        self._pose_anchor: np.ndarray | None = None
+        self._pose_dragged = False
         #: The solids of each form, kept by the landmarks that built them so
         #: that scrubbing a form's stages or recolouring the clay does not
         #: work the hull out again.
@@ -185,6 +205,8 @@ class Viewport(QOpenGLWidget):
         state.armature_changed.connect(self._armature_moved)
         state.mesh_changed.connect(self._armature_moved)
         state.forms_changed.connect(self._forms_moved)
+        state.skeleton_changed.connect(self._skeleton_moved)
+        state.mesh_deformed.connect(self._upload_geometry)
         for signal in (state.camera_changed, state.measurements_changed):
             signal.connect(self.update)
         state.camera_changed.connect(self._stale_buried)
@@ -248,6 +270,8 @@ class Viewport(QOpenGLWidget):
             self.armature_tool,
             self._buried_nodes(),
             forms=self.form_tool,
+            pose=self.pose_tool,
+            occlude=self.pose_tool.grabbed is None,
         )
         self._section_gizmo.draw(painter, self._picker(), self._state.render.section)
         if self._depth_drag is not None:
@@ -257,6 +281,10 @@ class Viewport(QOpenGLWidget):
                 painter, f"{self._fps:.1f} FPS", self.width(), self.height(), self._fps_corner
             )
         painter.end()
+        if self._overlay.pending:
+            # The markers were dimmed by the last view's answers to keep the
+            # orbit smooth; one more frame after the throttle puts them right.
+            QTimer.singleShot(int(self._overlay.THROTTLE * 1000) + 20, self.update)
 
     def _upload_mesh(self) -> None:
         if not self._ready:
@@ -267,6 +295,23 @@ class Viewport(QOpenGLWidget):
         self._pedestal_key = self._section_key = self._sculpt_key = None
         self._sculpt.clear()
         self._sync_scene()
+
+    def _upload_geometry(self) -> None:
+        """Hand the renderer a re-posed model and nothing else.
+
+        For the frames of a pose drag.  The pedestal, the section and the
+        planes are all built on the model and all go stale, but rebuilding
+        them at every pixel of a pull is what would make the pull unusable;
+        they catch up on the :attr:`~ViewerState.mesh_changed` that follows
+        when the button comes up.
+        """
+        if not self._ready:
+            return
+        self.makeCurrent()
+        self._renderer.set_mesh(self._state.mesh)
+        self.doneCurrent()
+        self._stale_buried()
+        self.update()
 
     def _upload_matcap(self) -> None:
         if not self._ready:
@@ -646,6 +691,7 @@ class Viewport(QOpenGLWidget):
             self._buried_nodes(),
             look.parts,
             forms=self.form_tool,
+            pose=self.pose_tool,
         )
         if look.caption:
             self._overlay.draw_caption(painter, look.caption_for(stage), width, height)
@@ -696,6 +742,9 @@ class Viewport(QOpenGLWidget):
     def set_form_active(self, active: bool) -> None:
         self._arm(self.form_tool, active)
 
+    def set_pose_active(self, active: bool) -> None:
+        self._arm(self.pose_tool, active)
+
     def _arm(self, tool, active: bool) -> None:
         """Arm one tool, disarming the rest.
 
@@ -710,6 +759,7 @@ class Viewport(QOpenGLWidget):
                 self.annotate_tool,
                 self.armature_tool,
                 self.form_tool,
+                self.pose_tool,
             ):
                 if other is not tool:
                     other.set_active(False)
@@ -748,6 +798,19 @@ class Viewport(QOpenGLWidget):
             self._form_previous = None
             self.form_tool.grabbed_landmark = None
             self._state.notify_forms()
+        if self._pose_previous is not None:
+            index, target, field, previous, _ = self._pose_previous
+            skeleton = self._state.skeletons[index]
+            if field == "joints":
+                skeleton.joints = previous
+            else:
+                setattr(skeleton.joints[target], field, previous)
+            self._pose_previous = None
+            self._pose_anchor = None
+            self._pose_dragged = False
+            self.pose_tool.grabbed = None
+            self.pose_tool.mode = ""
+            self._state.notify_skeleton()
         self._depth_drag = None
         self._press_position = None
         self._join_from = None
@@ -756,18 +819,21 @@ class Viewport(QOpenGLWidget):
         self.annotate_tool.cancel()
         self.armature_tool.cancel()
         self.form_tool.cancel()
+        self.pose_tool.cancel()
         self._refresh_cursor()
         self.update()
 
     def _refresh_cursor(self) -> None:
         armed = self.measure_tool.active or self.annotate_tool.active
-        if armed or self.armature_tool.active or self.form_tool.active:
+        if armed or self.armature_tool.active or self.form_tool.active or self.pose_tool.active:
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif (
             self.measure_tool.hover_handle
             or self.armature_tool.hover_handle
             or self.armature_tool.hover_landmark
             or self.form_tool.hover_landmark
+            or self.pose_tool.hover_joint
+            or self.pose_tool.hover_bone
             or self._section_gizmo.hover
         ):
             self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -824,6 +890,8 @@ class Viewport(QOpenGLWidget):
             point = self._state.armatures[index].landmark_for(key).point
         elif self._node_previous is not None:
             point = self._node_previous[0].point
+        elif self._pose_anchor is not None:
+            point = self._pose_anchor
         elif self._grab_previous is not None:
             point = self._grab_previous[2]
         if point is not None:
@@ -855,6 +923,7 @@ class Viewport(QOpenGLWidget):
                     self._begin_form_landmark_drag(x, y)
                     or self._begin_landmark_drag(x, y)
                     or self._begin_node_drag(x, y, resize)
+                    or self._begin_joint_drag(x, y, resize)
                     or self._begin_handle_drag(x, y)
                 )
             if claimed:
@@ -892,6 +961,9 @@ class Viewport(QOpenGLWidget):
             return
         if self.armature_tool.grabbed_handle is not None:
             self._move_grabbed_node(x, y)
+            return
+        if self.pose_tool.grabbed is not None:
+            self._move_grabbed_joint(x, y)
             return
         if self.measure_tool.grabbed_handle is not None:
             self._move_grabbed_handle(x, y)
@@ -941,6 +1013,8 @@ class Viewport(QOpenGLWidget):
                 event.modifiers() & Qt.KeyboardModifier.ControlModifier
             )
             self._commit_node_drag(was_click, joining)
+        elif self.pose_tool.grabbed is not None:
+            self._commit_joint_drag(was_click)
         elif self.measure_tool.grabbed_handle is not None:
             self._commit_handle_drag()
         elif self.annotate_tool.is_drawing or self._erase_previous is not None:
@@ -954,6 +1028,8 @@ class Viewport(QOpenGLWidget):
                 self._place_armature_node(position.x(), position.y())
             elif was_click and left and self.form_tool.active:
                 self._place_form_landmark(position.x(), position.y())
+            elif was_click and left and self.pose_tool.active:
+                self._place_joint(position.x(), position.y())
 
         self._depth_drag = None
         self._press_position = None
@@ -1449,9 +1525,16 @@ class Viewport(QOpenGLWidget):
                 x, y, self._picker(), self._state.form_settings
             )
             dirty = True
+        if self.pose_tool.active:
+            self.pose_tool.hover_point = self.pose_tool.pick(
+                x, y, self._picker(), self._state.skeleton_settings
+            )
+            dirty = True
         if self._update_form_hover(x, y):
             dirty = True
         if self._update_armature_hover(x, y):
+            dirty = True
+        if self._update_pose_hover(x, y):
             dirty = True
 
         previous = self.measure_tool.hover_handle
@@ -1461,6 +1544,7 @@ class Viewport(QOpenGLWidget):
             or self.armature_tool.hover_handle is not None
             or self.armature_tool.hover_landmark is not None
             or self.form_tool.hover_landmark is not None
+            or self.pose_tool.hover_joint is not None
             else self.measure_tool.handle_at(
                 x, y, self._state.measurements, self._picker(), self._state.measurement_settings
             )
@@ -1504,6 +1588,189 @@ class Viewport(QOpenGLWidget):
             self._refresh_cursor()
         tool.hover_bone = bone
         return changed
+
+    # ------------------------------------------------------------------
+    # Skeletons
+    # ------------------------------------------------------------------
+    #
+    # A pull on a joint edits one attribute of one joint -- the parent's
+    # rotation for a swing, the joint's own for a roll, its shift for a move
+    # -- so the undo step is that attribute, exactly as a node drag is.  A
+    # pull in fit mode rewrites the joint list instead, since the children's
+    # rest transforms move with it.
+
+    def _skeleton_index(self) -> int:
+        """Which skeleton an edit lands in: the selected one, else the last."""
+        chosen = self.pose_tool.selected
+        if chosen is not None and 0 <= chosen[0] < len(self._state.skeletons):
+            return chosen[0]
+        return len(self._state.skeletons) - 1
+
+    def _place_joint(self, x: float, y: float) -> None:
+        """Add a joint where the click landed, under the selected joint."""
+        settings = self._state.skeleton_settings
+        point = self.pose_tool.pick(x, y, self._picker(), settings)
+        if point is None:
+            self.pick_failed.emit()
+            return
+        index = self._skeleton_index()
+        skeleton = self._state.skeletons[index] if index >= 0 else Skeleton()
+        chosen = self.pose_tool.selected
+        parent = chosen[1] if chosen is not None and chosen[0] == index else -1
+        joints = self.pose_tool.place(skeleton, point, parent)
+        self.pose_tool.hover_point = point
+        self.skeleton_edited.emit((index, joints, f"Add {joints[-1].name}"))
+        landed = max(index, 0)
+        self.pose_tool.selected = (landed, len(joints) - 1)
+        self.joint_selected.emit((landed, len(joints) - 1))
+        self.update()
+
+    def _begin_joint_drag(self, x: float, y: float, twist: bool) -> bool:
+        """Take hold of a joint -- or of a bone, by its far end."""
+        tool = self.pose_tool
+        settings = self._state.skeleton_settings
+        picker = self._picker()
+        found = tool.joint_at(x, y, self._state.skeletons, picker, settings) or tool.bone_at(
+            x, y, self._state.skeletons, picker, settings
+        )
+        if found is None:
+            return False
+        index, position = found
+        skeleton = self._state.skeletons[index]
+        joint = skeleton.joints[position]
+        parent = joint.parent
+        if settings.fit and not skeleton.bound:
+            target, field, previous = position, "joints", [replace(j) for j in skeleton.joints]
+            mode = "fit"
+        elif twist:
+            target, field, previous, mode = position, "rotation", joint.rotation, "twist"
+        elif 0 <= parent < len(skeleton.joints) and not skeleton.joints[parent].locked:
+            target, field, previous = parent, "rotation", skeleton.joints[parent].rotation
+            mode = "swing"
+        else:
+            target, field, previous, mode = position, "translation", joint.translation, "move"
+        self._pose_previous = (index, target, field, previous, x)
+        self._pose_anchor = skeleton.positions()[position].copy()
+        self._pose_dragged = False
+        tool.grabbed = found
+        tool.mode = mode
+        tool.selected = found
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        return True
+
+    def _move_grabbed_joint(self, x: float, y: float) -> None:
+        """Apply the pull live, so the figure moves under the cursor."""
+        if self._pose_previous is None or self.pose_tool.grabbed is None:
+            return
+        index, target, field, previous, start_x = self._pose_previous
+        skeleton = self._state.skeletons[index]
+        held = self.pose_tool.grabbed[1]
+        tool = self.pose_tool
+        settings = self._state.skeleton_settings
+        picker = self._picker()
+        anchor = self._pose_anchor if self._pose_anchor is not None else skeleton.positions()[held]
+        if tool.mode == "twist":
+            # From where the joint started, by the whole travel so far, so
+            # the roll cannot creep with the rounding of a hundred steps.
+            skeleton.joints[target].rotation = previous
+            turned = tool.twist(skeleton, target, x - start_x, settings)
+            if turned is not None:
+                skeleton.joints[target].rotation = turned
+        elif tool.mode == "swing":
+            swing = tool.swing(skeleton, held, tool.drag_target(x, y, picker, anchor))
+            if swing is not None:
+                skeleton.joints[swing.parent].rotation = swing.rotation
+        elif tool.mode == "move":
+            shift = tool.move(skeleton, held, tool.drag_target(x, y, picker, anchor))
+            if shift is not None:
+                skeleton.joints[held].translation = shift
+        elif tool.mode == "fit":
+            skeleton.joints = tool.fit(skeleton, held, tool.drag_target(x, y, picker, anchor))
+        self._pose_dragged = True
+        self._state.notify_skeleton(live=True)
+
+    def _commit_joint_drag(self, was_click: bool = False) -> None:
+        """Record the finished pull as one step, or read a press as a selection."""
+        found = self.pose_tool.grabbed
+        self.pose_tool.grabbed = None
+        self.pose_tool.mode = ""
+        self._pose_anchor = None
+        self._refresh_cursor()
+        if self._pose_previous is None:
+            return
+        index, target, field, previous, _ = self._pose_previous
+        self._pose_previous = None
+        dragged, self._pose_dragged = self._pose_dragged, False
+        skeleton = self._state.skeletons[index]
+        name = skeleton.joints[target].name if 0 <= target < len(skeleton.joints) else "joint"
+
+        if field == "joints":
+            changed = any(
+                a.rest != b.rest for a, b in zip(skeleton.joints, previous, strict=False)
+            ) or len(skeleton.joints) != len(previous)
+            if changed:
+                self._state.do(
+                    SetAttributes(
+                        skeleton,
+                        {"joints": skeleton.joints},
+                        text=f"Fit {name}",
+                        channel=SKELETON,
+                        previous={"joints": previous},
+                    ),
+                    apply=False,
+                )
+                return
+        else:
+            joint = skeleton.joints[target]
+            if getattr(joint, field) != previous:
+                verb = "Move" if field == "translation" else "Turn"
+                self._state.do(
+                    SetAttributes(
+                        joint,
+                        {field: getattr(joint, field)},
+                        text=f"{verb} {joint.name}",
+                        channel=SKELETON,
+                        previous={field: previous},
+                    ),
+                    apply=False,
+                )
+                return
+        if dragged:
+            # Pulled and let go where it was: the live frames re-posed the
+            # model, so the caches built on it are told to catch up.
+            self._state.notify_skeleton()
+        if was_click and found is not None:
+            self.joint_selected.emit(found)
+        self.update()
+
+    def _update_pose_hover(self, x: float, y: float) -> bool:
+        """Track the joint and bone under the cursor; True when either changed."""
+        tool = self.pose_tool
+        settings = self._state.skeleton_settings
+        picker = self._picker()
+        busy = (
+            self.annotate_tool.active
+            or self.form_tool.hover_landmark is not None
+            or self.armature_tool.hover_landmark is not None
+            or self.armature_tool.hover_handle is not None
+        )
+        joint = None if busy else tool.joint_at(x, y, self._state.skeletons, picker, settings)
+        bone = (
+            None
+            if busy or joint is not None
+            else tool.bone_at(x, y, self._state.skeletons, picker, settings)
+        )
+        changed = joint != tool.hover_joint or bone != tool.hover_bone
+        if changed:
+            tool.hover_joint = joint
+            tool.hover_bone = bone
+            self._refresh_cursor()
+        return changed
+
+    def _skeleton_moved(self) -> None:
+        """A skeleton changed: redraw it."""
+        self._stale_buried()
+        self.update()
 
     # ------------------------------------------------------------------
     # Forms
