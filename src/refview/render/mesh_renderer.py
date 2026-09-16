@@ -3,9 +3,8 @@
 Ordinary frames are one pass over the geometry.  The high-quality mode adds
 three cheap ones in front of it -- a shadow map from the key light, a depth
 pre-pass from the camera, and the screen-space occlusion computed from that
-depth -- so the shading pass can look both up while it runs.  Nothing here
-traces a ray; the point is a reference view that stays interactive while the
-artist turns it.
+depth -- so the shading pass can look both up while it runs. Human Skin adds
+progressive BVH ray tracing while the camera rests.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from ..core.linalg import look_at, orthographic, spherical_direction, vec3
 from ..core.mesh import Mesh
 from ..core.plane_axes import Coefficients, PlaneAxes, PlaneSet
 from ..core.plane_clusters import fit_planes
-from ..core.settings import CONTOUR_DENSITY_MIN, PlaneMode, RenderSettings
+from ..core.settings import CONTOUR_DENSITY_MIN, PlaneMode, RenderSettings, ShadingMode
 from . import shaders
 from .framebuffer import (
     AccumTarget,
@@ -33,6 +32,13 @@ from .framebuffer import (
     current_framebuffer,
 )
 from .program import ShaderProgram
+from .skin_refinement import (
+    DIFFUSION_UNIT,
+    NODES_UNIT,
+    RELIEF_UNIT,
+    TRIANGLES_UNIT,
+    SkinRefinement,
+)
 from .stroke_renderer import StrokeBuffers
 from .texture import DataTexture, Texture2D, default_matcap_pixels
 
@@ -175,10 +181,14 @@ class SceneRenderer:
         #: done for nothing, since it only changes when the slider does.
         self._plane_table: DataTexture | None = None
         self._plane_table_level: PlaneSet | None = None
+        self.skin = SkinRefinement()
+        self._trace_parts = {}
+        self._content_revision = 0
 
     # -- lifetime -------------------------------------------------------
 
     def initialize(self) -> None:
+        self.skin.initialize(shaders.FULLSCREEN_VERTEX)
         self._programs = {
             "mesh": ShaderProgram(shaders.MESH_VERTEX, shaders.MESH_FRAGMENT, "mesh"),
             "flat": ShaderProgram(shaders.FLAT_VERTEX, shaders.FLAT_FRAGMENT, "flat"),
@@ -213,6 +223,7 @@ class SceneRenderer:
         GL.glDisable(GL.GL_CULL_FACE)  # Reference meshes are often single-sided.
 
     def dispose(self) -> None:
+        self.skin.dispose()
         for program in self._programs.values():
             program.dispose()
         self._programs.clear()
@@ -249,6 +260,9 @@ class SceneRenderer:
     # -- content --------------------------------------------------------
 
     def set_mesh(self, mesh: Mesh | None) -> None:
+        self._trace_parts["model"] = mesh
+        self._trace_parts["sculpt"] = None
+        self._content_revision += 1
         self._set_geometry(self._buffers, mesh)
         # Any stand-in in hand was built out of the model being replaced, so
         # it goes now rather than being drawn for the frames until a new one
@@ -266,10 +280,14 @@ class SceneRenderer:
         to its own shadow is not a form anyone could work from.
         """
         self._set_geometry(self._sculpt, mesh)
+        self._trace_parts["sculpt"] = mesh
+        self._content_revision += 1
 
     def set_pedestal(self, mesh: Mesh | None) -> None:
         """Replace the ground disc; pass ``None`` to hide it."""
         self._set_geometry(self._pedestal, mesh)
+        self._trace_parts["pedestal"] = mesh
+        self._content_revision += 1
 
     def set_forms(self, mesh: Mesh | None, color: tuple[float, float, float]) -> None:
         """Replace the clay of the primary forms; pass ``None`` to hide it.
@@ -281,6 +299,8 @@ class SceneRenderer:
         """
         self._forms_color = tuple(float(value) for value in color)
         self._set_geometry(self._forms, mesh)
+        self._trace_parts["forms"] = mesh
+        self._content_revision += 1
 
     @property
     def _model(self) -> MeshBuffers | None:
@@ -334,11 +354,13 @@ class SceneRenderer:
         """Replace the annotation geometry; pass an empty list to hide it."""
         if self._strokes is not None:
             self._strokes.upload(strokes)
+        self.skin.clock.key = None
 
     def set_contour(self, vertices: np.ndarray) -> None:
         """Replace the section contour, prepared by the caller as stroke vertices."""
         if self._contour is not None:
             self._contour.upload_vertices(vertices)
+        self.skin.clock.key = None
 
     def set_guide(self, vertices: np.ndarray, centre=None, reach: float = 0.0) -> None:
         """Replace the depth guide: stroke vertices fading about ``centre``.
@@ -348,6 +370,7 @@ class SceneRenderer:
         """
         if self._guide is not None:
             self._guide.upload_vertices(vertices)
+        self.skin.clock.key = None
         self._guide_fade = (
             None if centre is None or reach <= 0.0
             else (np.asarray(centre, dtype=np.float64), float(reach))
@@ -363,6 +386,9 @@ class SceneRenderer:
         height: int,
         pixel_ratio: float = 1.0,
         antialiasing: str = "off",
+        *,
+        refine: bool = False,
+        interactive: bool = False,
     ) -> None:
         """Draw one frame, then hand a neutral GL state back to the caller.
 
@@ -377,9 +403,48 @@ class SceneRenderer:
         """
         width, height = max(width, 1), max(height, 1)
         screen = current_framebuffer()
+        skin = settings.skin.bounded()
+        is_skin = settings.shading_mode is ShadingMode.HUMAN_SKIN
+        key = (
+            camera.view_matrix().tobytes(), camera.projection_matrix(width / height).tobytes(),
+            repr(settings), self._content_revision, width, height, pixel_ratio, antialiasing,
+        )
+        model_mesh = self._trace_parts.get("sculpt")
+        if model_mesh is None or not model_mesh.triangle_count:
+            model_mesh = self._trace_parts.get("model")
+        parts = [(mesh, material, color) for mesh, material, color in (
+            (model_mesh, 0, skin.color),
+            (self._trace_parts.get("pedestal"), 1, settings.pedestal.color),
+            (self._trace_parts.get("forms"), 1, self._forms_color),
+        ) if mesh is not None]
+        revision = (self._content_revision, settings.pedestal.color, self._forms_color)
+        traced = self.skin.prepare(
+            key, revision, parts, skin, interactive,
+            refine and is_skin and skin.progressive and settings.surface_opacity >= 1.0,
+        )
         scale = _SUPERSAMPLE if antialiasing == "ssaa" else 1
         offscreen = antialiasing in ("fxaa", "ssaa")
         try:
+            if traced:
+                if self.skin.clock.samples < skin.samples:
+                    rw = max(1, int(width * skin.resolution * scale))
+                    rh = max(1, int(height * skin.resolution * scale))
+                    self.skin.begin(rw, rh)
+                    self._draw_frame(
+                        camera, settings, rw, rh, pixel_ratio * skin.resolution * scale
+                    )
+                    self.skin.accumulate(self._draw_fullscreen)
+                if antialiasing == "fxaa":
+                    self._frame.resize(width, height)
+                    self._frame.bind()
+                    self.skin.present(current_framebuffer(), width, height, self._draw_fullscreen)
+                    bind_default(screen)
+                    self._resolve_frame(True)
+                else:
+                    self.skin.present(screen, width, height, self._draw_fullscreen)
+                self.skin.needs_frame = self.skin.clock.samples < skin.samples
+                self.skin.status = f"Human Skin · {self.skin.clock.samples}/{skin.samples} samples"
+                return
             if offscreen:
                 # Allocated before anything else is bound, for the same reason
                 # the ghost's buffers are: see _draw_frame.
@@ -393,6 +458,7 @@ class SceneRenderer:
                 GL.glViewport(0, 0, width, height)
                 self._resolve_frame(antialiasing == "fxaa")
         finally:
+            bind_default(screen)
             self._reset_state()
 
     def _resolve_frame(self, fxaa: bool) -> None:
@@ -422,11 +488,20 @@ class SceneRenderer:
         aspect = width / height
         view = camera.view_matrix()
         projection = camera.projection_matrix(aspect)
+        if self.skin.tracing:
+            # Halton jitter integrates primary visibility at silhouettes as
+            # well as the light transport. The history key stays unjittered.
+            from .skin_refinement import pixel_jitter
+
+            dx, dy = pixel_jitter(self.skin.clock.samples)
+            projection = projection.copy()
+            projection[0] += (2.0 * dx / width) * projection[3]
+            projection[1] += (2.0 * dy / height) * projection[3]
         planes = settings.section.planes()
         target = current_framebuffer()
 
         light_matrix = None
-        if settings.shading_mode.uses_quality and self._has_geometry:
+        if settings.shading_mode.uses_quality and self._has_geometry and not self.skin.tracing:
             light_matrix = self._render_shadow_map(camera, settings, planes)
             self._render_occlusion(camera, settings, projection, view, width, height, planes)
             bind_default(target)
@@ -566,9 +641,12 @@ class SceneRenderer:
         GL.glDisable(GL.GL_CULL_FACE)
         GL.glBindVertexArray(0)
         GL.glUseProgram(0)
-        for unit in (_SHADOW_UNIT, _OCCLUSION_UNIT, _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT):
+        for unit in (_SHADOW_UNIT, _OCCLUSION_UNIT, _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT,
+                     NODES_UNIT, TRIANGLES_UNIT, DIFFUSION_UNIT):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
             GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+        GL.glActiveTexture(GL.GL_TEXTURE0 + RELIEF_UNIT)
+        GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
 
@@ -679,6 +757,24 @@ class SceneRenderer:
             program.set_float("uRoughness", surface.roughness)
             program.set_vec3("uReflectionColor", surface.reflection_color)
 
+            skin = settings.skin.bounded()
+            self.skin.bind(program)
+            program.set_vec3("uSkinColor", skin.color)
+            program.set_vec3("uSkinScatter", skin.scatter_color)
+            for uniform, value in (
+                ("Roughness", skin.roughness), ("Specular", skin.specular),
+                ("Oil", skin.oiliness), ("SSS", skin.sss),
+                ("Transmission", skin.transmission), ("Exposure", skin.exposure),
+                ("Indirect", skin.indirect), ("LightSize", math.radians(skin.light_size)),
+                ("Detail", skin.detail), ("Mottle", skin.mottle),
+                ("Blood", skin.blood), ("Fuzz", skin.fuzz),
+                ("Radius", skin.radius * max(camera.scene_radius, 1e-6)),
+                ("PoreSize", skin.pore_size * max(camera.scene_radius, 1e-6)),
+                ("Epsilon", max(camera.scene_radius, 1e-6) * 1e-5),
+            ):
+                program.set_float("uSkin" + uniform, value)
+            program.set_bool("uSkinFurniture", True)
+
             self._bind_quality(program, settings, light_matrix, width, height)
             if self._matcap is not None:
                 self._matcap.bind(_MATCAP_UNIT)
@@ -716,6 +812,7 @@ class SceneRenderer:
                 program.set_vec3("uMatcapTint", matcap.tint)
                 program.set_bool("uPlaneShading", shades)
             if model is not None:
+                program.set_bool("uSkinFurniture", False)
                 program.set_vec3("uDiffuseColor", surface.diffuse_color)
                 if ghost_opacity is not None:
                     self._accumulate_ghost(program, model, camera, ghost_opacity, width, height)

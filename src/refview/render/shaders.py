@@ -22,6 +22,7 @@ behaviour artists expect from a reference viewer.
 from __future__ import annotations
 
 from ..core.plane_axes import MAX_PLANE_AXES
+from .skin_shader import SKIN_GLSL
 
 #: Up to two half-spaces; material past a plane's offset is cut away.
 _SECTION_CLIP = """
@@ -114,6 +115,7 @@ const int MODE_PBR          = 4;
 const int MODE_NORMALS      = 5;
 const int MODE_HIGH_QUALITY = 6;
 const int MODE_CONTOUR      = 7;
+const int MODE_HUMAN_SKIN   = 8;
 
 // Grid is the one mode that quantises against something other than a fitted
 // set of planes; the rest differ only in how that set was arrived at.
@@ -588,6 +590,8 @@ vec3 pbrShade(vec3 n, vec3 v) {
     return color;
 }
 
+#pragma skin
+
 //: How many surfaces a ghosted form is taken to stack up between its near side
 //: and its far one.  Correct front-to-back compositing gives the nth layer a
 //: share ``(1 - alpha)^(n - 1)`` of the light, so reading n off the fragment's
@@ -622,6 +626,8 @@ void main() {
         color = pbrShade(n, v);
     } else if (uMode == MODE_CONTOUR) {
         color = contourShade(n, v);
+    } else if (uMode == MODE_HUMAN_SKIN) {
+        color = skinShade(n, v);
     } else {
         color = analyticShade(n, v, uMode, false, 1.0);
     }
@@ -655,7 +661,7 @@ void main() {
         fragReveal = vec4(0.0);
     }
 }
-"""))
+""".replace("#pragma skin", SKIN_GLSL)))
 
 FLAT_VERTEX = """
 #version 330 core

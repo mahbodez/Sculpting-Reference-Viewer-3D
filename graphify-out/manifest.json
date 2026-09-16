@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1789581530.3319654,
-    "ast_hash": "e54fe3a9542b520d7a6915ec2d9d97ac",
+    "mtime": 1789584985.5712905,
+    "ast_hash": "d611371902540d229db51f3a3d4faf89",
     "semantic_hash": ""
   },
   "run.py": {
@@ -50,17 +50,17 @@
     "semantic_hash": "04b3b9c3b9660837b33ac893c05fb679"
   },
   "src/refview/core/gltf_loader.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "8dfe982af00518ed957eb086cf023ae6",
     "semantic_hash": ""
   },
   "src/refview/core/history.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "8d5d8ea18c0a7719f08236e260acaf67",
     "semantic_hash": ""
   },
   "src/refview/core/linalg.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "c375148b6d7916d040cf01b1fd9049b8",
     "semantic_hash": ""
   },
@@ -70,7 +70,7 @@
     "semantic_hash": "141c768fef5eb09850fee2dcbb162564"
   },
   "src/refview/core/mesh.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "530986bb662591435b995bf346bb851e",
     "semantic_hash": ""
   },
@@ -95,7 +95,7 @@
     "semantic_hash": "19050117593e0a60f5ffd05ae71b944a"
   },
   "src/refview/core/raycast.py": {
-    "mtime": 1789581843.098074,
+    "mtime": 1789582444.491557,
     "ast_hash": "f26145cd97e81a4ad8e73e63611e6e3f",
     "semantic_hash": ""
   },
@@ -110,17 +110,17 @@
     "semantic_hash": "9304462ff4daa8b5a0e46cc77cf8488b"
   },
   "src/refview/core/session.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "86f3d3789029b7faa0509c7ea68359ea",
     "semantic_hash": ""
   },
   "src/refview/core/settings.py": {
-    "mtime": 1789392597.4598925,
-    "ast_hash": "bc4af1250474532e595604686d835402",
+    "mtime": 1789584569.251119,
+    "ast_hash": "15c50566c4b3a11a1eeed4d0daee26d4",
     "semantic_hash": ""
   },
   "src/refview/core/spatial.py": {
-    "mtime": 1789581843.098074,
+    "mtime": 1789582444.491557,
     "ast_hash": "6b4b1799351f2df0b6ce38528edb28ea",
     "semantic_hash": ""
   },
@@ -140,13 +140,13 @@
     "semantic_hash": "75b3b7b07b91a0fd481c3bad24471b9c"
   },
   "src/refview/render/framebuffer.py": {
-    "mtime": 1789392735.3929965,
-    "ast_hash": "59c01cd842af7c55f3dd5e9324425940",
+    "mtime": 1789584775.2983577,
+    "ast_hash": "3dca9d07b08059155cea151cf238271e",
     "semantic_hash": ""
   },
   "src/refview/render/mesh_renderer.py": {
-    "mtime": 1789393774.3100667,
-    "ast_hash": "a8512580d9b3734880e371fdec592aea",
+    "mtime": 1789590835.9811919,
+    "ast_hash": "31fdde862d65bd018702f7920069c389",
     "semantic_hash": ""
   },
   "src/refview/render/program.py": {
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/refview/render/shaders.py": {
-    "mtime": 1789393864.2219884,
-    "ast_hash": "6e739606a6e27bdf6cd6f1d1a5dee8ad",
+    "mtime": 1789584774.9525146,
+    "ast_hash": "572cd944336b7b646aa816fe47920d5b",
     "semantic_hash": ""
   },
   "src/refview/render/stroke_renderer.py": {
@@ -165,8 +165,8 @@
     "semantic_hash": "c7b3561e5243a5db77f0c12f7c815b2f"
   },
   "src/refview/render/texture.py": {
-    "mtime": 1789389077.159551,
-    "ast_hash": "f1eb50024ab086fae027a4a0476f631e",
+    "mtime": 1789590599.5443525,
+    "ast_hash": "962214dda9ef7be057b81a4326015cee",
     "semantic_hash": ""
   },
   "src/refview/ui/__init__.py": {
@@ -185,7 +185,7 @@
     "semantic_hash": ""
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1789582165.30254,
+    "mtime": 1789582444.491557,
     "ast_hash": "789efbe0d806a1e1835bc45f2386cd46",
     "semantic_hash": ""
   },
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/overlay.py": {
-    "mtime": 1789581875.85271,
-    "ast_hash": "42441670a3f77b6508e44e6dbcf83d3b",
+    "mtime": 1789582444.491557,
+    "ast_hash": "2cd6cafeb91058d2c4fbecfda1961bd7",
     "semantic_hash": ""
   },
   "src/refview/ui/panels/__init__.py": {
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/panels/shading_panel.py": {
-    "mtime": 1789392869.8256807,
-    "ast_hash": "94df4a59cb80b6415e64afc5aea4b23d",
+    "mtime": 1789590910.9767854,
+    "ast_hash": "316a55041d1010f6dfd434846a3514b2",
     "semantic_hash": ""
   },
   "src/refview/ui/picking.py": {
@@ -255,7 +255,7 @@
     "semantic_hash": ""
   },
   "src/refview/ui/state.py": {
-    "mtime": 1789581530.337706,
+    "mtime": 1789582444.491557,
     "ast_hash": "d1914231b92aacd23a4e821e56fcaae6",
     "semantic_hash": ""
   },
@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/viewport.py": {
-    "mtime": 1789581843.100079,
-    "ast_hash": "06d72c2aaaed8489fb1843180ec699cf",
+    "mtime": 1789585533.6517801,
+    "ast_hash": "b0816dfd78c5fecc0f5dd27056d2e41c",
     "semantic_hash": ""
   },
   "src/refview/ui/widgets.py": {
@@ -340,13 +340,13 @@
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
-    "mtime": 1789582165.3127346,
-    "ast_hash": "7c7f7b54b8783672ce7dd675ac823ba0",
+    "mtime": 1789591613.5603602,
+    "ast_hash": "7a34e10c2bedbecf04b75a5f10257a9a",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789582165.324275,
-    "ast_hash": "8c58a871fc936d9880dedd0e9e46be9f",
+    "mtime": 1789591613.5593605,
+    "ast_hash": "109506d9d2e60c3c65a416fd9242cb7b",
     "semantic_hash": ""
   },
   "environment.yml": {
@@ -490,7 +490,7 @@
     "semantic_hash": ""
   },
   "src/refview/core/landmarks.py": {
-    "mtime": 1789581530.3319654,
+    "mtime": 1789582444.491557,
     "ast_hash": "505ce91e0f82519efbe19f649aa42c7f",
     "semantic_hash": ""
   },
@@ -525,7 +525,7 @@
     "semantic_hash": ""
   },
   "src/refview/ui/film_export.py": {
-    "mtime": 1789581530.337706,
+    "mtime": 1789582444.491557,
     "ast_hash": "c8444317b9fe8cbdbc56ace410feb719",
     "semantic_hash": ""
   },
@@ -575,8 +575,8 @@
     "semantic_hash": ""
   },
   "tests/test_forms.py": {
-    "mtime": 1789340565.2505674,
-    "ast_hash": "77441d2449a8a10c775765654ef68c85",
+    "mtime": 1789582450.1913261,
+    "ast_hash": "38815efc2eee0932bb4cee5fc71bfd11",
     "semantic_hash": ""
   },
   "tests/test_forms_panel.py": {
@@ -655,7 +655,7 @@
     "semantic_hash": ""
   },
   "tests/test_panel_docks.py": {
-    "mtime": 1789581932.2038996,
+    "mtime": 1789582444.491557,
     "ast_hash": "31dde9def7dc48a3b513ad967dc149b2",
     "semantic_hash": ""
   },
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/markers.py": {
-    "mtime": 1789581843.098074,
-    "ast_hash": "05e5354b5bd82fe962f90020b83fd1ee",
+    "mtime": 1789582444.491557,
+    "ast_hash": "e3055dfec1d378254d76db7fe63d22ab",
     "semantic_hash": ""
   },
   "src/refview/ui/matcap_preview.py": {
@@ -715,7 +715,7 @@
     "semantic_hash": ""
   },
   "tests/test_viewport_markers.py": {
-    "mtime": 1789581913.835903,
+    "mtime": 1789582444.491557,
     "ast_hash": "764261d03f1c79cdb29c6ae5764902a5",
     "semantic_hash": ""
   },
@@ -777,6 +777,46 @@
   "tests/test_skeleton.py": {
     "mtime": 1789582165.324275,
     "ast_hash": "8e6f1faba5c7c25d6268db9fad527274",
+    "semantic_hash": ""
+  },
+  "src/refview/core/skin.py": {
+    "mtime": 1789591214.6602323,
+    "ast_hash": "ee183128762be3556d75057aff1f6523",
+    "semantic_hash": ""
+  },
+  "src/refview/render/skin_bvh.py": {
+    "mtime": 1789585049.5558686,
+    "ast_hash": "a628ac9fd636fc770dcdf2947639d974",
+    "semantic_hash": ""
+  },
+  "src/refview/render/skin_refinement.py": {
+    "mtime": 1789590835.9801927,
+    "ast_hash": "41a9d946ad35176e173bece4ff8ae33a",
+    "semantic_hash": ""
+  },
+  "src/refview/render/skin_shader.py": {
+    "mtime": 1789591214.6602323,
+    "ast_hash": "5f14d3ddf5c3afbed96ed881b727c0d6",
+    "semantic_hash": ""
+  },
+  "tests/test_skin.py": {
+    "mtime": 1789591481.4294918,
+    "ast_hash": "a57d70b054898b65495a9ab455db3090",
+    "semantic_hash": ""
+  },
+  "tests/test_skin_gl.py": {
+    "mtime": 1789591501.6734746,
+    "ast_hash": "15bb0738b465567787f8ebfce89c5fb9",
+    "semantic_hash": ""
+  },
+  "docs/skin-renderer.md": {
+    "mtime": 1789591567.2053246,
+    "ast_hash": "2e4d7afb01f70fa894b3b08f80ee9c8b",
+    "semantic_hash": ""
+  },
+  "src/refview/render/skin_detail.py": {
+    "mtime": 1789591214.6602323,
+    "ast_hash": "c282b38c0fb42f3e17a958a5d47e8e9d",
     "semantic_hash": ""
   }
 }

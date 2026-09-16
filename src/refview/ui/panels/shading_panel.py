@@ -13,6 +13,7 @@ from ...core.settings import (
     ShadingMode,
     SurfaceSettings,
 )
+from ...core.skin import SKIN_PRESETS, SKIN_RANGES, SkinSettings
 from ..widgets import ColorButton, SliderSpin, form_group
 from .base import Panel
 from .matcap_panel import MatcapPanel
@@ -81,6 +82,71 @@ class ShadingPanel(Panel):
         surface_form.addRow("Roughness", self._roughness)
         surface_form.addRow("Reflection", self._reflection)
         self._add(self._surface_box)
+
+        self._skin_box, skin_form = form_group("Human Skin")
+        self._skin_preset = QComboBox()
+        self._skin_preset.addItem("Custom")
+        self._skin_preset.addItems(list(SKIN_PRESETS))
+        self._skin_preset.setToolTip("Starting palettes; every skin tone can be adjusted below.")
+        skin_form.addRow("Preset", self._skin_preset)
+        self._skin_color = ColorButton(SkinSettings().color)
+        self._skin_scatter = ColorButton(SkinSettings().scatter_color)
+        skin_form.addRow("Skin colour", self._skin_color)
+        skin_form.addRow("Scattering colour", self._skin_scatter)
+        self._skin_controls = {}
+        for field, label, decimals, step, suffix in (
+            ("roughness", "Roughness", 2, 0.01, ""),
+            ("specular", "Reflection strength", 2, 0.05, ""),
+            ("oiliness", "Oily highlights", 2, 0.05, ""),
+            ("sss", "Subsurface scattering", 2, 0.05, ""),
+            ("radius", "Scattering depth", 3, 0.001, " × radius"),
+            ("transmission", "Backlight transmission", 2, 0.05, ""),
+            ("detail", "Surface detail", 2, 0.05, ""),
+            ("pore_size", "Pore size", 4, 0.0005, " × radius"),
+            ("mottle", "Tone variation", 2, 0.05, ""),
+            ("blood", "Blood / flush", 2, 0.05, ""),
+            ("fuzz", "Peach fuzz", 2, 0.05, ""),
+            ("light_size", "Light angular radius", 1, 0.5, " deg"),
+            ("indirect", "Indirect light", 2, 0.05, ""),
+            ("exposure", "Exposure", 1, 0.1, " EV"),
+            ("samples", "Refinement samples", 0, 8, ""),
+            ("resolution", "Refinement resolution", 2, 0.05, " × viewport"),
+        ):
+            low, high = SKIN_RANGES[field]
+            control = SliderSpin(low, high, getattr(SkinSettings(), field),
+                                 decimals=decimals, step=step, suffix=suffix)
+            control.setObjectName("skin_" + field)
+            skin_form.addRow(label, control)
+            self._skin_controls[field] = control
+            control.valueChanged.connect(self._skin_setter(field))
+        self._skin_controls["radius"].setToolTip(
+            "Fraction of model radius. Adjust for a head versus a full figure; OBJ has no units."
+        )
+        self._skin_controls["detail"].setToolTip(
+            "Pores and furrows bumped into the surface from a tileable volume,\n"
+            "so no UV layout is needed. Highlights see the full relief; diffuse\n"
+            "sees a third of it and scattering none, as on real skin."
+        )
+        self._skin_controls["pore_size"].setToolTip(
+            "Spacing of the pores as a fraction of model radius. Roughly 0.003 for a\n"
+            "full figure and 0.0015 for a head."
+        )
+        self._skin_controls["mottle"].setToolTip("Uneven pigment: lighter and darker patches.")
+        self._skin_controls["blood"].setToolTip(
+            "Flush from blood under the surface: reddens patches, cavities and backlight."
+        )
+        self._skin_controls["fuzz"].setToolTip("Soft rim from vellus hair at grazing angles.")
+        self._skin_progressive = QCheckBox("Refine while idle")
+        self._skin_progressive.setToolTip(
+            "Trace soft shadows, one indirect bounce and approximate skin scattering.\n"
+            "Navigation and ghost mode use the fast preview."
+        )
+        skin_form.addRow("", self._skin_progressive)
+        self._skin_preset.activated.connect(self._apply_skin_preset)
+        self._skin_color.colorChanged.connect(self._skin_setter("color"))
+        self._skin_scatter.colorChanged.connect(self._skin_setter("scatter_color"))
+        self._skin_progressive.toggled.connect(self._skin_setter("progressive"))
+        self._add(self._skin_box)
 
         self._quality_box, quality_form = form_group("High Quality")
         self._quality_box.setToolTip(
@@ -228,6 +294,32 @@ class ShadingPanel(Panel):
         """Slot that writes one field of the light settings."""
         return lambda value: self._apply(self.state.render.light, field, value)
 
+    def _skin_setter(self, field: str):
+        def change(value):
+            if self._busy:
+                return
+            self._skin_preset.setCurrentIndex(0)
+            self._apply(self.state.render.skin, field, int(value) if field == "samples" else value)
+        return change
+
+    def _apply_skin_preset(self, index: int) -> None:
+        from dataclasses import replace
+
+        preset = SKIN_PRESETS.get(self._skin_preset.itemText(index))
+        if preset is None or self._busy:
+            return
+        current = self.state.render.skin
+        # Tone belongs to the preset; scale, scene and quality stay as set.
+        self.state.render.skin = replace(
+            preset, samples=current.samples, resolution=current.resolution,
+            progressive=current.progressive, light_size=current.light_size,
+            exposure=current.exposure, indirect=current.indirect,
+            detail=current.detail, pore_size=current.pore_size,
+        )
+        self.state.notify_render()
+        self.refresh()
+        self._skin_preset.setCurrentIndex(index)
+
     def _surface_setter(self, field: str):
         """Slot that writes one field of the surface settings."""
         return lambda value: self._apply(self.state.render.surface, field, value)
@@ -298,8 +390,9 @@ class ShadingPanel(Panel):
         with self._suppressed():
             self._mode.setCurrentIndex(self._mode.findData(mode.value))
         self._light_box.setVisible(mode.uses_lighting)
-        self._surface_box.setVisible(mode.uses_lighting)
-        self._quality_box.setVisible(mode.uses_quality)
+        self._surface_box.setVisible(mode.uses_lighting and mode is not ShadingMode.HUMAN_SKIN)
+        self._skin_box.setVisible(mode is ShadingMode.HUMAN_SKIN)
+        self._quality_box.setVisible(mode is ShadingMode.HIGH_QUALITY)
         self._contour_box.setVisible(mode.uses_contour)
         self._pedestal_form.setRowVisible(
             self._pedestal_level, not self.state.render.pedestal.snap_to_lowest
@@ -308,6 +401,7 @@ class ShadingPanel(Panel):
     def _reset(self) -> None:
         self.state.render.light = LightSettings()
         self.state.render.surface = SurfaceSettings()
+        self.state.render.skin = SkinSettings()
         self.state.notify_render()
         self.refresh()
 
@@ -319,6 +413,13 @@ class ShadingPanel(Panel):
         contour = render.contour
         radius = self.state.camera.scene_radius
         with self._suppressed():
+            skin = render.skin.bounded()
+            self._skin_preset.setCurrentIndex(0)
+            self._skin_color.set_color(skin.color)
+            self._skin_scatter.set_color(skin.scatter_color)
+            self._skin_progressive.setChecked(skin.progressive)
+            for field, control in self._skin_controls.items():
+                control.set_value(getattr(skin, field))
             self._contour_direction.setCurrentIndex(
                 self._contour_direction.findData(contour.direction.value)
             )

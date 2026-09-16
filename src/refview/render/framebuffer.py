@@ -307,9 +307,10 @@ class FrameTarget(_Target):
     four for free.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, floating: bool = False) -> None:
         super().__init__()
         self._depth = 0
+        self._floating = floating
 
     @property
     def size(self) -> tuple[int, int]:
@@ -320,8 +321,9 @@ class FrameTarget(_Target):
             self._depth = int(GL.glGenRenderbuffers(1))
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture)
         GL.glTexImage2D(
-            GL.GL_TEXTURE_2D, 0, GL.GL_RGBA8, width, height, 0, GL.GL_RGBA,
-            GL.GL_UNSIGNED_BYTE, None,
+            GL.GL_TEXTURE_2D, 0, GL.GL_RGBA32F if self._floating else GL.GL_RGBA8,
+            width, height, 0, GL.GL_RGBA, GL.GL_FLOAT if self._floating
+            else GL.GL_UNSIGNED_BYTE, None,
         )
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)

@@ -53,7 +53,7 @@ from ..core.plane_film import film_key
 from ..core.plane_film import shaded as film_shaded
 from ..core.plane_solids import SculptCache, wires_for
 from ..core.section import section_segments
-from ..core.settings import SculptMode
+from ..core.settings import SculptMode, ShadingMode
 from ..core.skeleton import Skeleton
 from ..render.framebuffer import bind_default, current_framebuffer, sample_count
 from ..render.mesh_renderer import SceneRenderer
@@ -126,6 +126,9 @@ class Viewport(QOpenGLWidget):
         super().__init__(parent)
         self._state = state
         self._renderer = SceneRenderer()
+        self._skin_timer = QTimer(self)
+        self._skin_timer.setSingleShot(True)
+        self._skin_timer.timeout.connect(self.update)
         self._navigation = NavigationController()
         self._overlay = ViewportOverlay()
         self.measure_tool = MeasureTool()
@@ -258,8 +261,18 @@ class Viewport(QOpenGLWidget):
             int(self.height() * ratio),
             ratio,
             self._antialiasing,
+            refine=True,
+            interactive=QApplication.mouseButtons() != Qt.MouseButton.NoButton,
         )
         painter.endNativePainting()
+        if self._state.render.shading_mode is ShadingMode.HUMAN_SKIN:
+            self._overlay.draw_caption(
+                painter, self._renderer.skin.status, self.width(), self.height(), "bottom-left"
+            )
+        if self._renderer.skin.needs_frame and not self._exporting:
+            self._skin_timer.start(16 if self._renderer.skin.tracing else 80)
+        else:
+            self._skin_timer.stop()
         self._overlay.draw(
             painter,
             self._state,
@@ -719,6 +732,7 @@ class Viewport(QOpenGLWidget):
 
     def _release_gl(self) -> None:
         """Free every GL object while the owning context is still current."""
+        self._skin_timer.stop()
         if not self._ready:
             return
         self.makeCurrent()

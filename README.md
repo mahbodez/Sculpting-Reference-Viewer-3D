@@ -632,6 +632,39 @@ depth and normal pre-pass and one occlusion pass cost a few milliseconds
 between them, so the view stays live while you orbit it. Turn off *Light
 follows camera* for a shadow that stays put as the model turns.
 
+**Human Skin**
+
+Available under **Shading → Mode**. It uses neutral dielectric
+reflections with broad skin and narrow oily highlights, plus subsurface scattering.
+Choose a tone preset, then adjust skin colour, roughness, reflection strength,
+oiliness, scattering colour/depth, transmission, and exposure. Presets describe
+tones and undertones; they are editable starting points, not ethnic classifications.
+
+The surface is not smooth: pores and the furrow network between them are bumped
+into any mesh from a tileable 3D volume, so nothing needs a UV layout. **Surface
+detail** sets how deep they read and **Pore size** how far apart they sit, as a
+fraction of model radius (a head wants a smaller value than a full figure). The
+highlights see the full relief, the diffuse light a third of it, and the
+scattering none, which is what keeps it from looking like wax. **Tone variation**
+mottles the pigment, **Blood / flush** reddens patches, cavities and backlit
+edges, and **Peach fuzz** adds the soft rim that vellus hair gives.
+
+Orbiting, panning and zooming use a fast preview. With **Refine while idle** on,
+the view starts accumulating after 200 ms at rest: triangle-ray soft shadows from
+both lights, one diffuse indirect bounce, sampled subsurface diffusion and
+thickness-dependent backlighting. The sample counter stops at the requested limit.
+Changes to the camera, lights, material, clipping, geometry, or viewport size start
+a fresh image. Light angular radius controls traced shadow softness. Refinement
+resolution trades detail for speed; use **1.0 × viewport** for a final reference.
+
+Scattering depth is a fraction of the model's bounding radius because OBJ has no
+physical units. A head and a full figure need different values. Closed meshes give
+the most dependable transmission; holes and intersecting shells can produce light
+leaks. This is an RGB diffusion approximation, not a spectral tissue simulation.
+Ghost mode and exported form-stage videos use the fast preview. Screenshots of the
+viewport retain its current refinement. See [the skin renderer notes](docs/skin-renderer.md)
+for the model, limits and extension points.
+
 **Pedestal**
 
 Stand the model on a disc, either at its lowest vertex or at a level you

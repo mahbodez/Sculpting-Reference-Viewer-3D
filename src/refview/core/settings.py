@@ -13,6 +13,7 @@ from enum import Enum
 from .pedestal import PedestalSettings
 from .plane_axes import DEFAULT_COEFFICIENTS, MAX_PLANE_AXES, Coefficients
 from .section import SectionSettings
+from .skin import SkinSettings
 
 Color = tuple[float, float, float]
 
@@ -32,6 +33,7 @@ class ShadingMode(str, Enum):
     NORMALS = "normals"
     HIGH_QUALITY = "high_quality"
     CONTOUR = "contour"
+    HUMAN_SKIN = "human_skin"
 
     @property
     def label(self) -> str:
@@ -44,6 +46,7 @@ class ShadingMode(str, Enum):
             ShadingMode.NORMALS: "Normals",
             ShadingMode.HIGH_QUALITY: "High Quality",
             ShadingMode.CONTOUR: "Contour",
+            ShadingMode.HUMAN_SKIN: "Human Skin",
         }[self]
 
     @property
@@ -62,12 +65,13 @@ class ShadingMode(str, Enum):
             ShadingMode.BLINN_PHONG,
             ShadingMode.PBR,
             ShadingMode.HIGH_QUALITY,
+            ShadingMode.HUMAN_SKIN,
         )
 
     @property
     def uses_quality(self) -> bool:
         """Whether the shadow and occlusion pre-passes need to run."""
-        return self is ShadingMode.HIGH_QUALITY
+        return self in (ShadingMode.HIGH_QUALITY, ShadingMode.HUMAN_SKIN)
 
     @property
     def uses_contour(self) -> bool:
@@ -585,6 +589,7 @@ class RenderSettings:
     matcap: MatcapSettings = field(default_factory=MatcapSettings)
     light: LightSettings = field(default_factory=LightSettings)
     surface: SurfaceSettings = field(default_factory=SurfaceSettings)
+    skin: SkinSettings = field(default_factory=SkinSettings)
     quality: QualitySettings = field(default_factory=QualitySettings)
     contour: ContourShadingSettings = field(default_factory=ContourShadingSettings)
     planes: PlaneSettings = field(default_factory=PlaneSettings)

@@ -72,14 +72,15 @@ class DataTexture:
     eye can read rather than about whose GPU it is running on.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, filtered: bool = False) -> None:
+        """``filtered`` reads between texels, for a lookup table sampled by value."""
         self._id = int(GL.glGenTextures(1))
         self._shape: tuple[int, int] | None = None
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
         for name in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T):
             GL.glTexParameteri(GL.GL_TEXTURE_2D, name, GL.GL_CLAMP_TO_EDGE)
         for name in (GL.GL_TEXTURE_MIN_FILTER, GL.GL_TEXTURE_MAG_FILTER):
-            GL.glTexParameteri(GL.GL_TEXTURE_2D, name, GL.GL_NEAREST)
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, name, GL.GL_LINEAR if filtered else GL.GL_NEAREST)
         # Without this a texture with no mipmaps is incomplete, and sampling it
         # quietly returns black on some drivers.
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_LEVEL, 0)
@@ -152,6 +153,46 @@ class Texture2D:
     def bind(self, unit: int = 0) -> None:
         GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
+
+    def dispose(self) -> None:
+        if self._id:
+            GL.glDeleteTextures([self._id])
+            self._id = 0
+
+
+class Texture3D:
+    """A tileable RGBA16F volume, trilinear and mipmapped, for world-space detail.
+
+    Sampled by position rather than by UV, so a mesh needs no unwrap to carry
+    it. Repeat wrapping makes the tile seamless; the mip chain lets the shader
+    fade the detail out at distance instead of aliasing into sparkle.
+    """
+
+    def __init__(self) -> None:
+        self._id = int(GL.glGenTextures(1))
+        GL.glBindTexture(GL.GL_TEXTURE_3D, self._id)
+        for name in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T, GL.GL_TEXTURE_WRAP_R):
+            GL.glTexParameteri(GL.GL_TEXTURE_3D, name, GL.GL_REPEAT)
+        GL.glTexParameteri(GL.GL_TEXTURE_3D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR_MIPMAP_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_3D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
+
+    def upload(self, voxels: np.ndarray) -> None:
+        """Store a ``(depth, height, width, 4)`` float array."""
+        voxels = np.ascontiguousarray(voxels, dtype=np.float32)
+        depth, height, width = voxels.shape[:3]
+        GL.glBindTexture(GL.GL_TEXTURE_3D, self._id)
+        GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 4)
+        GL.glTexImage3D(
+            GL.GL_TEXTURE_3D, 0, GL.GL_RGBA16F, width, height, depth, 0,
+            GL.GL_RGBA, GL.GL_FLOAT, voxels,
+        )
+        GL.glGenerateMipmap(GL.GL_TEXTURE_3D)
+        GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
+
+    def bind(self, unit: int = 0) -> None:
+        GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+        GL.glBindTexture(GL.GL_TEXTURE_3D, self._id)
 
     def dispose(self) -> None:
         if self._id:

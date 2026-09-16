@@ -4,6 +4,24 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.3.0]
+
+### Added
+
+- **Human Skin shading.** Fast navigation preview and progressive idle rendering
+  with ray-traced soft shadows, one diffuse light bounce, sampled subsurface
+  diffusion, and thickness-dependent backlighting. Geometry preparation runs in
+  the background; changes to the view or scene restart refinement automatically.
+- Skin tone presets and saved controls for colour, roughness, reflection strength,
+  oily highlights, scattering depth/colour, transmission, light size, exposure,
+  indirect lighting, sample count, and refinement resolution.
+- **Skin surface detail without UVs.** Pores and furrows come from a tileable 3D
+  relief volume sampled at world position, with separate normals for highlights,
+  diffuse and scattering. Burley's diffusion profile replaces the single
+  exponential, read from a curvature-indexed table while navigating and sampled
+  while idle. Pigment mottling, blood flush, coloured occlusion and a peach-fuzz
+  rim, with controls for surface detail, pore size, tone variation, blood and fuzz.
+
 ## [2.2.0]
 
 ### Added
