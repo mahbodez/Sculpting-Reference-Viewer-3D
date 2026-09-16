@@ -24,6 +24,9 @@ _out.txt
 *.jpeg
 *.obj
 *.OBJ
+*.glb
+*.gltf
+*.fbx
 !/resources/matcaps/charcoal.png
 !/resources/matcaps/clay_terracotta.png
 !/resources/matcaps/jade.png
