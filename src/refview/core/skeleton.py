@@ -27,6 +27,7 @@ stale between one step and the next.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from enum import Enum
 
 import numpy as np
 
@@ -130,6 +131,11 @@ class Skeleton:
     #: follow it by.  Off, the bones pose in the air and the model stands
     #: still, which is how a rig is read without being disturbed.
     deform: bool = True
+    #: The mark of the skin this skeleton was auto-skinned into, matching
+    #: :attr:`Rig.tag`; empty for a skeleton read out of a file's own rig,
+    #: which is matched by the joints' names alone.  Two humanoid presets
+    #: name their joints alike, and this is what tells their skins apart.
+    rig_tag: str = ""
 
     # -- reading --------------------------------------------------------
 
@@ -458,6 +464,44 @@ class Skeleton:
         return index - 1 if index > removed else index
 
 
+class SkinMethod(Enum):
+    """How auto-skinning decides the weights; see :mod:`refview.core.autoskin`."""
+
+    HEAT = "heat"
+    ENVELOPE = "envelope"
+    NEAREST = "nearest"
+
+    @property
+    def label(self) -> str:
+        return {
+            SkinMethod.HEAT: "Heat diffusion",
+            SkinMethod.ENVELOPE: "Envelope",
+            SkinMethod.NEAREST: "Nearest bone",
+        }[self]
+
+
+@dataclass
+class AutoSkinSettings:
+    """What the artist sets before auto-skinning, and rarely needs to."""
+
+    method: SkinMethod = SkinMethod.HEAT
+    #: How many joints may share a vertex, 1 to 4 -- four is what a file's
+    #: skin carries, and what the skinning draws with.
+    influences: int = 4
+    #: Heat: how tightly the weights hug the nearest bone.  Higher is a
+    #: narrower blend at every joint; lower lets each bone's warmth reach
+    #: further along the surface.  The ``c`` of the paper, made unitless by
+    #: measuring the mesh's own area against the distances.
+    heat: float = 1.0
+    #: Envelope: the power the distance is raised to.  Two is inverse-square;
+    #: higher sharpens towards the nearest bone.
+    falloff: float = 2.0
+    #: Pass over a bone that lies in front of the surface rather than
+    #: behind it when choosing the nearest.  Off only when a mesh's normals
+    #: cannot be trusted.
+    facing: bool = True
+
+
 @dataclass
 class SkeletonSettings:
     """How skeletons are drawn, and how the pose tool behaves."""
@@ -484,6 +528,8 @@ class SkeletonSettings:
     snap_pixels: float = 12.0
     #: Degrees of twist per pixel of a Shift-drag.
     twist_per_pixel: float = 0.5
+    #: How a model is skinned to a skeleton it did not come with.
+    skinning: AutoSkinSettings = field(default_factory=AutoSkinSettings)
 
 
 class SkeletonStore:
@@ -577,13 +623,17 @@ class Rig:
     is what the artist edits -- can always be matched back to it by name.
     """
 
-    __slots__ = ("names", "parents", "rest_local", "skin")
+    __slots__ = ("names", "parents", "rest_local", "skin", "tag")
 
-    def __init__(self, names, parents, rest_local, skin: Skin) -> None:
+    def __init__(self, names, parents, rest_local, skin: Skin, tag: str = "") -> None:
         self.names = [str(name) for name in names]
         self.parents = [int(parent) for parent in parents]
         self.rest_local = np.ascontiguousarray(rest_local, dtype=np.float64).reshape(-1, 4, 4)
         self.skin = skin
+        #: Empty for the rig a file came with.  A rig made by auto-skinning
+        #: carries a mark of its own, and only a skeleton carrying the same
+        #: mark answers to it; see :attr:`Skeleton.rig_tag`.
+        self.tag = str(tag)
         if not len(self.names) == len(self.parents) == len(self.rest_local) == skin.joint_count:
             raise ValueError("a rig needs one name, parent and rest transform per joint")
 
@@ -605,7 +655,20 @@ class Rig:
             )
             for index in range(self.joint_count)
         ]
-        return Skeleton(name=name, joints=joints)
+        return Skeleton(name=name, joints=joints, rig_tag=self.tag)
+
+    def answers_to(self, skeleton: Skeleton) -> bool:
+        """Whether ``skeleton`` is one this rig's weights can follow.
+
+        By the joints' names, as :meth:`binding` matches them, and by the
+        mark: a rig made by auto-skinning answers only to the skeleton it
+        was made for, since another built from the same preset names its
+        joints the same way.
+        """
+        if skeleton.rig_tag != self.tag:
+            return False
+        names = set(self.names)
+        return any(joint.source in names for joint in skeleton.joints)
 
     def transformed(self, matrix) -> Rig:
         matrix = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
@@ -613,7 +676,7 @@ class Rig:
         for index, parent in enumerate(self.parents):
             if not 0 <= parent < self.joint_count:
                 rest[index] = matrix @ rest[index]
-        return Rig(self.names, self.parents, rest, self.skin.transformed(matrix))
+        return Rig(self.names, self.parents, rest, self.skin.transformed(matrix), self.tag)
 
     def binding(self, skeleton: Skeleton) -> tuple[np.ndarray, np.ndarray]:
         """Which document joint each rig joint answers to.

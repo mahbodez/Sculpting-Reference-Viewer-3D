@@ -231,3 +231,90 @@ def test_render_refinement_resets_stops_and_other_modes_work(gl_context):
     finally:
         renderer.dispose()
         target.dispose()
+
+
+def _patch(size: int = 24) -> Mesh:
+    axis = np.linspace(-1.0, 1.0, size, dtype=np.float32)
+    x, y = np.meshgrid(axis, axis)
+    positions = np.stack([x, y, np.zeros_like(x)], -1).reshape(-1, 3)
+    index = np.arange(size * size).reshape(size, size)
+    quads = np.stack([index[:-1, :-1], index[1:, :-1], index[1:, 1:], index[:-1, 1:]], -1)
+    indices = np.concatenate([quads[..., [0, 1, 2]], quads[..., [0, 2, 3]]]).reshape(-1, 3)
+    return Mesh(positions, np.tile([0, 0, 1], (len(positions), 1)).astype(np.float32), indices)
+
+
+def test_marks_fall_on_the_skin_and_the_body_map_says_where(gl_context):
+    """Moles and acne darken and redden a patch; a map that gives the patch none takes them off."""
+    from refview.core.body_regions import BodySource, RegionSource
+
+    gl = gl_context
+    renderer = SceneRenderer()
+    renderer.initialize()
+    mesh = _patch()
+    renderer.set_mesh(mesh)
+    camera = Camera()
+    camera.frame(mesh.bounds)
+    camera.eye = camera.target + (camera.eye - camera.target) * 0.25
+    settings = RenderSettings(shading_mode=ShadingMode.HUMAN_SKIN)
+    settings.skin.progressive = False
+    settings.skin.detail = 0.0
+    settings.skin.mottle = 0.0
+    settings.skin.blood = 0.0
+    settings.skin.pore_size = 0.02
+    target = FrameTarget()
+    target.resize(192, 192)
+
+    def render(**skin):
+        for name, value in skin.items():
+            setattr(settings.skin, name, value)
+        target.bind()
+        renderer.render(camera, settings, 192, 192)
+        pixels = np.asarray(gl.glReadPixels(0, 0, 192, 192, gl.GL_RGBA, gl.GL_FLOAT))[..., :3]
+        assert np.all(np.isfinite(pixels)) and gl.glGetError() == gl.GL_NO_ERROR
+        return pixels[48:144, 48:144]
+
+    try:
+        clear = render(nevi=0.0, acne=0.0, freckles=0.0, blemishes=0.0)
+        marked = render(nevi=1.0, acne=1.0, freckles=1.0)
+        # Spots break up a flat, evenly lit plane.
+        assert marked.mean(-1).std() > clear.mean(-1).std() + 0.01
+        # Blemishes are patches many pores across, so the pores are made
+        # small enough for a few patches to fall in the view.
+        plain = render(nevi=0.0, acne=0.0, freckles=0.0, blemishes=0.0, pore_size=0.003)
+        blotched = render(blemishes=1.0)
+        assert not np.allclose(blotched, plain, atol=1e-3)
+        render(blemishes=0.0, pore_size=0.02)
+
+        # The whole patch is "feet", where the profile gives no acne and no
+        # freckles at all and few moles; with the map on, the marks thin out.
+        settings.skin.regions.source = RegionSource.WHOLE
+        settings.skin.regions.whole = "feet"
+        settings.skin.regions.feet.acne = 0.0
+        settings.skin.regions.feet.nevi = 0.0
+        settings.skin.regions.feet.freckles = 0.0
+        key = ("test", 1)
+        renderer.set_body(BodySource(parts=(mesh,), bones=np.zeros((0, 7)),
+                                     source=RegionSource.WHOLE, whole=6, key=key))
+        # The map is built off the thread: render until it lands.
+        for _ in range(200):
+            mapped = render(nevi=1.0, acne=1.0, freckles=1.0, blemishes=0.0)
+            if renderer.skin.body_on:
+                break
+            time.sleep(0.02)
+        assert renderer.skin.body_on and renderer.skin.body_pending is None
+        mapped = render()
+        assert mapped.mean(-1).std() < marked.mean(-1).std() - 0.005
+        np.testing.assert_allclose(mapped, clear, atol=0.02)
+        # Turning the region up again brings them back without a new map.
+        settings.skin.regions.feet.acne = 1.0
+        settings.skin.regions.feet.nevi = 1.0
+        settings.skin.regions.feet.freckles = 1.0
+        again = render()
+        assert renderer.skin.body_pending is None
+        np.testing.assert_allclose(again, marked, atol=0.02)
+        renderer.set_body(None)
+        render()
+        assert not renderer.skin.body_on
+    finally:
+        renderer.dispose()
+        target.dispose()

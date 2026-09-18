@@ -35,6 +35,65 @@ and `Blood / flush` pulls patches, cavities and transmitted light towards a
 haemoglobin tint. `Peach fuzz` is a grazing-angle sheen standing in for vellus
 hair, lit from the light's side and a little from behind.
 
+## Marks and body regions
+
+Skin is marked, and the marks are what separate it from *perfect* skin. Four
+controls, all starting at nought:
+
+- `Freckles`: small light-brown dots, thick on the ground, flat.
+- `Moles`: dark, a few pores across, few and far between, faintly raised, a
+  minority lighter.
+- `Acne`: red papules, raised and shining (the oily lobe is turned up on the
+  dome), a share of them with a pale head at the centre.
+- `Blemishes`: patches, coarser than the pores, of irritated redness and of
+  dry, duller and rougher skin, read off the relief volume's tone channel at
+  two scales that share no period.
+
+The spots are not textures. Each kind lives on a jittered lattice in world
+units, its cell a fixed number of pores wide (4, 10 and 6 for freckles,
+moles and acne), so the marks scale with `Pore size`. A cell holds at most
+one spot, jittered by no more than a quarter of the cell and no wider than a
+quarter, which means the cell a point falls in is the only one whose spot can
+reach it: one hash of the cell index decides whether there is a spot, where
+in the cell it sits, how big it is and what kind it is, and there is no
+period to hide. A 3D lattice would seldom put a sphere on a surface, so the
+lattices are two-dimensional and *triplanar*: each point is marked on the
+three axis planes, blended by how squarely the surface faces each, the way a
+texture is put on a mesh with no UV layout. Every spot is therefore a disc on
+the skin whichever way the skin turns; the cost of the blend is a spot fading
+in or out across a 45° zone, which the eye reads as a freckle no more than
+it does the pores. Each lattice fades out once a cell covers a few pixels,
+before its spots could sparkle. The bumps of moles and papules are slopes
+added to the relief's, applied whatever `Surface detail` says: a papule
+stands up on the smoothest skin.
+
+Where the marks fall is the **Body Regions** group's business, and
+`core/body_regions.py` works it out from what the scene knows. A skeleton
+with humanoid roles -- the preset, a rig read by its names, one grown out of
+the guided armature -- gives a bone per role (a role'd joint to its nearest
+role'd ancestor, unnamed helpers stepped over), and each vertex goes to the
+region of the nearest bone, softened between bones over a few percent of
+the figure's height. Without one, height bands from the eight-head canon
+tell the feet, the legs, the torso, the neck and the head apart -- arms and
+hands cannot be told this way -- and the artist can instead say the whole
+model is one region, for a bust or a hand. Seven regions, each a
+`RegionProfile` of multipliers for acne, moles, freckles, blemishes, the
+oily lobe and the flush, starting from where marks tend to fall.
+
+The shader reads the regions from a *body map*: a 64³ volume over the
+scene's box, two RGBA textures' worth, with a weight per region and, last,
+how much of the voxel is assigned at all. It is splatted from the vertices
+and the triangle centres of every shown object and filled six voxels out
+from them by neighbour averaging, so a fragment between coarse vertices
+still reads a value and the inside of a solid, which nothing samples, stays
+unassigned; unassigned reads as a multiplier of one. `ViewerState.body_source`
+snapshots the parts, the bones and the settings under a key; the renderer
+hands that to `SkinRefinement.prepare_body`, which builds the map on the
+shared worker when the key changes and the scene is not being dragged, and
+bumps a serial the accumulation key includes when a map lands. The
+per-region multipliers are twelve `vec4` uniforms, so turning a region up
+or down costs nothing but a frame.
+
 ## Material and transport
 
 Colours are sRGB controls, decoded before lighting. The surface is dielectric
@@ -120,15 +179,18 @@ is persisted by the existing dataclass serializer.
 ## Where to change it
 
 - `core/skin.py`: parameters, safe ranges, and tone presets.
+- `core/body_regions.py`: the regions, their profiles, the bones and bands that
+  place a vertex, and the body map the shader samples.
 - `render/skin_detail.py`: the relief volume and the pre-integrated diffusion table.
-- `render/skin_shader.py`: BRDF, relief, diffusion, ray queries, accumulation, display.
+- `render/skin_shader.py`: BRDF, relief, marks and regions, diffusion, ray
+  queries, accumulation, display.
 - `render/skin_bvh.py`: CPU acceleration layout and texture packing.
 - `render/skin_refinement.py`: idle state, worker lifetime, skin tables, history targets.
 - `render/mesh_renderer.py`: drawn geometry and uniform integration.
 - `ui/panels/shading_panel.py`: artist controls; `ui/viewport.py`: repaint scheduling.
 
-Run `python -m pytest tests/test_skin.py tests/test_skin_gl.py` in the `refview`
-environment. GL tests verify actual compiled ray queries and image history;
+Run `python -m pytest tests/test_skin.py tests/test_skin_gl.py
+tests/test_body_regions.py` in the `refview` environment. GL tests verify actual compiled ray queries and image history;
 they skip only when the host cannot create an OpenGL context. The supplied
 `resources/models/Pose_02.obj` is useful for visual testing of concavities,
 ear/finger backlighting, and cast shadows from the raised arm.

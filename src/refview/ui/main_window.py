@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSettings, QTimer
+from PySide6.QtCore import QEvent, QPoint, QSettings, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -17,10 +17,11 @@ from ..core.annotation import AnnotateMode
 from ..core.camera import Projection
 from ..core.commands import AddItem
 from ..core.history import MEASUREMENTS
-from ..core.mesh import MeshLoadError
+from ..core.mesh import Mesh, MeshLoadError
 from ..core.mesh_io import MESH_FILTER, MESH_SUFFIXES
+from ..core.mesh_io import load_mesh as read_mesh
 from ..core.rigging import humanoid_roles, looks_humanoid
-from ..core.session import SESSION_SUFFIX
+from ..core.session import SESSION_SUFFIX, Session
 from ..core.update_check import Release
 from ..paths import model_dir
 from ..render.texture import MatcapLoadError
@@ -45,7 +46,8 @@ from .panels.shading_panel import ShadingPanel
 from .preferences import LAST_MODEL, LAST_SESSION
 from .preferences import store as preference_store
 from .settings_window import GROUPS, SettingsWindow
-from .state import ViewerState
+from .state import ViewerState, same_file
+from .tasks import TaskBanner
 from .update_notice import (
     UpdateChecker,
     is_skipped,
@@ -366,6 +368,14 @@ class MainWindow(QMainWindow):
 
         self._viewport = Viewport(self._state)
         self.setCentralWidget(self._viewport)
+        #: The cards for whatever is running -- a file being read, a figure
+        #: being skinned, a form being cut -- floated over the foot of the
+        #: view; see :mod:`refview.ui.tasks`.
+        self._banner = TaskBanner(self._state.tasks, self)
+        self._banner.changed.connect(self._place_banner)
+        self._viewport.installEventFilter(self)
+        #: The check for updates being shown as a task, when it is.
+        self._update_task = None
         #: Which keys do what, as the artist has set them; see
         #: :mod:`refview.ui.hotkeys`.  The binder turns the store into this
         #: window's shortcuts and re-keys them whenever the store moves.
@@ -1158,7 +1168,7 @@ class MainWindow(QMainWindow):
             self._matcap_folder = folder
             self._matcap_panel.reload_gallery()
 
-    def reopen_last_session(self) -> bool:
+    def reopen_last_session(self, background: bool = False) -> bool:
         """Pick up whatever was last being worked on, if that was asked for.
 
         A session first, because a session carries the marks on the model as
@@ -1178,11 +1188,11 @@ class MainWindow(QMainWindow):
         settings = QSettings()
         session = _remembered(settings.value(LAST_SESSION, ""))
         if session is not None:
-            self.load_session(session)
+            self.load_session(session, background=background)
             return True
         model = _remembered(settings.value(LAST_MODEL, ""))
         if model is not None:
-            self.open_model(model)
+            self.open_model(model, background=background)
             return True
         return False
 
@@ -1205,6 +1215,11 @@ class MainWindow(QMainWindow):
     # Updates
     # ------------------------------------------------------------------
 
+    def _end_update_task(self) -> None:
+        if self._update_task is not None:
+            self._update_task.end()
+            self._update_task = None
+
     def _start_update_check(self, manual: bool) -> None:
         """Ask GitHub for the newest release in the background.
 
@@ -1221,22 +1236,30 @@ class MainWindow(QMainWindow):
         self._update_checker = checker
         if manual:
             self.statusBar().showMessage("Checking for updates...", 4000)
+            self._end_update_task()
+            self._update_task = self._state.tasks.begin(
+                "Checking for updates", blocking=False, cancellable=False
+            )
+            self._update_task.progress.report(message="Asking GitHub for the newest release...")
         checker.start()
 
     def _check_for_updates(self) -> None:
         self._start_update_check(manual=True)
 
     def _on_update_available(self, release: Release, manual: bool) -> None:
+        self._end_update_task()
         if not manual and is_skipped(release):
             return
         self.statusBar().showMessage(f"Version {release.version} is available", 8000)
         show_update_dialog(self, release)
 
     def _on_up_to_date(self, manual: bool) -> None:
+        self._end_update_task()
         if manual:
             show_up_to_date_dialog(self)
 
     def _on_update_check_failed(self, error: str, manual: bool) -> None:
+        self._end_update_task()
         if manual:
             show_failure_dialog(self, error)
 
@@ -1244,11 +1267,30 @@ class MainWindow(QMainWindow):
     # File handling
     # ------------------------------------------------------------------
 
-    def open_model(self, path: str | Path) -> None:
-        """Load a model, reporting failures without tearing down the window."""
+    def open_model(self, path: str | Path, background: bool = False) -> None:
+        """Load a model, reporting failures without tearing down the window.
+
+        In the ``background`` the file is read on a thread with a card over
+        the view saying so, and the scene changes when it has been; the
+        window stays answerable meanwhile.  Otherwise the read is done here
+        and now, which is what a caller that goes on to look at the result
+        wants.
+        """
+        path = Path(path)
+        if background:
+            self._read_then(path, f"Opening {path.name}", "Open Model", self._adopt_model)
+            return
         try:
-            self._state.load_mesh(path)
+            mesh = read_mesh(path)
         except (MeshLoadError, OSError) as error:
+            QMessageBox.critical(self, "Open Model", str(error))
+            return
+        self._adopt_model(path, mesh)
+
+    def _adopt_model(self, path: Path, mesh: Mesh) -> None:
+        try:
+            self._state.load_mesh(path, source=mesh)
+        except (MeshLoadError, OSError, ValueError) as error:
             QMessageBox.critical(self, "Open Model", str(error))
             return
         self._session_path = self._state.default_session_path()
@@ -1256,6 +1298,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_NAME} - {Path(path).name}")
         self._refresh_panels()
         self._offer_humanoid_mapping()
+
+    def _read_then(self, path: Path, title: str, box: str, adopt) -> None:
+        """Read a model file off the window, then hand it to ``adopt`` here."""
+
+        def work(progress) -> Mesh:
+            progress.report(message=f"Reading {path.name}...")
+            mesh = read_mesh(path)
+            progress.report(message=f"Placing {mesh.vertex_count:,} vertices...")
+            return mesh
+
+        self._state.tasks.run(
+            title,
+            work,
+            done=lambda mesh: adopt(path, mesh),
+            failed=lambda error: QMessageBox.critical(self, box, str(error)),
+        )
 
     def _offer_humanoid_mapping(self) -> None:
         """Ask whether a rig that arrived with the model should be read as a figure.
@@ -1284,11 +1342,23 @@ class MainWindow(QMainWindow):
         if answer == QMessageBox.StandardButton.Yes:
             self._pose_panel.map_humanoid()
 
-    def add_model(self, path: str | Path) -> None:
+    def add_model(self, path: str | Path, background: bool = False) -> None:
         """Add a model to the scene beside what is already there."""
+        path = Path(path)
+        if background:
+            self._read_then(path, f"Adding {path.name}", "Add Model", self._adopt_added)
+            return
         try:
-            self._state.add_mesh(path)
+            mesh = read_mesh(path)
         except (MeshLoadError, OSError) as error:
+            QMessageBox.critical(self, "Add Model", str(error))
+            return
+        self._adopt_added(path, mesh)
+
+    def _adopt_added(self, path: Path, mesh: Mesh) -> None:
+        try:
+            self._state.add_mesh(path, source=mesh)
+        except (MeshLoadError, OSError, ValueError) as error:
             QMessageBox.critical(self, "Add Model", str(error))
             return
         self._remember_model(path)
@@ -1306,7 +1376,7 @@ class MainWindow(QMainWindow):
             MESH_FILTER,
         )
         if path:
-            self.add_model(path)
+            self.add_model(path, background=True)
 
     def _open_model(self) -> None:
         start = model_dir()
@@ -1317,7 +1387,7 @@ class MainWindow(QMainWindow):
             MESH_FILTER,
         )
         if path:
-            self.open_model(path)
+            self.open_model(path, background=True)
 
     def _save_session(self) -> None:
         target = self._session_path or self._state.default_session_path()
@@ -1350,11 +1420,46 @@ class MainWindow(QMainWindow):
             f"Reference Viewer session (*{SESSION_SUFFIX});;JSON (*.json)",
         )
         if path:
-            self.load_session(path)
+            self.load_session(path, background=True)
 
-    def load_session(self, path: str | Path) -> None:
+    def load_session(self, path: str | Path, background: bool = False) -> None:
+        """Load a session; in the ``background``, its models are read on a thread first."""
+        path = Path(path)
+        if not background:
+            self._adopt_session(path, None)
+            return
         try:
-            self._state.load_session(path)
+            session = Session.load(path)
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(self, "Load Session", str(error))
+            return
+        files = [
+            Path(record.path)
+            for record in self._state.records_of(session)
+            if record.path and Path(record.path).is_file()
+        ]
+
+        def work(progress) -> dict[str, Mesh]:
+            read: dict[str, Mesh] = {}
+            for index, file in enumerate(files):
+                progress.report(index, len(files), f"Reading {file.name}...")
+                try:
+                    read[same_file(file)] = read_mesh(file)
+                except (MeshLoadError, OSError):
+                    continue  # the state says which files it could not place
+            progress.report(len(files), len(files), "Placing the scene...")
+            return read
+
+        self._state.tasks.run(
+            f"Loading {path.name}",
+            work,
+            done=lambda read: self._adopt_session(path, read),
+            failed=lambda error: QMessageBox.critical(self, "Load Session", str(error)),
+        )
+
+    def _adopt_session(self, path: Path, read: dict[str, Mesh] | None) -> None:
+        try:
+            self._state.load_session(path, sources=read)
         except (OSError, ValueError, MeshLoadError) as error:
             QMessageBox.critical(self, "Load Session", str(error))
             return
@@ -1420,8 +1525,36 @@ class MainWindow(QMainWindow):
         # A recording still running when the interpreter tears its modules
         # down is a crash on the way out, so the window does not leave
         # without it.  It is asked to stop first, so the wait is one stage.
+        # The same goes for whatever else is being worked on a thread.
         self._viewport.stop_recording()
+        self._state.tasks.wait()
         super().closeEvent(event)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._place_banner()
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
+        """Keep the banner over the view as the docks push the view about."""
+        if watched is self._viewport and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Move,
+        ):
+            self._place_banner()
+        return super().eventFilter(watched, event)
+
+    def _place_banner(self) -> None:
+        """Sit the banner at the foot of the view, centred, above the status bar."""
+        if not self._banner.isVisible():
+            return
+        corner = self._viewport.mapTo(self, QPoint(0, 0))
+        width = min(440, max(self._viewport.width() - 32, 240))
+        self._banner.setFixedWidth(width)
+        self._banner.adjustSize()
+        x = corner.x() + (self._viewport.width() - width) // 2
+        y = corner.y() + self._viewport.height() - self._banner.height() - 18
+        self._banner.move(x, max(y, corner.y()))
+        self._banner.raise_()
 
     # ------------------------------------------------------------------
     # Drag and drop
@@ -1490,7 +1623,7 @@ class MainWindow(QMainWindow):
             event.acceptProposedAction()
             return
         for url in event.mimeData().urls():
-            if self.open_path(url.toLocalFile()):
+            if self.open_path(url.toLocalFile(), background=True):
                 event.acceptProposedAction()
                 return
         # Nothing here wanted it.  Saying so matters for a copy let go
@@ -1513,7 +1646,7 @@ class MainWindow(QMainWindow):
     def _droppable(url) -> bool:
         return opens_as(url.toLocalFile()) is not None
 
-    def open_path(self, path: str | Path) -> bool:
+    def open_path(self, path: str | Path, background: bool = False) -> bool:
         """Open a file by what it is: a model, a session or a matcap.
 
         The one door every file arrives through, whether dropped on the
@@ -1526,9 +1659,9 @@ class MainWindow(QMainWindow):
         path = Path(path)
         kind = opens_as(path)
         if kind == "model":
-            self.open_model(path)
+            self.open_model(path, background=background)
         elif kind == "session":
-            self.load_session(path)
+            self.load_session(path, background=background)
         elif kind == "matcap":
             self.load_matcap(path)
         else:

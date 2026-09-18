@@ -212,7 +212,7 @@ def test_forms_turn_with_the_model(app):
         np.array([[0, 1, 2]], dtype=np.uint32),
     )
     state.source_mesh = triangle
-    state.mesh = state._oriented(triangle)
+    state.mesh = state._oriented(triangle, state.orientation)
     state.forms.add(
         PrimaryForm(preset="pelvis", landmarks=[PlacedLandmark(key="asis.L", at=(1.0, 2.0, 3.0))])
     )

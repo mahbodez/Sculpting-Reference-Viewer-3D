@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
+from ...core.body_regions import (
+    PROFILE_FIELDS,
+    PROFILE_LABELS,
+    PROFILE_RANGE,
+    REGION_LABELS,
+    REGIONS,
+    BodyRegionSettings,
+    RegionSource,
+)
 from ...core.grid import COUNT_MAX, COUNT_MIN, FADE_MAX, FADE_MIN
 from ...core.settings import (
     CONTOUR_DENSITY_MAX,
@@ -15,7 +26,7 @@ from ...core.settings import (
     SurfaceSettings,
 )
 from ...core.skin import SKIN_PRESETS, SKIN_RANGES, SkinSettings
-from ..widgets import ColorButton, SliderSpin, form_group
+from ..widgets import ColorButton, SliderSpin, collapsible_group, form_group
 from .base import Panel
 from .matcap_panel import MatcapPanel
 
@@ -107,6 +118,10 @@ class ShadingPanel(Panel):
             ("mottle", "Tone variation", 2, 0.05, ""),
             ("blood", "Blood / flush", 2, 0.05, ""),
             ("fuzz", "Peach fuzz", 2, 0.05, ""),
+            ("blemishes", "Blemishes", 2, 0.05, ""),
+            ("freckles", "Freckles", 2, 0.05, ""),
+            ("nevi", "Moles", 2, 0.05, ""),
+            ("acne", "Acne", 2, 0.05, ""),
             ("light_size", "Light angular radius", 1, 0.5, " deg"),
             ("indirect", "Indirect light", 2, 0.05, ""),
             ("exposure", "Exposure", 1, 0.1, " EV"),
@@ -137,6 +152,20 @@ class ShadingPanel(Panel):
             "Flush from blood under the surface: reddens patches, cavities and backlight."
         )
         self._skin_controls["fuzz"].setToolTip("Soft rim from vellus hair at grazing angles.")
+        self._skin_controls["blemishes"].setToolTip(
+            "Patches, coarser than the pores, of irritated redness and of dry,\n"
+            "duller skin.  Where they fall is the Body Regions group's business."
+        )
+        self._skin_controls["freckles"].setToolTip(
+            "Small light-brown dots, thick on the ground: a pore or two across."
+        )
+        self._skin_controls["nevi"].setToolTip(
+            "Moles: dark, a few pores across, faintly raised, few and far between."
+        )
+        self._skin_controls["acne"].setToolTip(
+            "Red papules, raised and shining; some come to a pale head.\n"
+            "Turned up on the face, the chest and the back by the Body Regions group."
+        )
         self._skin_progressive = QCheckBox("Refine while idle")
         self._skin_progressive.setToolTip(
             "Trace soft shadows, one indirect bounce and approximate skin scattering.\n"
@@ -148,6 +177,7 @@ class ShadingPanel(Panel):
         self._skin_scatter.colorChanged.connect(self._skin_setter("scatter_color"))
         self._skin_progressive.toggled.connect(self._skin_setter("progressive"))
         self._add(self._skin_box)
+        self._build_body_regions()
 
         self._quality_box, quality_form = form_group("High Quality")
         self._quality_box.setToolTip(
@@ -348,6 +378,108 @@ class ShadingPanel(Panel):
         self._roughness.valueChanged.connect(self._surface_setter("roughness"))
         self._reflection.colorChanged.connect(self._surface_setter("reflection_color"))
 
+    def _build_body_regions(self) -> None:
+        """Where on the body the marks fall, and how much of each in each region."""
+        self._body_box, form = collapsible_group("Body Regions")
+        self._body_box.setToolTip(
+            "Acne gathers on the face and the back, freckles on the arms, the\n"
+            "knuckles run red: the marks above are scaled by where on the body\n"
+            "the skin is.  The regions come from a skeleton with humanoid\n"
+            "roles when the scene has one, else from the height bands of a\n"
+            "standing figure; a bust or a hand is best told what it is."
+        )
+        self._region_source = QComboBox()
+        for source in RegionSource:
+            self._region_source.addItem(source.label, source.value)
+        self._region_source.setToolTip(
+            "Where the regions come from.  A skeleton with humanoid roles --\n"
+            "the preset, a rig read by its names, one grown from the guided\n"
+            "armature -- places every limb; height bands only tell the head,\n"
+            "the torso and the legs of a standing figure apart."
+        )
+        form.addRow("Regions from", self._region_source)
+        self._region_whole = QComboBox()
+        for region in REGIONS:
+            self._region_whole.addItem(REGION_LABELS[region], region)
+        self._region_whole.setToolTip("What the whole model is, for a bust, a hand or a foot")
+        form.addRow("Whole model is", self._region_whole)
+        self._body_form = form
+
+        self._region_edited = QComboBox()
+        for region in REGIONS:
+            self._region_edited.addItem(REGION_LABELS[region], region)
+        self._region_edited.setToolTip("Which region the multipliers below are for")
+        form.addRow("Region", self._region_edited)
+        self._region_controls: dict[str, SliderSpin] = {}
+        low, high = PROFILE_RANGE
+        for field in PROFILE_FIELDS:
+            control = SliderSpin(low, high, 1.0, decimals=2, step=0.05, suffix=" ×")
+            control.setObjectName("region_" + field)
+            control.setToolTip(
+                f"How much of the {PROFILE_LABELS[field].lower()} slider this region gets:\n"
+                "1 is the slider as it is, 0 none, 3 three times as much."
+            )
+            form.addRow(PROFILE_LABELS[field], control)
+            self._region_controls[field] = control
+            control.valueChanged.connect(self._region_setter(field))
+        reset = QPushButton("Reset Regions")
+        reset.setToolTip("Put every region's multipliers back to where marks tend to fall")
+        reset.clicked.connect(self._reset_regions)
+        form.addRow("", reset)
+        self._add(self._body_box)
+
+        self._region_source.currentIndexChanged.connect(self._on_region_source)
+        self._region_whole.currentIndexChanged.connect(self._on_region_whole)
+        self._region_edited.currentIndexChanged.connect(lambda _i: self._refresh_regions())
+
+    def _regions(self) -> BodyRegionSettings:
+        skin = self.state.render.skin
+        if not isinstance(skin.regions, BodyRegionSettings):
+            skin.regions = BodyRegionSettings()
+        return skin.regions
+
+    def _on_region_source(self, index: int) -> None:
+        if self._busy:
+            return
+        self._regions().source = RegionSource(self._region_source.itemData(index))
+        self.state.notify_render()
+        self._refresh_regions()
+
+    def _on_region_whole(self, index: int) -> None:
+        if self._busy:
+            return
+        self._regions().whole = str(self._region_whole.itemData(index))
+        self.state.notify_render()
+
+    def _region_setter(self, field: str):
+        def change(value):
+            if self._busy:
+                return
+            region = str(self._region_edited.currentData())
+            self._apply(self._regions().profile(region), field, float(value))
+
+        return change
+
+    def _reset_regions(self) -> None:
+        self.state.render.skin.regions = BodyRegionSettings()
+        self.state.notify_render()
+        self._refresh_regions()
+
+    def _refresh_regions(self) -> None:
+        regions = self._regions().bounded()
+        with self._suppressed():
+            self._region_source.setCurrentIndex(
+                max(self._region_source.findData(regions.source.value), 0)
+            )
+            self._region_whole.setCurrentIndex(max(self._region_whole.findData(regions.whole), 0))
+            edited = self._region_edited.currentData() or REGIONS[0]
+            profile = regions.profile(edited)
+            for field, control in self._region_controls.items():
+                control.set_value(getattr(profile, field))
+        self._body_form.setRowVisible(
+            self._region_whole, regions.source is RegionSource.WHOLE
+        )
+
     def _light_setter(self, field: str):
         """Slot that writes one field of the light settings."""
         return lambda value: self._apply(self.state.render.light, field, value)
@@ -361,18 +493,19 @@ class ShadingPanel(Panel):
         return change
 
     def _apply_skin_preset(self, index: int) -> None:
-        from dataclasses import replace
-
         preset = SKIN_PRESETS.get(self._skin_preset.itemText(index))
         if preset is None or self._busy:
             return
         current = self.state.render.skin
-        # Tone belongs to the preset; scale, scene and quality stay as set.
+        # Tone belongs to the preset; scale, scene, quality and the marks --
+        # which are a person's, not a complexion's -- stay as set.
         self.state.render.skin = replace(
             preset, samples=current.samples, resolution=current.resolution,
             progressive=current.progressive, light_size=current.light_size,
             exposure=current.exposure, indirect=current.indirect,
             detail=current.detail, pore_size=current.pore_size,
+            blemishes=current.blemishes, freckles=current.freckles,
+            nevi=current.nevi, acne=current.acne, regions=current.regions,
         )
         self.state.notify_render()
         self.refresh()
@@ -454,6 +587,7 @@ class ShadingPanel(Panel):
         self._light_box.setVisible(mode.uses_lighting)
         self._surface_box.setVisible(mode.uses_lighting and mode is not ShadingMode.HUMAN_SKIN)
         self._skin_box.setVisible(mode is ShadingMode.HUMAN_SKIN)
+        self._body_box.setVisible(mode is ShadingMode.HUMAN_SKIN)
         self._quality_box.setVisible(mode is ShadingMode.HIGH_QUALITY)
         self._contour_box.setVisible(mode.uses_contour)
         self._pedestal_form.setRowVisible(
@@ -482,6 +616,8 @@ class ShadingPanel(Panel):
             self._skin_progressive.setChecked(skin.progressive)
             for field, control in self._skin_controls.items():
                 control.set_value(getattr(skin, field))
+        self._refresh_regions()
+        with self._suppressed():
             self._contour_direction.setCurrentIndex(
                 self._contour_direction.findData(contour.direction.value)
             )

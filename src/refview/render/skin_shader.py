@@ -11,6 +11,16 @@ curvature-indexed pre-integration of it, idle samples draw radii from it and
 project them onto the nearby surface. Transmission is Beer attenuation through
 the traced thickness. This is an RGB diffusion approximation, not a spectral
 layered tissue or volumetric random-walk solver.
+
+The marks -- freckles, moles and acne -- are round spots on jittered lattices
+worked out in the shader from the world position: each lattice cell holds at
+most one spot, jittered by no more than a quarter of the cell and no wider
+than a quarter, so the cell a point falls in is the only one that can mark
+it and one hash per lattice decides everything about that spot.  Blemishes
+are patches read off the relief volume's tone channel at a coarser scale.
+Where each falls, and how thickly, is scaled by the body map: a small volume
+of region weights laid over the scene, read at the same world position, and
+a multiplier per region and per kind of mark.
 """
 
 from .skin_detail import LUT_LOG_MIN, LUT_LOG_SPAN, RELIEF_CELLS
@@ -41,6 +51,25 @@ uniform float uSkinPoreSize;
 uniform float uSkinMottle;
 uniform float uSkinBlood;
 uniform float uSkinFuzz;
+uniform float uSkinBlemishes;
+uniform float uSkinFreckles;
+uniform float uSkinNevi;
+uniform float uSkinAcne;
+// The body map: seven region weights and, last, how much is assigned at
+// all, over the box from uSkinBodyOrigin of size 1/uSkinBodyInvSize.
+uniform bool uSkinBodyOn;
+uniform sampler3D uSkinBodyA;
+uniform sampler3D uSkinBodyB;
+uniform vec3 uSkinBodyOrigin;
+uniform vec3 uSkinBodyInvSize;
+// Per-region multipliers, four regions to a vec4, in the map's order:
+// head, neck, torso, arms; hands, legs, feet, (unused).
+uniform vec4 uSkinAcneA, uSkinAcneB;
+uniform vec4 uSkinNeviA, uSkinNeviB;
+uniform vec4 uSkinFrecklesA, uSkinFrecklesB;
+uniform vec4 uSkinBlemishA, uSkinBlemishB;
+uniform vec4 uSkinOilA, uSkinOilB;
+uniform vec4 uSkinBloodA, uSkinBloodB;
 
 const float SKIN_RELIEF_CELLS = @CELLS@;
 const float SKIN_LUT_LOG_MIN = @LUT_MIN@;
@@ -147,11 +176,11 @@ float skinLobe(vec3 n, vec3 v, vec3 l, float roughness) {
     float a=roughness*roughness;
     return distributionGGX(max(dot(n,h),0.0),a)*geometrySmith(nv,nl,a)/(4.0*nv*nl);
 }
-vec3 skinSpec(vec3 n, vec3 v, vec3 l) {
+vec3 skinSpec(vec3 n, vec3 v, vec3 l, float roughness, float oil) {
     if (dot(n,l)<=0.0 || dot(n,v)<=0.0) return vec3(0);
     vec3 h=normalize(l+v);
     return skinFresnel(max(dot(v,h),0.0)) * mix(
-        skinLobe(n,v,l,uSkinRoughness), skinLobe(n,v,l,0.18),uSkinOil);
+        skinLobe(n,v,l,roughness), skinLobe(n,v,l,0.18),oil);
 }
 vec3 skinEnvironment(vec3 direction) {
     return skinLinear(uAmbientColor)*uAmbientIntensity
@@ -196,10 +225,166 @@ vec3 skinBump(vec3 n, vec3 slope, float amount) {
     vec3 tangential=slope-n*dot(n,slope);
     return normalize(n-tangential*amount);
 }
-vec3 skinAlbedo(vec3 base, SkinSurface s) {
+vec3 skinAlbedo(vec3 base, SkinSurface s, float blood) {
     vec3 albedo=base*(1.0+uSkinMottle*0.22*(s.tone*2.0-1.0));
-    float pooled=uSkinBlood*smoothstep(0.25,0.85,s.flush);
+    float pooled=blood*smoothstep(0.25,0.85,s.flush);
     return clamp(mix(albedo,albedo*SKIN_FLUSH,pooled),0.0,1.0);
+}
+
+// Where on the body the point is: how much each kind of mark, and the oil
+// and the blood, are turned up or down there.  Off the map, or off a
+// figure, everything is 1.
+struct SkinRegion {
+    float acne; float nevi; float freckles; float blemishes; float oil; float blood;
+};
+SkinRegion skinRegion(vec3 p) {
+    SkinRegion r=SkinRegion(1.0,1.0,1.0,1.0,1.0,1.0);
+    if (!uSkinBodyOn) return r;
+    vec3 uvw=(p-uSkinBodyOrigin)*uSkinBodyInvSize;
+    vec4 a=texture(uSkinBodyA,uvw), b=texture(uSkinBodyB,uvw);
+    // What is not assigned to any region keeps the slider as it is.
+    float rest=max(1.0-b.w,0.0);
+    b.w=0.0;
+    r.acne=rest+dot(a,uSkinAcneA)+dot(b,uSkinAcneB);
+    r.nevi=rest+dot(a,uSkinNeviA)+dot(b,uSkinNeviB);
+    r.freckles=rest+dot(a,uSkinFrecklesA)+dot(b,uSkinFrecklesB);
+    r.blemishes=rest+dot(a,uSkinBlemishA)+dot(b,uSkinBlemishB);
+    r.oil=rest+dot(a,uSkinOilA)+dot(b,uSkinOilB);
+    r.blood=rest+dot(a,uSkinBloodA)+dot(b,uSkinBloodB);
+    return r;
+}
+
+vec4 skinHash4(vec3 cell) {
+    vec4 p4=fract(vec4(cell.xyzx)*vec4(0.1031,0.1030,0.0973,0.1099));
+    p4+=dot(p4,p4.wzxy+33.33);
+    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
+}
+// One round spot on a jittered lattice in a plane, in lattice units: how
+// much of the point it covers (a soft disc), a random for what kind of spot
+// it is, the unit direction away from its centre, and the distance out as
+// a share of its radius.  The jitter and the radius together stay inside
+// the cell, so only the point's own cell can carry a spot that reaches it.
+float skinSpot(vec2 q, float seed, float density, float radius, float soft,
+               out float kind, out vec2 away, out float t) {
+    vec2 cell=floor(q);
+    vec4 h=skinHash4(vec3(cell,seed)), k=skinHash4(vec3(cell,seed+71.0));
+    kind=k.x;
+    away=vec2(1.0,0.0);
+    t=2.0;
+    if (h.w>=density) return 0.0;
+    vec2 centre=cell+0.5+(h.xy-0.5)*0.5;
+    float r=radius*mix(0.55,1.0,k.y);
+    vec2 d=q-centre;
+    float s=length(d);
+    t=s/r;
+    away=d/max(s,1e-6);
+    return 1.0-smoothstep(soft,1.0,t);
+}
+// The slope of a dome of height h (in lattice units) over a spot: in
+// towards the centre, feathered at the rim.
+vec2 skinDome(vec2 away, float t, float h, float r) {
+    float edge=1.0-smoothstep(0.75,1.0,t);
+    return -away*(2.0*h*t/max(r,1e-6))*edge;
+}
+
+// The marks on the skin at p: what they do to the albedo, how they bump
+// the surface (a slope, as the relief's is), and how they change the shine.
+struct SkinMarks { vec3 tint; vec3 slope; float oil; float rough; };
+
+// The spots on one plane through p: its coordinates in that plane, the
+// world directions of the plane's axes, and a seed telling this plane's
+// lattices from the others'.
+SkinMarks skinSpots(vec2 uv, vec3 uAxis, vec3 vAxis, float seed, float perPixel,
+                    float freckles, float nevi, float acne) {
+    SkinMarks m;
+    m.tint=vec3(1.0); m.slope=vec3(0.0); m.oil=0.0; m.rough=0.0;
+    float pore=max(uSkinPoreSize,1e-9);
+    float kind, t; vec2 away;
+    // Freckles: small, thick on the ground, light brown, flat.
+    {
+        float cell=4.0*pore;
+        float fade=1.0-smoothstep(0.08,0.30,perPixel/cell);
+        float cover=skinSpot(uv/cell+vec2(11.3,7.1),seed,min(freckles*0.6,1.0),0.25,0.1,
+                             kind,away,t)*fade;
+        float strength=mix(0.3,0.85,kind);
+        m.tint*=mix(vec3(1.0),vec3(0.62,0.45,0.35),cover*strength);
+    }
+    // Moles: dark, a few pores across, few, faintly raised.
+    {
+        float cell=10.0*pore;
+        float fade=1.0-smoothstep(0.05,0.20,perPixel/cell);
+        float cover=skinSpot(uv/cell+vec2(5.7,13.1),seed+3.0,min(nevi*0.08,1.0),0.25,0.65,
+                             kind,away,t)*fade;
+        vec3 dark=mix(vec3(0.30,0.20,0.17),vec3(0.52,0.36,0.30),step(0.7,kind));
+        m.tint*=mix(vec3(1.0),dark,cover);
+        vec2 dome=skinDome(away,t,0.04,0.25)*cover;
+        m.slope+=uAxis*dome.x+vAxis*dome.y;
+        m.rough+=cover*0.15;
+    }
+    // Acne: red papules, raised and shining, some come to a pale head.
+    {
+        float cell=6.0*pore;
+        float fade=1.0-smoothstep(0.06,0.25,perPixel/cell);
+        float cover=skinSpot(uv/cell+vec2(2.3,4.7),seed+6.0,min(acne*0.25,1.0),0.25,0.45,
+                             kind,away,t)*fade;
+        float flush=cover*(0.55+0.45*(1.0-smoothstep(0.0,0.8,t)));
+        m.tint*=mix(vec3(1.0),vec3(1.08,0.52,0.46),flush);
+        float bump=1.0-smoothstep(0.35,0.7,t);
+        vec2 dome=skinDome(away,t*1.4,0.15,0.25)*cover*bump;
+        m.slope+=uAxis*dome.x+vAxis*dome.y;
+        float head=step(0.62,kind)*(1.0-smoothstep(0.0,0.30,t))*cover;
+        m.tint=mix(m.tint,vec3(1.0,0.90,0.72),head);
+        m.oil+=cover*bump*0.6;
+    }
+    return m;
+}
+
+// The marks at p on a surface with normal n.  The spots are laid on three
+// planes, one per axis, and blended by how squarely the surface faces each
+// -- the projection a texture is put on a mesh without a UV layout by --
+// so that every spot is a disc on the skin whichever way the skin turns.
+// Blemishes are patches read off the relief's tone noise in the volume.
+SkinMarks skinMarks(vec3 p, vec3 n, SkinRegion region) {
+    SkinMarks m;
+    m.tint=vec3(0.0); m.slope=vec3(0.0); m.oil=0.0; m.rough=0.0;
+    // World units per pixel, once, for the fades: a spot a pixel or two
+    // across only sparkles, so each lattice fades out before that.  Taken
+    // here, outside every branch, to stay defined.
+    float perPixel=length(fwidth(p));
+    float freckles=uSkinFreckles*region.freckles;
+    float nevi=uSkinNevi*region.nevi;
+    float acne=uSkinAcne*region.acne;
+    float blemishes=uSkinBlemishes*region.blemishes;
+    vec3 w=pow(abs(n),vec3(4.0));
+    w/=max(w.x+w.y+w.z,1e-6);
+    if (freckles+nevi+acne>0.0) {
+        if (w.x>0.005) {
+            SkinMarks a=skinSpots(p.yz,vec3(0,1,0),vec3(0,0,1),1.0,perPixel,freckles,nevi,acne);
+            m.tint+=a.tint*w.x; m.slope+=a.slope*w.x; m.oil+=a.oil*w.x; m.rough+=a.rough*w.x;
+        } else m.tint+=vec3(w.x);
+        if (w.y>0.005) {
+            SkinMarks a=skinSpots(p.zx,vec3(0,0,1),vec3(1,0,0),2.0,perPixel,freckles,nevi,acne);
+            m.tint+=a.tint*w.y; m.slope+=a.slope*w.y; m.oil+=a.oil*w.y; m.rough+=a.rough*w.y;
+        } else m.tint+=vec3(w.y);
+        if (w.z>0.005) {
+            SkinMarks a=skinSpots(p.xy,vec3(1,0,0),vec3(0,1,0),3.0,perPixel,freckles,nevi,acne);
+            m.tint+=a.tint*w.z; m.slope+=a.slope*w.z; m.oil+=a.oil*w.z; m.rough+=a.rough*w.z;
+        } else m.tint+=vec3(w.z);
+    } else m.tint=vec3(1.0);
+    // Blemishes: patches, coarser than the pores, of irritated redness and
+    // of dry, duller skin, read at two scales that share no period.
+    if (blemishes>0.0) {
+        vec3 q=p/(uSkinPoreSize*SKIN_RELIEF_CELLS);
+        float red=texture(uSkinRelief,q*0.043+vec3(0.71,0.29,0.53)).w
+                 *texture(uSkinRelief,q*0.027+vec3(0.17,0.61,0.37)).w*2.0;
+        float sore=smoothstep(0.52,0.80,red)*blemishes;
+        m.tint*=mix(vec3(1.0),vec3(1.05,0.78,0.72),sore);
+        float dry=smoothstep(0.58,0.82,texture(uSkinRelief,q*0.031+vec3(0.13,0.83,0.47)).w)
+                 *blemishes;
+        m.tint*=mix(vec3(1.0),vec3(0.86,0.79,0.75),dry);
+        m.rough+=dry*0.3;
+    }
+    return m;
 }
 vec3 skinDiffusionLengths(vec3 albedo) {
     // Burley's fit from mean free path and albedo to the profile's length d.
@@ -233,13 +418,22 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
     vec3 p=vWorldPosition;
     vec3 key=skinLight(normalize(toWorld*uKeyDirection));
     vec3 fill=skinLight(normalize(toWorld*uFillDirection));
-    // The relief is fetched on every path so the derivatives it needs stay defined.
+    // The relief and the marks are fetched on every path so the derivatives
+    // they need stay defined.
     SkinSurface surface=skinRelief(p);
+    SkinRegion region=skinRegion(p);
+    SkinMarks marks=skinMarks(p,n,region);
     float detail=uSkinFurniture ? 0.0 : uSkinDetail*surface.fade;
-    vec3 nSpec=skinBump(n,surface.slope,detail);
-    vec3 nDiff=skinBump(n,surface.slope,detail*0.35);
+    float oil=uSkinFurniture ? 0.0 : clamp(uSkinOil*region.oil+marks.oil,0.0,1.0);
+    float roughness=clamp(uSkinRoughness+(uSkinFurniture ? 0.0 : marks.rough),0.12,1.0);
+    float blood=uSkinFurniture ? 0.0 : clamp(uSkinBlood*region.blood,0.0,1.0);
+    // A mark's own relief is not the artist's detail slider: a papule stands
+    // up on the smoothest skin.
+    vec3 markSlope=uSkinFurniture ? vec3(0.0) : marks.slope;
+    vec3 nSpec=skinBump(n,surface.slope*detail+markSlope,1.0);
+    vec3 nDiff=skinBump(n,surface.slope*detail*0.35+markSlope*0.6,1.0);
     vec3 albedo=uSkinFurniture ? skinLinear(uDiffuseColor)
-                               : skinAlbedo(skinLinear(uSkinColor),surface);
+        : clamp(skinAlbedo(skinLinear(uSkinColor),surface,blood)*marks.tint,0.0,1.0);
     vec3 lengths=skinDiffusionLengths(albedo);
     float sphereRadius=skinSphereRadius(n);
     float sss=uSkinFurniture ? 0.0 : uSkinSSS;
@@ -258,7 +452,7 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
         localIrradiance += lit*nl;
         if (!uSkinTrace) wrapIrradiance += lit*skinWrap(dot(n,l),lengths,sphereRadius);
         if (uSkinFurniture) continue;
-        result += skinSpec(nSpec,v,l)*lit*max(dot(nSpec,l),0.0);
+        result += skinSpec(nSpec,v,l,roughness,oil)*lit*max(dot(nSpec,l),0.0);
         if (uSkinFuzz>0.0) {
             // Vellus hair catches light at the rim, from the lit side and a
             // little from behind; it is not occluded the way the surface is.
@@ -317,13 +511,13 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
     vec3 fresnelView=uSkinFurniture ? vec3(0.0) : skinFresnel(nv);
     vec3 diffuseWeight=albedo*(1.0-fresnelView);
     result += diffuseWeight*diffuseIrradiance/PI;
-    vec3 gloss=fresnelView*(1.0-0.7*uSkinRoughness);
+    vec3 gloss=fresnelView*(1.0-0.7*roughness);
     if (!uSkinTrace) {
         float ao=occlusionFactor();
         // A cavity goes red before it goes dark: blue is absorbed first, and
         // more so the more blood there is under the surface.
         vec3 tint=uSkinFurniture ? vec3(ao)
-                : pow(vec3(ao),1.0+(1.0-uSkinScatter)*(1.0+2.0*uSkinBlood));
+                : pow(vec3(ao),1.0+(1.0-uSkinScatter)*(1.0+2.0*blood));
         result += diffuseWeight*skinEnvironment(nDiff)*tint*uSkinIndirect;
         result += gloss*skinEnvironment(reflect(-v,nSpec))*ao*uSkinIndirect;
     } else if (uSkinIndirect>0.0) {

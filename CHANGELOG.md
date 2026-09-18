@@ -4,6 +4,103 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.5.0]
+
+### Added
+
+- **Auto-skin.** A skeleton the model did not come with -- the humanoid
+  preset pulled into place, a chain clicked in, one grown out of an armature
+  -- can now be given skin weights in one press, so that posing the bones
+  poses the model.  **Skin to Model** under **Pose > Auto-skin** (folded
+  away by default) makes them and binds the skeleton where it stands, its
+  pose becoming its rest; **Unskin** takes them off; either is one undo
+  step.  Three ways of deciding the weights: **Heat diffusion**, the
+  default, after Baran and Popović's *Pinocchio* -- each bone's warmth is
+  let spread over the surface of the model and the temperature it settles
+  at is the weight, so a hand resting on a hip stays the hand's and the
+  blend at a knee is as wide as the leg is thick; **Envelope**, which
+  shares each vertex among its nearest bones by distance; and **Nearest
+  bone**, which gives each vertex wholly to one.  How many bones may share a
+  vertex, how tightly the heat hugs the nearest bone, and whether a bone
+  that lies out in front of the skin is passed over for one behind it, are
+  the knobs.  The heat solve is a conjugate-gradient pass over a
+  two-level Laplacian of the welded mesh, in numpy, and takes a second or
+  two on a figure of twenty thousand vertices.  A skin made here is saved
+  as a small archive beside the session, named for the session and the
+  object, and put back when the session is loaded.  Sessions are at
+  version 10.
+
+- **Progress, shown.** Everything that takes a while now says so in one
+  way: a card floated over the foot of the view, with what is being done,
+  what it is doing right now, a bar that fills when the work can count and
+  sweeps when it cannot, and a cross to stop it.  Opening or adding a
+  model, loading a session, skinning a figure, rebuilding a form from
+  planes, recording a form's making, exporting a video and checking for
+  updates all report through it.  A job over in a blink never shows a card
+  at all.  The work behind a card runs off the window, so a scan being read
+  or a figure being skinned no longer freezes it: the last scene stays up
+  and answering until the new one is ready, and a second scene-changing
+  job asked for meanwhile waits its turn.  The video export's card sits in
+  its own dialog, since that dialog is modal and a cross the artist could
+  not reach would be no cross at all.
+
+- **An orientation for each object.**  Which axis of the file is up, whether
+  it arrived upside down and the quarter turn that faces it forwards now
+  belong to the object rather than to the scene, so a Z-up scan and a Y-up
+  sculpt can stand side by side.  The Orientation group on the Model tab
+  shows and sets the active object's; the next model added is read the same
+  way, since files from one pipeline share an up axis, and **Apply to All**
+  turns every object alike.  Sessions are at version 11; one from before
+  reads every object the one way it named.
+
+- **Normalize Objects.**  Scales the selected objects so that each is the
+  size of the active one -- the largest of its three extents is matched,
+  about its own pivot, the same on every axis -- so a head scanned in
+  millimetres and a figure modelled in metres come out the same height and
+  can be set against each other.  Parents are resized before their
+  children, so a child chosen along with its parent is not scaled twice.
+  One undo step.
+
+- **Reset XForm.**  Writes the active object's rotation and scale into its
+  mesh, as 3ds Max's does: afterwards it is unturned and unscaled, stands
+  where it stood, and nothing in the view has moved.  Its mesh is no longer
+  its file's, so saving the session writes it out as an OBJ beside it, as a
+  merged object is; a rig the file gave it is kept, marked as a skin made
+  here, and saved beside the session too.  One undo step.
+
+- **Skin that is marked.**  Four more knobs under Human Skin: **Freckles**,
+  small light-brown dots, thick on the ground; **Moles**, dark, a few pores
+  across, few and faintly raised; **Acne**, red papules raised and shining,
+  some come to a pale head; and **Blemishes**, patches coarser than the
+  pores of irritated redness and of dry, duller skin.  The spots are round
+  discs on jittered lattices worked out in the shader from the world
+  position and projected onto the skin whichever way it faces -- one hash
+  per lattice, no UV layout, no repeat -- and their size follows the pore
+  size.  All start at nought, and a tone preset leaves them alone.
+
+- **Body regions.**  Where the marks fall is worked out from what the scene
+  knows about the body.  A skeleton with humanoid roles -- the preset, a rig
+  read by its names, one grown out of the guided armature -- places every
+  limb: each point of the skin goes to the region of the nearest bone,
+  softened between bones.  Without one, the height bands of a standing
+  figure tell the head, the neck, the torso and the legs apart; a bust or a
+  hand can be told what it is.  Seven regions, each with a multiplier for
+  each kind of mark and for the oiliness and the flush, starting from where
+  marks tend to fall -- acne on the face, the chest and the back, freckles
+  on the arms, red knuckles, a shining forehead -- and each editable in the
+  new **Body Regions** group.  The map behind it is a small volume of region
+  weights over the scene, built off the thread when the scene or the bones
+  move, that the shader reads at the same world position as the pores.
+
+### Changed
+
+- Rebuilding a form from planes no longer stops the window with a wait
+  cursor: it is cut on a thread, the last stand-in stays up until the new
+  one lands, and a setting turned meanwhile asks for one more rebuild
+  rather than one per value it passed through.
+- The Pose tab says whether a skeleton's skin came with the model or was
+  made here, and for which object.
+
 ## [2.4.0]
 
 ### Added

@@ -318,7 +318,7 @@ def test_a_model_file_is_welcome_at_every_step_of_its_drag(window, tmp_path, mon
     path = tmp_path / "figure.obj"
     path.write_text(chr(10).join(("v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3", "")))
     opened = []
-    monkeypatch.setattr(window, "open_model", lambda where: opened.append(Path(where)))
+    monkeypatch.setattr(window, "open_model", lambda where, **_: opened.append(Path(where)))
 
     entering, mime_a = _file_drag(window, path, QDragEnterEvent)
     window.dragEnterEvent(entering)

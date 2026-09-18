@@ -6,8 +6,9 @@ Each row carries the object's name, a box for whether it is shown and a bar
 for how solid it is drawn -- the same ghost the Shading panel applies to the
 whole scene, one object at a time.  Below it the active object's placement is
 written out in numbers, and the transform tool that moves it by hand is
-armed.  The orientation the files are read in, and what came out of the
-active one, follow as they always did.
+armed.  The orientation the active object's file is read in -- each object
+has its own, since a Z-up scan and a Y-up sculpt can share a scene -- and
+what came out of that file, follow.
 """
 
 from __future__ import annotations
@@ -217,7 +218,22 @@ class ModelPanel(Panel):
 
         self._reset = QPushButton("Place at Origin")
         self._reset.setToolTip("Put the active object back at the origin, unturned and unscaled")
-        form.addRow("", self._reset)
+        self._normalize = QPushButton("Normalize Objects")
+        self._normalize.setToolTip(
+            "Scale the selected objects so each is the size of the active one:\n"
+            "the largest of its three extents is matched, about its own pivot,\n"
+            "the same on every axis.  A head scanned in millimetres beside a\n"
+            "figure modelled in metres come out the same height.  Ctrl-click\n"
+            "rows in the list to select more than one; one undo step."
+        )
+        self._reset_xform = QPushButton("Reset XForm")
+        self._reset_xform.setToolTip(
+            "Write the active object's rotation and scale into its mesh, as\n"
+            "3ds Max does: afterwards it is unturned and unscaled, stands where\n"
+            "it stood, and nothing in the view moves.  Its mesh is no longer its\n"
+            "file's, so saving the session writes it out as an OBJ beside it."
+        )
+        form.addRow("", _row(self._reset, self._reset_xform, self._normalize))
         self._add(box)
 
         self._mode.currentIndexChanged.connect(self._on_mode_chosen)
@@ -226,6 +242,8 @@ class ModelPanel(Panel):
         self._scale.valueChanged.connect(lambda v: self._on_transform_typed("scale", v))
         self._uniform.toggled.connect(lambda v: self._apply_setting("uniform_scale", v))
         self._reset.clicked.connect(self.reset_transform)
+        self._normalize.clicked.connect(self.normalize_selected)
+        self._reset_xform.clicked.connect(self.reset_xform)
 
     # -- linking --------------------------------------------------------
 
@@ -270,9 +288,10 @@ class ModelPanel(Panel):
         for axis in UpAxis:
             self._up_axis.addItem(axis.label, axis.value)
         self._up_axis.setToolTip(
-            "Which axis of the files points up.  Z-up is what CAD and Blender\n"
-            "usually export; STL says nothing, so try both.  Applies to every\n"
-            "object: files from one pipeline share an up axis."
+            "Which axis of the active object's file points up.  Z-up is what\n"
+            "CAD and Blender usually export; STL says nothing, so try both.\n"
+            "Each object has its own; the next model added is read the same\n"
+            "way, since files from one pipeline share an up axis."
         )
         self._flip = QCheckBox("Upside down")
         self._spin = QComboBox()
@@ -284,9 +303,14 @@ class ModelPanel(Panel):
         form.addRow("Spin", self._spin)
 
         reset = QPushButton("Use the File's Axes")
-        reset.setToolTip("Go back to the orientation the file was stored in")
+        reset.setToolTip("Go back to the orientation the active object's file was stored in")
         reset.clicked.connect(self._reset_orientation)
-        form.addRow("", reset)
+        self._orient_all = QPushButton("Apply to All")
+        self._orient_all.setToolTip(
+            "Read every object in the scene this way, not only the active one"
+        )
+        self._orient_all.clicked.connect(self._apply_orientation_to_all)
+        form.addRow("", _row(reset, self._orient_all))
         self._add(box)
 
         self._up_axis.currentIndexChanged.connect(self._on_orientation_changed)
@@ -503,6 +527,17 @@ class ModelPanel(Panel):
         if active is not None:
             self.state.set_transform(active, Transform(), f"Place {active.name} at the origin")
 
+    def reset_xform(self) -> None:
+        """Bake the active object's turn and scale into its mesh."""
+        active = self.state.active_object
+        if active is not None:
+            self.state.reset_xform(active)
+
+    def normalize_selected(self) -> None:
+        """Scale the selected objects to the size of the active one."""
+        if self.state.active_object is not None:
+            self.state.normalize_objects(self.selected_objects())
+
     def _on_transform_typed(self, field: str, value) -> None:
         if self._busy:
             return
@@ -530,26 +565,39 @@ class ModelPanel(Panel):
 
     # -- orientation ----------------------------------------------------
 
+    def _chosen_orientation(self) -> OrientationSettings:
+        return OrientationSettings(
+            up_axis=UpAxis(self._up_axis.currentData()),
+            flip_up=self._flip.isChecked(),
+            spin_deg=float(self._spin.currentData()),
+        )
+
+    def _set_orientation(self, orientation: OrientationSettings) -> None:
+        """Turn the active object, or note how the next file is read when there is none."""
+        active = self.state.active_object
+        if active is None:
+            self.state.set_orientation(orientation)
+        else:
+            self.state.set_object_orientation(active, orientation)
+        self.refresh()
+
     def _on_orientation_changed(self, *_args) -> None:
         if self._busy:
             return
-        self.state.set_orientation(
-            OrientationSettings(
-                up_axis=UpAxis(self._up_axis.currentData()),
-                flip_up=self._flip.isChecked(),
-                spin_deg=float(self._spin.currentData()),
-            )
-        )
-        self.refresh()
+        self._set_orientation(self._chosen_orientation())
 
     def _reset_orientation(self) -> None:
-        self.state.set_orientation(OrientationSettings())
+        self._set_orientation(OrientationSettings())
+
+    def _apply_orientation_to_all(self) -> None:
+        self.state.set_orientation(self._chosen_orientation())
         self.refresh()
 
     # -- refreshing -----------------------------------------------------
 
     def refresh(self) -> None:
-        orientation = self.state.orientation
+        active = self.state.active_object
+        orientation = self.state.orientation if active is None else active.orientation
         settings = self.state.object_settings
         with self._suppressed():
             self._up_axis.setCurrentIndex(self._up_axis.findData(orientation.up_axis.value))
@@ -586,8 +634,12 @@ class ModelPanel(Panel):
         self._duplicate.setEnabled(active is not None)
         self._split.setEnabled(active is not None)
         self._merge.setEnabled(count >= 2)
+        self._normalize.setEnabled(count >= 2)
+        self._orient_all.setEnabled(count >= 2)
         self._parent.setEnabled(count >= 2)
-        for widget in (self._position, self._rotation, self._scale, self._reset):
+        for widget in (
+            self._position, self._rotation, self._scale, self._reset, self._reset_xform
+        ):
             widget.setEnabled(active is not None)
 
     def _refresh_info(self) -> None:

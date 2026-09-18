@@ -93,7 +93,7 @@ class OpenRequests:
         if self._window is None:
             self._pending.append(path)
             return
-        self._window.open_path(path)
+        self._window.open_path(path, background=True)
 
     def deliver_to(self, window: MainWindow) -> None:
         """Name the window files go to, and hand over any that came early."""
@@ -176,7 +176,7 @@ def _apply_startup_arguments(window: MainWindow, arguments: argparse.Namespace) 
     """Open whatever the command line asked for, falling back to sane defaults."""
     opened = False
     for path in arguments.files:
-        if not window.open_path(path):
+        if not window.open_path(path, background=True):
             QMessageBox.warning(
                 window,
                 "Open",
@@ -185,13 +185,13 @@ def _apply_startup_arguments(window: MainWindow, arguments: argparse.Namespace) 
             continue
         opened = True
     if arguments.session is not None:
-        window.load_session(arguments.session)
+        window.load_session(arguments.session, background=True)
     elif not opened:
         # Nothing was asked for, so the artist's own answer applies: carry on
         # with the session they were last in, if they asked to.  A file named
         # on the command line beats it, because that is somebody opening this
         # application *at* something.
-        window.reopen_last_session()
+        window.reopen_last_session(background=True)
 
     matcap = arguments.matcap
     if matcap is None and window.state.render.matcap_path is None:

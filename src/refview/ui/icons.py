@@ -85,6 +85,11 @@ _STROKES: dict[str, list[list[tuple[float, float]]]] = {
     "refresh": [
         [(0.82, 0.50), (0.72, 0.36), (0.88, 0.32)],
     ],
+    # Two strokes crossed: stop, close, no.
+    "cross": [
+        [(0.24, 0.24), (0.76, 0.76)],
+        [(0.76, 0.24), (0.24, 0.76)],
+    ],
 }
 
 #: Which glyphs are drawn as a ring as well as their strokes.

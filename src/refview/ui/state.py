@@ -16,6 +16,8 @@ object's own and nothing is copied.
 
 from __future__ import annotations
 
+import secrets
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +25,8 @@ from PySide6.QtCore import QObject, Signal
 
 from ..core.annotation import AnnotationSettings, AnnotationStore
 from ..core.armature import ArmatureSettings, ArmatureStore
+from ..core.autoskin import AutoSkin
+from ..core.body_regions import REGIONS, BodySource, RegionSource, role_bones
 from ..core.bookmark import BookmarkStore
 from ..core.camera import Camera
 from ..core.forms import FormSettings, FormStore
@@ -42,6 +46,7 @@ from ..core.mesh import Mesh, MeshLoadError, concatenated
 from ..core.mesh_io import load_mesh as read_mesh
 from ..core.mesh_io import save_mesh
 from ..core.orientation import OrientationSettings
+from ..core.rig_file import RIG_SUFFIX, RigFileError, load_rig, save_rig
 from ..core.scene import (
     ObjectRecord,
     ObjectSettings,
@@ -56,8 +61,9 @@ from ..core.scene import (
 )
 from ..core.session import Session, sidecar_path
 from ..core.settings import NavigationSettings, RenderSettings
-from ..core.skeleton import Skeleton, SkeletonSettings, SkeletonStore, skinned_mesh
+from ..core.skeleton import Rig, Skeleton, SkeletonSettings, SkeletonStore, skinned_mesh
 from ..render.texture import MatcapLoadError, load_matcap_pixels
+from .tasks import TaskRunner
 
 
 class ObjectsEdit(Command):
@@ -99,6 +105,100 @@ class ObjectsEdit(Command):
             skeletons.items.remove(self._skeleton)
             self._state.skeleton_changed.emit()
         self._state._restore_objects(self._before)
+
+
+class SkinEdit(Command):
+    """Dressing an object in a skin made for a skeleton, or taking it off.
+
+    One step for both halves, since neither is any use without the other:
+    the rig goes onto the object's mesh and the skeleton's joints are
+    rewritten to answer to it -- the pose baked into their rests, each
+    named for the rig -- and undoing puts back the rig the object wore
+    before, if any, and the joints as they were.
+    """
+
+    def __init__(
+        self,
+        state: ViewerState,
+        obj: SceneObject,
+        skeleton: Skeleton,
+        rig: Rig | None,
+        joints: list | None,
+        text: str,
+    ) -> None:
+        super().__init__(text, SKELETON)
+        self._state = state
+        self._obj = obj
+        self._skeleton = skeleton
+        self._after = (rig, joints, "" if rig is None else rig.tag, None)
+        self._before = (
+            obj.source_mesh.rig,
+            [replace(joint) for joint in skeleton.joints],
+            skeleton.rig_tag,
+            obj.skin_path,
+        )
+
+    def apply(self) -> None:
+        self._put(self._after)
+
+    def revert(self) -> None:
+        self._put(self._before)
+
+    def _put(self, held) -> None:
+        rig, joints, tag, path = held
+        self._state._dress(self._obj, rig)
+        self._obj.skin_path = path
+        if joints is not None:
+            self._skeleton.joints = [replace(joint) for joint in joints]
+        self._skeleton.rig_tag = tag
+
+
+class BakeEdit(Command):
+    """Writing an object's turn and scale into its mesh -- Reset XForm -- or undoing that.
+
+    The object's meshes, its placement and its file are all swapped at
+    once: the file goes, since the mesh is no longer what the file holds,
+    and comes back on undo.  A rig the file's mesh wore is carried into the
+    baked mesh under a mark of its own, so that it is saved beside the
+    session as a skin made here would be; the skeleton bound to it is told
+    the mark, and told the old one back on undo.
+    """
+
+    def __init__(
+        self,
+        state: ViewerState,
+        obj: SceneObject,
+        after: tuple,
+        before: tuple,
+        skeleton: Skeleton | None,
+        text: str,
+    ) -> None:
+        super().__init__(text, OBJECTS)
+        self._state = state
+        self._obj = obj
+        self._after = after
+        self._before = before
+        self._skeleton = skeleton
+
+    def apply(self) -> None:
+        self._put(self._after)
+
+    def revert(self) -> None:
+        self._put(self._before)
+
+    def _put(self, held) -> None:
+        source, rest, transform, path, skin_path, tag = held
+        obj = self._obj
+        obj.source_mesh = source
+        obj.rest_mesh = rest
+        obj.transform = replace(transform)
+        obj.path = path
+        obj.skin_path = skin_path
+        obj.forget()
+        if self._skeleton is not None:
+            self._skeleton.rig_tag = tag
+        self._state._rebuild()
+        self._state.notify_objects()
 
 
 class ViewerState(QObject):
@@ -175,6 +275,9 @@ class ViewerState(QObject):
         #: Whether the drawn mesh was last announced through
         #: :attr:`mesh_deformed`, and so still owes a :attr:`mesh_changed`.
         self._mesh_live = False
+        #: Where the long jobs run -- reading a file, skinning a figure --
+        #: and what the window watches to show them; see :mod:`refview.ui.tasks`.
+        self.tasks = TaskRunner(self)
 
     # ------------------------------------------------------------------
     # The active object, in the names the rest of the viewer knows
@@ -209,7 +312,7 @@ class ViewerState(QObject):
         active = self._active_or_new(mesh)
         if active is not None and mesh is not None:
             active.source_mesh = mesh
-            active.rest_mesh = self._oriented(mesh)
+            active.rest_mesh = self._oriented(mesh, active.orientation)
             active.forget()
             self._rebuild(quiet_if_same=True)
 
@@ -228,7 +331,12 @@ class ViewerState(QObject):
         """The active object, made on the spot when a mesh is handed to an empty scene."""
         active = self.active_object
         if active is None and mesh is not None:
-            active = self.objects.add(SceneObject(mesh, self._oriented(mesh), name=mesh.name))
+            orientation = replace(self.orientation)
+            active = self.objects.add(
+                SceneObject(
+                    mesh, self._oriented(mesh, orientation), name=mesh.name, orientation=orientation
+                )
+            )
         return active
 
     # ------------------------------------------------------------------
@@ -326,11 +434,10 @@ class ViewerState(QObject):
         rig = obj.rig
         if rig is None:
             return None
-        names = set(rig.names)
         for skeleton in self.skeletons:
             if id(skeleton) in claimed or not skeleton.bound:
                 continue
-            if any(joint.source in names for joint in skeleton.joints):
+            if rig.answers_to(skeleton):
                 claimed.add(id(skeleton))
                 return skeleton
         return None
@@ -422,6 +529,34 @@ class ViewerState(QObject):
         ]
         self.parts_changed.emit()
 
+    def body_source(self) -> BodySource | None:
+        """What the skin shader's body map is worked out from, or ``None`` for no map.
+
+        The shown objects as they stand, the bones of every skeleton that
+        carries humanoid roles, and how the Shading tab says the regions
+        are to be found; see :mod:`refview.core.body_regions`.  Cheap to
+        ask for: the map itself is built by the renderer, off the thread,
+        only when the key of what comes back has changed.
+        """
+        regions = self.render.skin.regions.bounded()
+        parts = tuple(mesh for _, mesh, _ in self.mesh_parts)
+        if not parts or regions.source is RegionSource.OFF:
+            return None
+        rows = [role_bones(skeleton) for skeleton in self.skeletons]
+        bones = (
+            np.concatenate([row for row in rows if len(row)])
+            if any(len(row) for row in rows)
+            else np.zeros((0, 7), dtype=np.float64)
+        )
+        whole = REGIONS.index(regions.whole)
+        key = (
+            tuple(mesh.serial for mesh in parts),
+            regions.source.value,
+            whole,
+            bones.round(6).tobytes(),
+        )
+        return BodySource(parts=parts, bones=bones, source=regions.source, whole=whole, key=key)
+
     def triangle_owner(self, triangle: int) -> SceneObject | None:
         """Which object a triangle of :attr:`mesh` belongs to, by its index."""
         start = 0
@@ -435,19 +570,25 @@ class ViewerState(QObject):
     # Content
     # ------------------------------------------------------------------
 
-    def load_mesh(self, path: str | Path, load_sidecar: bool = True) -> None:
+    def load_mesh(
+        self, path: str | Path, load_sidecar: bool = True, source: Mesh | None = None
+    ) -> None:
         """Open a model as the whole scene: centre it on the origin and frame it.
+
+        ``source`` is the file already read -- on a thread, with a bar
+        showing -- so that only the placing is left to do here.
 
         Everything the previous scene held -- other objects, marks, history
         -- goes.  :meth:`add_mesh` is the door for a model that is to stand
         beside what is already there.
 
-        The current orientation carries over to the new model: files from one
-        pipeline share an up axis, so having set it once is usually right, and
-        the Model panel shows what is being applied.
+        The orientation last set carries over to the new model: files from
+        one pipeline share an up axis, so having set it once is usually
+        right, and the Model panel shows what is being applied.
         """
         path = Path(path)
-        source = read_mesh(path)
+        if source is None:
+            source = read_mesh(path)
         self.objects.clear()
         self.measurements.clear()
         self.annotations.clear()
@@ -479,17 +620,27 @@ class ViewerState(QObject):
             if companion.is_file():
                 self.load_session(companion, load_mesh=False)
 
-    def add_mesh(self, path: str | Path, record: ObjectRecord | None = None) -> SceneObject:
+    def add_mesh(
+        self,
+        path: str | Path,
+        record: ObjectRecord | None = None,
+        source: Mesh | None = None,
+        orientation: OrientationSettings | None = None,
+    ) -> SceneObject:
         """Add a model to the scene, standing at the origin, and make it active.
 
         The scene it joins is left alone: the other objects, the marks on
         them and the history all stay.  A rigged model brings its skeleton.
+        ``source`` is the file already read, as for :meth:`load_mesh`;
+        ``orientation`` is what a ``record`` from before objects had
+        orientations of their own is read in.
         """
         path = Path(path)
-        source = read_mesh(path)
+        if source is None:
+            source = read_mesh(path)
         obj = self._make_object(source, path)
         if record is not None:
-            self._describe_from(obj, record)
+            self._describe_from(obj, record, orientation or self.orientation)
         else:
             obj.name = self.objects.next_name(obj.name)
         before = self.objects.snapshot()
@@ -508,8 +659,15 @@ class ViewerState(QObject):
         return obj
 
     def _make_object(self, source: Mesh, path: Path | None) -> SceneObject:
-        rest = self._oriented(source)
-        return SceneObject(source, rest, name=path.stem if path else source.name, path=path)
+        orientation = replace(self.orientation)
+        rest = self._oriented(source, orientation)
+        return SceneObject(
+            source,
+            rest,
+            name=path.stem if path else source.name,
+            path=path,
+            orientation=orientation,
+        )
 
     @staticmethod
     def _describe(obj: SceneObject) -> str:
@@ -517,9 +675,10 @@ class ViewerState(QObject):
         bones = "" if obj.rig is None else f", {obj.rig.joint_count} joints"
         return f"{mesh.vertex_count:,} vertices, {mesh.triangle_count:,} triangles{bones}"
 
-    def _oriented(self, source: Mesh) -> Mesh:
+    @staticmethod
+    def _oriented(source: Mesh, orientation: OrientationSettings) -> Mesh:
         """Turn a freshly read mesh the right way up and centre it."""
-        return source.transformed(self.orientation.matrix).recentered()
+        return source.transformed(orientation.matrix).recentered()
 
     def bound_skeleton(self) -> Skeleton | None:
         """The skeleton the active object follows, if it has one."""
@@ -527,6 +686,85 @@ class ViewerState(QObject):
         if active is None or active.rig is None:
             return None
         return self._skeleton_for(active, set())
+
+    def object_for(self, skeleton: Skeleton) -> SceneObject | None:
+        """The object that follows ``skeleton``, if one does."""
+        claimed: set[int] = set()
+        for obj in self.objects:
+            if self._skeleton_for(obj, claimed) is skeleton:
+                return obj
+        return None
+
+    def skin_object(
+        self, obj: SceneObject, skeleton: Skeleton, made: AutoSkin, world: np.ndarray
+    ) -> bool:
+        """Dress ``obj`` in a skin made for ``skeleton``, as one undo step.
+
+        ``made`` came out of :func:`~refview.core.autoskin.auto_skin` run
+        over the object's world mesh and the skeleton as it stood, and
+        ``world`` is the matrix the object stood at: the rig is carried
+        back through it, and through the orientation, to the coordinates of
+        the object's own file, which is where a rig lives.  Refused, with a
+        word in the status bar, if either has gone or changed meanwhile.
+        """
+        if self.objects.index(obj) < 0 or not any(s is skeleton for s in self.skeletons):
+            self.status_message.emit("The model or the skeleton went while it was being skinned")
+            return False
+        if len(skeleton.joints) != len(made.joints):
+            self.status_message.emit(f"{skeleton.name} changed while it was being skinned")
+            return False
+        world = np.asarray(world, dtype=np.float64).reshape(4, 4)
+        rig = made.rig.transformed(np.linalg.inv(world)).transformed(
+            np.linalg.inv(self._source_to_rest(obj))
+        )
+        self.do(
+            SkinEdit(
+                self, obj, skeleton, rig, made.joints, text=f"Skin {obj.name} to {skeleton.name}"
+            )
+        )
+        self.status_message.emit(
+            f"Skinned {obj.name} to {skeleton.name}: {rig.joint_count} joints, "
+            f"{obj.rest_mesh.vertex_count:,} vertices"
+        )
+        return True
+
+    def unskin_object(self, obj: SceneObject, skeleton: Skeleton) -> None:
+        """Take a skin made here off ``obj``; the skeleton keeps its joints."""
+        if obj.source_mesh.rig is None:
+            return
+        joints = [replace(joint, source="") for joint in skeleton.joints]
+        self.do(SkinEdit(self, obj, skeleton, None, joints, text=f"Unskin {obj.name}"))
+
+    def _dress(self, obj: SceneObject, rig: Rig | None) -> None:
+        """Put ``rig`` on the object's file mesh, or take the one it wears off."""
+        source = obj.source_mesh
+        obj.source_mesh = Mesh(
+            source.positions,
+            source.normals,
+            source.indices,
+            source.name,
+            source_offset=source.source_offset,
+            units=source.units,
+            rig=rig,
+        )
+        obj.rest_mesh = self._oriented(obj.source_mesh, obj.orientation)
+        obj.forget()
+
+    def _source_to_rest(self, obj: SceneObject) -> np.ndarray:
+        """The 4x4 that carries a point of the file mesh onto the rest mesh.
+
+        The rest mesh is the file mesh turned by the object's orientation
+        and then centred; :meth:`Mesh.recentered` writes the centring into
+        the offset it keeps, which is how the shift is read back here.
+        """
+        rotation = obj.orientation.matrix
+        shift = np.asarray(obj.rest_mesh.source_offset, dtype=np.float64) - rotation @ np.asarray(
+            obj.source_mesh.source_offset, dtype=np.float64
+        )
+        carry = np.eye(4)
+        carry[:3, :3] = rotation
+        carry[:3, 3] = -shift
+        return carry
 
     # ------------------------------------------------------------------
     # Editing the objects
@@ -764,6 +1002,119 @@ class ViewerState(QObject):
         self.status_message.emit(f"Duplicated {obj.name} as {copy.name}")
         return copy
 
+    def normalize_objects(self, objects: list[SceneObject]) -> int:
+        """Scale ``objects`` so each is the size of the active one, as one undo step.
+
+        The size is the largest of an object's three extents as it stands in
+        the world, so a head scanned in millimetres and a figure modelled in
+        metres come out the same height and can be set against each other.
+        Each is scaled about its own pivot, uniformly, whatever the scale
+        setting says: a normalized object is the same shape, only larger or
+        smaller.  Parents go first, so a child chosen along with its parent
+        is measured after the parent has been resized and is not scaled
+        twice.  Returns how many objects were resized.
+        """
+        active = self.active_object
+        chosen = [obj for obj in objects if self.objects.index(obj) >= 0 and obj is not active]
+        if active is None or not chosen:
+            self.status_message.emit(
+                "Select another object to normalize; the active object sets the size"
+            )
+            return 0
+        target = self._extent(active)
+        if target <= 1e-12:
+            self.status_message.emit(f"{active.name} has no size to normalize to")
+            return 0
+        before = self.objects.snapshot()
+        worlds = self._worlds()
+        resized = 0
+        for obj, _depth in self.objects.ordered():
+            if not any(obj is held for held in chosen):
+                continue
+            extent = self._extent(obj)
+            if extent <= 1e-12:
+                continue
+            factor = target / extent
+            if abs(factor - 1.0) < 1e-9:
+                continue
+            obj.transform = replace(
+                obj.transform, scale=tuple(float(s * factor) for s in obj.transform.scale)
+            )
+            resized += 1
+        if not resized:
+            self.status_message.emit("The selected objects are already the size of the active one")
+            return 0
+        if self._carry_skeletons(worlds):
+            self.skeleton_changed.emit()
+        self._commit_objects(before, "Normalize objects")
+        plural = "s" if resized > 1 else ""
+        self.status_message.emit(
+            f"Normalized {resized} object{plural} to the size of {active.name}"
+        )
+        return resized
+
+    def reset_xform(self, obj: SceneObject) -> bool:
+        """Write ``obj``'s turn and scale into its mesh, leaving it standing as it is.
+
+        What 3ds Max calls Reset XForm: afterwards the object's rotation is
+        zero and its scale one, its position is what it was, and nothing
+        in the view has moved, because the turn and the stretch are now in
+        the vertices.  The pivot stays at the centre of the object's box.
+        The mesh is no longer what its file holds, so the object has no
+        file of its own until the session is saved, when it is written out
+        as an OBJ beside it -- as a merged object is.  A rig the file gave
+        it is kept and saved beside the session too.  One undo step.
+        """
+        if self.objects.index(obj) < 0:
+            return False
+        transform = obj.transform
+        if all(abs(v) < 1e-9 for v in transform.rotation_deg) and all(
+            abs(v - 1.0) < 1e-9 for v in transform.scale
+        ):
+            self.status_message.emit(f"{obj.name} is unturned and unscaled already")
+            return False
+        linear = transform.matrix
+        linear[:3, 3] = 0.0
+        baked = obj.rest_mesh.transformed_by(linear)
+        # The baked box has a centre of its own; the pivot moves to it, and
+        # the object's place moves the other way so that nothing does.
+        centre = np.asarray(baked.bounds.center, dtype=np.float64)
+        rest = baked.recentered()
+        rig = rest.rig
+        skeleton = self._skeleton_for(obj, set())
+        tag = "" if skeleton is None else skeleton.rig_tag
+        if rig is not None and not rig.tag:
+            # The file's own skin, on a mesh the file no longer describes:
+            # marked as made here, so that saving the session keeps it.
+            rig = Rig(rig.names, rig.parents, rig.rest_local, rig.skin, tag=secrets.token_hex(4))
+            rest = Mesh(
+                rest.positions, rest.normals, rest.indices, rest.name,
+                source_offset=rest.source_offset, units=rest.units, rig=rig,
+            )
+            tag = rig.tag
+        source = self._unoriented_mesh(rest, obj.orientation)
+        moved = Transform(
+            translation=tuple(
+                float(v) for v in np.asarray(transform.translation, dtype=np.float64) + centre
+            )
+        )
+        before = (
+            obj.source_mesh, obj.rest_mesh, replace(transform), obj.path, obj.skin_path,
+            None if skeleton is None else skeleton.rig_tag,
+        )
+        after = (source, rest, moved, None, None, tag)
+        self.do(BakeEdit(self, obj, after, before, skeleton, f"Reset XForm of {obj.name}"))
+        self.status_message.emit(
+            f"Reset XForm of {obj.name}: its turn and scale are in the mesh now, "
+            "which is written beside the session when it is saved"
+        )
+        return True
+
+    def _extent(self, obj: SceneObject) -> float:
+        """The largest of ``obj``'s three extents as it stands in the world."""
+        size = obj.world_rest(self.objects.world_matrix(obj)).bounds.size
+        return float(np.max(size))
+
     def notify_object_settings(self) -> None:
         """A parenting policy changed: what is shown and how solid may have too."""
         self.notify_objects()
@@ -774,30 +1125,52 @@ class ViewerState(QObject):
     # ------------------------------------------------------------------
 
     def set_orientation(self, orientation: OrientationSettings, move_marks: bool = True) -> None:
-        """Turn the models, bringing the marks made on them along.
+        """Turn every object the same way; see :meth:`set_object_orientation`.
+
+        For files from one pipeline, which share an up axis.  The next model
+        added is read in the same way.
+        """
+        self.orientation = orientation
+        self._reorient(list(self.objects), orientation, move_marks)
+
+    def set_object_orientation(
+        self, obj: SceneObject, orientation: OrientationSettings, move_marks: bool = True
+    ) -> None:
+        """Turn one object, bringing the marks made on it along.
 
         Measurements, annotations, the armature and the forms belong to the
-        model, so they are carried through the same rotation; a saved camera
-        view is a viewpoint on the scene rather than a point on the model,
-        and stays where it is.  With several objects the marks follow the
-        active one, and each skeleton follows the object it is bound to.
+        model, so they are carried through the same rotation when the object
+        is the active one; a saved camera view is a viewpoint on the scene
+        rather than a point on the model, and stays where it is.  A skeleton
+        bound to the object follows it.
 
         The turn is not recorded in the undo history: like the camera, it is a
         way of looking at the model rather than an edit to it, and choosing the
-        previous orientation puts everything back exactly.
+        previous orientation puts everything back exactly.  The next model
+        added is read in the same way, since files from one pipeline share
+        an up axis.
         """
-        if not len(self.objects):
-            self.orientation = orientation
-            return
-
-        was = self.orientation.matrix
         self.orientation = orientation
-        change = self.orientation.matrix @ was.T
+        if self.objects.index(obj) >= 0:
+            self._reorient([obj], orientation, move_marks)
+
+    def _reorient(
+        self, objects: list[SceneObject], orientation: OrientationSettings, move_marks: bool
+    ) -> None:
+        if not objects:
+            return
         active = self.active_object
         claimed: set[int] = set()
+        # Walked in store order, chosen or not, so that the skeletons are
+        # claimed by the same objects that claim them when the scene is built.
         for obj in self.objects:
+            skeleton = self._skeleton_for(obj, claimed)
+            if not any(obj is chosen for chosen in objects):
+                continue
+            change = orientation.matrix @ obj.orientation.matrix.T
+            obj.orientation = replace(orientation)
             previous = obj.rest_mesh
-            obj.rest_mesh = self._oriented(obj.source_mesh)
+            obj.rest_mesh = self._oriented(obj.source_mesh, obj.orientation)
             obj.forget()
             if not move_marks:
                 continue
@@ -806,7 +1179,6 @@ class ViewerState(QObject):
             carry_world = world @ carry @ np.linalg.inv(world)
             if obj is active:
                 self._move_marks(carry_world)
-            skeleton = self._skeleton_for(obj, claimed)
             if skeleton is not None:
                 skeleton.carry(carry_world)
         self._rebuild()
@@ -921,9 +1293,12 @@ class ViewerState(QObject):
         self.measurement_settings = session.measurement_settings
         self.navigation = session.navigation
         self.object_settings = session.object_settings
-        # The saved marks were made in the saved orientation, so the model is
-        # turned to match them rather than the other way round.
-        self.set_orientation(session.orientation, move_marks=False)
+        # The saved marks were made in the saved orientations, which the
+        # objects were put in as their records were read; what is left is to
+        # frame what stands there, and to read the next file the same way.
+        self.orientation = session.orientation
+        self._rebuild()
+        self.frame_object()
         self.measurements = MeasurementStore(list(session.measurements))
         self.annotation_settings = session.annotation_settings
         self.annotations = AnnotationStore(list(session.annotations))
@@ -976,6 +1351,7 @@ class ViewerState(QObject):
         """
         path = Path(path)
         written = self._write_loose_objects(path)
+        self._write_skins(path)
         session = self.to_session()
         session.layout = dict(layout or {})
         saved = session.save(path)
@@ -988,51 +1364,88 @@ class ViewerState(QObject):
         for obj in self.objects:
             if obj.path is not None:
                 continue
-            stem = session_path.name
-            for suffix in (".refview.json", ".json"):
-                if stem.endswith(suffix):
-                    stem = stem[: -len(suffix)]
-                    break
-            slug = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in obj.name)
-            target = session_path.with_name(f"{stem}.{slug}.obj")
+            target = self._beside(session_path, obj, ".obj")
             # What is written is the object's own mesh, unturned: it is read
-            # back through the same orientation as any other file.
-            obj.path = save_mesh(self._unoriented(obj.rest_mesh), target)
+            # back through the object's orientation as any other file.
+            obj.path = save_mesh(self._unoriented(obj), target)
             count += 1
         return count
 
-    def _unoriented(self, rest: Mesh) -> Mesh:
-        """A rest mesh as a file would store it, so that re-orienting it comes back to itself."""
-        return rest.transformed(self.orientation.matrix.T)
+    def _write_skins(self, session_path: Path) -> int:
+        """Write every skin made here beside the session; see :mod:`rig_file`."""
+        count = 0
+        for obj in self.objects:
+            rig = obj.source_mesh.rig
+            if rig is None or not rig.tag:
+                continue  # the file's own skin, which the file keeps
+            obj.skin_path = save_rig(rig, self._beside(session_path, obj, RIG_SUFFIX))
+            count += 1
+        return count
 
-    def load_session(self, path: str | Path, load_mesh: bool = True) -> None:
+    @staticmethod
+    def _beside(session_path: Path, obj: SceneObject, suffix: str) -> Path:
+        """A file for ``obj`` next to the session, named for both."""
+        stem = session_path.name
+        for ending in (".refview.json", ".json"):
+            if stem.endswith(ending):
+                stem = stem[: -len(ending)]
+                break
+        slug = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in obj.name)
+        return session_path.with_name(f"{stem}.{slug}{suffix}")
+
+    @staticmethod
+    def _unoriented(obj: SceneObject) -> Mesh:
+        """An object's rest mesh as a file stores it, so that reading it back comes to itself."""
+        return ViewerState._unoriented_mesh(obj.rest_mesh, obj.orientation)
+
+    @staticmethod
+    def _unoriented_mesh(rest: Mesh, orientation: OrientationSettings) -> Mesh:
+        return rest.transformed(orientation.matrix.T)
+
+    def load_session(
+        self,
+        path: str | Path,
+        load_mesh: bool = True,
+        sources: dict[str, Mesh] | None = None,
+    ) -> None:
+        """Open a session: its models, then everything it says about them.
+
+        ``sources`` are model files already read, keyed by :func:`same_file`
+        of their path -- what the window reads on a thread first, so that
+        the scene is only placed here.  A file not among them is read here.
+        """
         session = Session.load(path)
         if load_mesh:
-            self._load_session_objects(session)
+            self._load_session_objects(session, sources or {})
         else:
             self._match_session_objects(session)
         self.apply_session(session)
         self.session_layout = dict(session.layout)
         self.status_message.emit(f"Loaded session {Path(path).name}")
 
-    def _records(self, session: Session) -> list[ObjectRecord]:
+    @staticmethod
+    def records_of(session: Session) -> list[ObjectRecord]:
+        """The objects a session names, one record each, however old the file."""
         if session.objects:
             return list(session.objects)
         if session.mesh_path:
             return [ObjectRecord(name=Path(session.mesh_path).stem, path=session.mesh_path)]
         return []
 
-    def _load_session_objects(self, session: Session) -> None:
+    def _records(self, session: Session) -> list[ObjectRecord]:
+        return ViewerState.records_of(session)
+
+    def _load_session_objects(self, session: Session, sources: dict[str, Mesh]) -> None:
         """Open every object a session names, as the whole scene."""
         records = self._records(session)
         loadable = [r for r in records if r.path and Path(r.path).is_file()]
         if not loadable:
             return
         first = loadable[0]
-        self.load_mesh(first.path, load_sidecar=False)
+        self.load_mesh(first.path, load_sidecar=False, source=sources.get(same_file(first.path)))
         primary = self.active_object
         if primary is not None:
-            self._describe_from(primary, first)
+            self._describe_from(primary, first, session.orientation)
         made: dict[int, SceneObject] = {
             next(i for i, r in enumerate(records) if r is first): primary
         }
@@ -1044,7 +1457,12 @@ class ViewerState(QObject):
                 missing += 1
                 continue
             try:
-                made[index] = self.add_mesh(record.path, record)
+                made[index] = self.add_mesh(
+                    record.path,
+                    record,
+                    source=sources.get(same_file(record.path)),
+                    orientation=session.orientation,
+                )
             except (MeshLoadError, OSError):
                 missing += 1
         self._hang_records(records, made)
@@ -1066,34 +1484,53 @@ class ViewerState(QObject):
         records = self._records(session)
         if not records:
             return
-        held = {_same_file(obj.path): obj for obj in self.objects if obj.path is not None}
+        held = {same_file(obj.path): obj for obj in self.objects if obj.path is not None}
         made: dict[int, SceneObject] = {}
         for index, record in enumerate(records):
-            obj = held.pop(_same_file(record.path), None) if record.path else None
+            obj = held.pop(same_file(record.path), None) if record.path else None
             if obj is not None:
-                self._describe_from(obj, record)
+                self._describe_from(obj, record, session.orientation)
                 made[index] = obj
         active = self.active_object
         if active is not None and not any(obj is active for obj in made.values()):
             index = next((i for i, r in enumerate(records) if i not in made), None)
             if index is not None:
-                self._describe_from(active, records[index])
+                self._describe_from(active, records[index], session.orientation)
                 made[index] = active
         for index, record in enumerate(records):
             if index in made or not record.path or not Path(record.path).is_file():
                 continue
             try:
-                made[index] = self.add_mesh(record.path, record)
+                made[index] = self.add_mesh(record.path, record, orientation=session.orientation)
             except (MeshLoadError, OSError):
                 continue
         self._hang_records(records, made)
 
-    @staticmethod
-    def _describe_from(obj: SceneObject, record: ObjectRecord) -> None:
+    def _describe_from(
+        self, obj: SceneObject, record: ObjectRecord, fallback: OrientationSettings
+    ) -> None:
+        """Give ``obj`` what its record says, ``fallback`` standing in for a missing orientation."""
         obj.name = record.name or obj.name
         obj.transform = record.transform
         obj.visible = bool(record.visible)
         obj.opacity = float(record.opacity)
+        orientation = fallback if record.orientation is None else record.orientation
+        if orientation != obj.orientation:
+            obj.orientation = replace(orientation)
+            obj.rest_mesh = self._oriented(obj.source_mesh, obj.orientation)
+            obj.forget()
+        if record.skin:
+            self._wear(obj, Path(record.skin))
+
+    def _wear(self, obj: SceneObject, path: Path) -> None:
+        """Dress ``obj`` in the skin a session says it wore, if it can be read."""
+        try:
+            rig = load_rig(path, obj.source_mesh)
+        except RigFileError as error:
+            self.status_message.emit(f"{obj.name}'s skin could not be put back: {error}")
+            return
+        self._dress(obj, rig)
+        obj.skin_path = path
 
     def _hang_records(self, records: list[ObjectRecord], made: dict[int, SceneObject]) -> None:
         for index, record in enumerate(records):
@@ -1118,7 +1555,7 @@ class _RenameObject(Command):
         self._obj.name = self._was
 
 
-def _same_file(path) -> str:
+def same_file(path) -> str:
     """A path as a key two spellings of one file agree on."""
     try:
         return str(Path(path).resolve()).lower()

@@ -116,3 +116,71 @@ def test_going_back_restores_the_original_positions(tmp_path):
     state.set_orientation(OrientationSettings())
     assert np.allclose(state.mesh.positions, original, atol=1e-5)
     assert np.allclose(state.measurements[0].start, point, atol=1e-5)
+
+
+def _write_tower(path) -> None:
+    path.write_text(
+        "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 8\nf 1 2 3\nf 1 2 4\nf 2 3 4\nf 1 3 4\n",
+        encoding="utf-8",
+    )
+
+
+def test_each_object_is_turned_on_its_own_and_the_next_file_follows_the_last(tmp_path):
+    """A Z-up scan and a Y-up sculpt stand in one scene, each read its own way."""
+    first_path, second_path = tmp_path / "first.obj", tmp_path / "second.obj"
+    _write_tower(first_path)
+    _write_tower(second_path)
+    state = ViewerState()
+    state.load_mesh(first_path, load_sidecar=False)
+    first = state.active_object
+    second = state.add_mesh(second_path)
+
+    state.set_object_orientation(second, OrientationSettings(up_axis=UpAxis.Z))
+    assert first.orientation.is_identity
+    assert second.orientation.up_axis is UpAxis.Z
+    assert first.rest_mesh.bounds.size[2] == pytest.approx(8.0)  # still lying along Z
+    assert second.rest_mesh.bounds.size[1] == pytest.approx(8.0)  # stood up
+    # The turn last set is how the next file is read in.
+    third = state.add_mesh(first_path)
+    assert third.orientation.up_axis is UpAxis.Z
+    assert third.rest_mesh.bounds.size[1] == pytest.approx(8.0)
+    # Turning every object at once still works, for files from one pipeline.
+    state.set_orientation(OrientationSettings())
+    assert all(obj.orientation.is_identity for obj in state.objects)
+    assert second.rest_mesh.bounds.size[2] == pytest.approx(8.0)
+
+
+def test_per_object_orientations_survive_a_session_and_old_sessions_use_the_one_they_had(
+    tmp_path,
+):
+    first_path, second_path = tmp_path / "first.obj", tmp_path / "second.obj"
+    _write_tower(first_path)
+    _write_tower(second_path)
+    state = ViewerState()
+    state.load_mesh(first_path, load_sidecar=False)
+    second = state.add_mesh(second_path)
+    state.set_object_orientation(second, OrientationSettings(up_axis=UpAxis.Z, spin_deg=90.0))
+    saved = state.save_session(tmp_path / "scene.refview.json")
+
+    fresh = ViewerState()
+    fresh.load_session(saved)
+    by_name = {obj.name: obj for obj in fresh.objects}
+    assert by_name["first"].orientation.is_identity
+    assert by_name["second"].orientation == OrientationSettings(up_axis=UpAxis.Z, spin_deg=90.0)
+    assert by_name["second"].rest_mesh.bounds.size[1] == pytest.approx(8.0)
+
+    # A session from before objects had orientations of their own names one
+    # for the lot, and every object is read that way.
+    import json
+
+    data = json.loads(saved.read_text(encoding="utf-8"))
+    data["version"] = 10
+    data["orientation"] = {"up_axis": "z", "flip_up": False, "spin_deg": 0.0}
+    for record in data["objects"]:
+        record.pop("orientation", None)
+    old = tmp_path / "old.refview.json"
+    old.write_text(json.dumps(data), encoding="utf-8")
+    older = ViewerState()
+    older.load_session(old)
+    assert all(obj.orientation.up_axis is UpAxis.Z for obj in older.objects)
+    assert all(obj.rest_mesh.bounds.size[1] == pytest.approx(8.0) for obj in older.objects)

@@ -130,6 +130,17 @@ one. The Model tab lists the objects as a tree, as an outliner does:
   Scaling acts on all three axes together by default; a switch lets each axis
   go its own way. A move, a turn and a scale are about the object's own
   pivot, which is the centre of its box as it was read in.
+- **Reset XForm** writes the active object's rotation and scale into its
+  mesh, as 3ds Max's does: afterwards it is unturned and unscaled, stands
+  where it stood, and nothing in the view has moved. Its mesh is no longer
+  its file's, so saving the session writes it out as an OBJ beside it, as a
+  merged object is; a rig the file gave it is kept and saved beside it too.
+- **Normalize Objects** scales the selected objects so that each is the
+  size of the active one — the largest of its three extents is matched,
+  about its own pivot, the same on every axis — so a head scanned in
+  millimetres and a figure modelled in metres come out the same height and
+  can be set against each other. `Ctrl`-click rows to select more than one;
+  it is one undo step.
 - **Link** an object to another by dragging its row onto that one — or with
   the Parent box — and it follows its parent's moves, turns and scales, as a
   child does in any modelling application. Linking keeps the child where it
@@ -147,6 +158,17 @@ one. The Model tab lists the objects as a tree, as an outliner does:
 - A rigged model's skeleton moves with it, so a figure can be placed and still
   posed. Measurements, annotations, armatures and forms are marks in the
   scene rather than on any one object, and stay where they were made.
+
+**Progress**
+
+Everything that takes a while says so in one way: a card floated over the
+foot of the view, with what is being done, what it is doing right now, a bar
+that fills when the work can count and sweeps when it cannot, and a cross to
+stop it. Opening or adding a model, loading a session, skinning a figure,
+rebuilding a form from planes, recording a form's making, exporting a video
+and checking for updates all report through it, and the work behind a card
+runs off the window, so the scene stays up and answering while a scan is read
+or a figure is skinned. A job over in a blink never shows a card at all.
 
 **Grid**
 
@@ -167,10 +189,12 @@ Formats disagree about which axis points up — CAD and Blender exports are
 usually Z-up, most sculpting tools are Y-up, and STL declares nothing — so a
 file can arrive lying on its side. The Model tab turns it upright: pick the up
 axis the file used, flip it if it came in upside down, and spin it a quarter
-turn to face forwards. The setting applies to every object in the scene, since
-files from one pipeline share an up axis. Measurements and annotations turn
-with the model, and going back to the previous setting puts everything exactly
-where it was.
+turn to face forwards. Each object has an orientation of its own, so a Z-up
+scan and a Y-up sculpt can share a scene; the setting shown is the active
+object's, the next model added is read the same way — files from one
+pipeline share an up axis — and **Apply to All** turns every object alike.
+Measurements and annotations turn with the model, and going back to the
+previous setting puts everything exactly where it was.
 
 **Armature**
 
@@ -283,10 +307,26 @@ the bones.
   ball, the face, the breasts, the twist and share and end helpers — and
   re-hangs what is left, weights folding onto the joints that stayed. A
   hundred-joint game rig comes down to the two dozen a pose is read from.
-- The session keeps the skeletons and the pose; the skin weights stay in the
-  model file and are matched back to the joints by the names the file gave
+- **Auto-skin.** A skeleton the model did not come with — the preset
+  fitted, a chain clicked in, one grown out of an armature — is given skin
+  weights by **Skin to Model**, under **Auto-skin** in the Pose tab (folded
+  away by default), and from then on posing the bones poses the model. Not
+  the weights a rigger would paint, but made in a second or two and good
+  enough to turn a figure to read a pose off. The skeleton is bound where it
+  stands: its pose becomes its rest. Heat diffusion is the default — each
+  bone's warmth spreads over the *surface* of the model, so a hand resting
+  on a hip stays the hand's and a blend is as wide as the limb is thick —
+  with envelope (by distance) and nearest-bone (rigid) beside it, a cap on
+  how many bones share a vertex, a heat knob for how tightly the weights
+  hug the nearest bone, and a preference for bones that lie behind the skin
+  over ones out in front of it, which is what tells the torso from the arm
+  beside it. **Unskin** takes the weights off; either is one undo step.
+- The session keeps the skeletons and the pose; a file's skin weights stay in
+  the model file and are matched back to the joints by the names the file gave
   them, so renaming a joint costs nothing and deleting one hands its weights
-  to the nearest ancestor left.
+  to the nearest ancestor left. A skin made here is written to a small
+  archive beside the session, named for the session and the object, and put
+  back when the session loads.
 
 **Forms**
 
@@ -721,6 +761,31 @@ scattering none, which is what keeps it from looking like wax. **Tone variation*
 mottles the pigment, **Blood / flush** reddens patches, cavities and backlit
 edges, and **Peach fuzz** adds the soft rim that vellus hair gives.
 
+Skin is marked, and the marks are what separate it from *perfect* skin.
+**Freckles** are small light-brown dots, thick on the ground; **Moles** are
+dark, a few pores across, few and faintly raised; **Acne** is red papules,
+raised and shining, some come to a pale head; **Blemishes** are patches,
+coarser than the pores, of irritated redness and of dry, duller skin. The
+spots are round discs on jittered lattices worked out from the world
+position, projected onto the skin whichever way it faces, so like the pores
+they need no UV layout and never repeat; their size follows the pore size.
+All four start at nought.
+
+Where they fall is the **Body Regions** group's business. Acne gathers on
+the face, the chest and the back; freckles and moles on the arms and the
+shoulders; the knuckles and the feet run redder than the forearm; the
+forehead shines where the calf does not. The regions come from a skeleton
+with humanoid roles when the scene has one — the preset, a rig read by its
+names, one grown out of the guided armature — which places every limb, and
+otherwise from the height bands of a standing figure, which tell the head,
+the neck, the torso and the legs apart; a bust or a hand is best told what
+it is with *The whole model is one region*. Each region has a multiplier
+for each kind of mark and for the oiliness and the flush, starting from
+where marks tend to fall, and each can be turned up, down or off. The map
+behind it is a small volume of region weights laid over the scene, built
+off the thread whenever the scene or the bones move and read by the shader
+at the same world position as the pores.
+
 Orbiting, panning and zooming use a fast preview. With **Refine while idle** on,
 the view starts accumulating after 200 ms at rest: triangle-ray soft shadows from
 both lights, one diffuse indirect bounce, sampled subsurface diffusion and
@@ -936,14 +1001,18 @@ src/refview/
              measurements, annotations, the armature and its landmark
              presets, the forms and the convex solids they are built from,
              the skeleton, its skinning and the rigging that grows one out
-             of an armature or reads one off a file's joint names,
-             bookmarks, undo commands, settings, session persistence
+             of an armature or reads one off a file's joint names, the
+             auto-skinning that gives a skeleton weights and the archive
+             they are kept in, the body regions the skin's marks fall by,
+             the progress a long job reports through, bookmarks, undo
+             commands, settings, session persistence
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
              armature, forms, pose and transform tools, the 2D overlay, the
-             observable document, panels, the docks they live in and the
-             main window
+             observable document, panels, the docks they live in, the tasks
+             run off the window and the cards that show them, and the main
+             window
   ui/elements/
              the controls the panels are built from: the reflowing layout,
              the folding frame, the sliders and swatches drawn by hand, and

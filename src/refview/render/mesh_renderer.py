@@ -15,6 +15,7 @@ import numpy as np
 from OpenGL import GL
 
 from ..core.annotation import Stroke
+from ..core.body_regions import BodySource
 from ..core.camera import Camera, Projection
 from ..core.grid import GridSettings
 from ..core.linalg import look_at, orthographic, spherical_direction, vec3
@@ -34,6 +35,8 @@ from .framebuffer import (
 )
 from .program import ShaderProgram
 from .skin_refinement import (
+    BODY_A_UNIT,
+    BODY_B_UNIT,
     DIFFUSION_UNIT,
     NODES_UNIT,
     RELIEF_UNIT,
@@ -209,6 +212,8 @@ class SceneRenderer:
         self._plane_table: DataTexture | None = None
         self._plane_table_level: PlaneSet | None = None
         self.skin = SkinRefinement()
+        #: What the body map is built from, or ``None`` for no map.
+        self._body: BodySource | None = None
         self._trace_parts = {}
         self._content_revision = 0
 
@@ -327,6 +332,15 @@ class SceneRenderer:
         self._set_geometry(self._sculpt, None)
         self._mesh = mesh
         self._plane_axes.clear()
+
+    def set_body(self, source: BodySource | None) -> None:
+        """Say what the skin's body map is to be worked out from; see :mod:`body_regions`.
+
+        Only a source with a new key costs anything: the map is built off
+        the thread when the skin is next drawn, and the last one is shown
+        until it lands.
+        """
+        self._body = source
 
     def set_part_opacities(self, opacities: list[float]) -> None:
         """Change how solid each object is drawn, leaving the geometry where it is."""
@@ -527,9 +541,13 @@ class SceneRenderer:
         screen = current_framebuffer()
         skin = settings.skin.bounded()
         is_skin = settings.shading_mode is ShadingMode.HUMAN_SKIN
+        # The body map first, so that a map landing this frame is in the key
+        # and the samples start over on the picture it changes.
+        self.skin.prepare_body(self._body if is_skin else None, interactive)
         key = (
             camera.view_matrix().tobytes(), camera.projection_matrix(width / height).tobytes(),
             repr(settings), self._content_revision, width, height, pixel_ratio, antialiasing,
+            self.skin.body_serial,
         )
         model_mesh = self._trace_parts.get("sculpt")
         if model_mesh is None or not model_mesh.triangle_count:
@@ -547,6 +565,9 @@ class SceneRenderer:
         scale = _SUPERSAMPLE if antialiasing == "ssaa" else 1
         offscreen = antialiasing in ("fxaa", "ssaa")
         try:
+            if is_skin and self.skin.body_pending is not None:
+                # The map is on its way; one more frame will show it.
+                self.skin.needs_frame = True
             if traced:
                 if self.skin.clock.samples < skin.samples:
                     rw = max(1, int(width * skin.resolution * scale))
@@ -564,7 +585,9 @@ class SceneRenderer:
                     self._resolve_frame(True)
                 else:
                     self.skin.present(screen, width, height, self._draw_fullscreen)
-                self.skin.needs_frame = self.skin.clock.samples < skin.samples
+                self.skin.needs_frame = (
+                    self.skin.clock.samples < skin.samples or self.skin.body_pending is not None
+                )
                 self.skin.status = f"Human Skin · {self.skin.clock.samples}/{skin.samples} samples"
                 self._draw_highlight(camera, settings, screen, width, height, pixel_ratio)
                 return
@@ -830,8 +853,9 @@ class SceneRenderer:
                      NODES_UNIT, TRIANGLES_UNIT, DIFFUSION_UNIT):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
             GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
-        GL.glActiveTexture(GL.GL_TEXTURE0 + RELIEF_UNIT)
-        GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
+        for unit in (RELIEF_UNIT, BODY_A_UNIT, BODY_B_UNIT):
+            GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+            GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
 
@@ -955,11 +979,21 @@ class SceneRenderer:
                 ("Indirect", skin.indirect), ("LightSize", math.radians(skin.light_size)),
                 ("Detail", skin.detail), ("Mottle", skin.mottle),
                 ("Blood", skin.blood), ("Fuzz", skin.fuzz),
+                ("Blemishes", skin.blemishes), ("Freckles", skin.freckles),
+                ("Nevi", skin.nevi), ("Acne", skin.acne),
                 ("Radius", skin.radius * max(camera.scene_radius, 1e-6)),
                 ("PoreSize", skin.pore_size * max(camera.scene_radius, 1e-6)),
                 ("Epsilon", max(camera.scene_radius, 1e-6) * 1e-5),
             ):
                 program.set_float("uSkin" + uniform, value)
+            for uniform, effect in (
+                ("Acne", "acne"), ("Nevi", "nevi"), ("Freckles", "freckles"),
+                ("Blemish", "blemishes"), ("Oil", "oil"), ("Blood", "blood"),
+            ):
+                # Seven regions, four to a vec4; the eighth slot is unused.
+                multipliers = [*skin.regions.multipliers(effect), 0.0]
+                program.set_vec4("uSkin" + uniform + "A", multipliers[:4])
+                program.set_vec4("uSkin" + uniform + "B", multipliers[4:8])
             program.set_bool("uSkinFurniture", True)
 
             self._bind_quality(program, settings, light_matrix, width, height)

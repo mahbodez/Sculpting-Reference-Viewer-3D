@@ -25,6 +25,7 @@ import numpy as np
 
 from .linalg import compose, euler_to_quat, matrix_to_quat, quat_to_euler
 from .mesh import Mesh, concatenated, loose_parts, submesh
+from .orientation import OrientationSettings
 
 Vector = tuple[float, float, float]
 
@@ -141,9 +142,10 @@ class SceneObject:
     Three meshes are kept, as the viewer kept them when there was only one
     object: the file's own, that file turned the right way up and centred on
     its pivot, and -- worked out on demand -- the centred mesh carried to
-    where the object stands in the world.  The turning is the document's
-    orientation setting and belongs to every object alike; the standing is
-    this object's :attr:`transform` under its :attr:`parent`.
+    where the object stands in the world.  The turning is this object's
+    :attr:`orientation`, since a Z-up scan and a Y-up sculpt can stand in
+    one scene; the standing is its :attr:`transform` under its
+    :attr:`parent`.
     """
 
     __slots__ = (
@@ -152,9 +154,11 @@ class SceneObject:
         "rest_mesh",
         "path",
         "transform",
+        "orientation",
         "parent",
         "visible",
         "opacity",
+        "skin_path",
         "_world",
         "_pose",
     )
@@ -168,17 +172,25 @@ class SceneObject:
         transform: Transform | None = None,
         visible: bool = True,
         opacity: float = 1.0,
+        orientation: OrientationSettings | None = None,
     ) -> None:
         self.source_mesh = source_mesh
         self.rest_mesh = source_mesh if rest_mesh is None else rest_mesh
         self.name = name or (Path(path).stem if path else source_mesh.name)
         self.path: Path | None = None if path is None else Path(path)
         self.transform = transform or Transform()
+        #: The rigid turn that took :attr:`source_mesh` to :attr:`rest_mesh`:
+        #: which axis of the file is up, and so on.  The identity for an
+        #: object made here out of others, whose own mesh is already upright.
+        self.orientation = orientation or OrientationSettings()
         #: The object this one hangs from, or ``None`` at the root.
         self.parent: SceneObject | None = None
         self.visible = bool(visible)
         #: How solid the object is drawn on its own account, 0 to 1.
         self.opacity = float(opacity)
+        #: Where the skin this object was auto-skinned into was last written,
+        #: if it has one and it has been; see :mod:`refview.core.rig_file`.
+        self.skin_path: Path | None = None
         #: The rest mesh carried to a world matrix, kept with what it was
         #: carried by, so that a frame that moved nothing costs nothing.
         self._world: tuple[tuple, Mesh] | None = None
@@ -507,6 +519,7 @@ def duplicate_object(store: ObjectStore, obj: SceneObject) -> SceneObject:
         transform=replace(obj.transform),
         visible=obj.visible,
         opacity=obj.opacity,
+        orientation=replace(obj.orientation),
     )
     copy.parent = obj.parent
     return copy
@@ -535,6 +548,13 @@ class ObjectRecord:
     parent: int = -1
     visible: bool = True
     opacity: float = 1.0
+    #: The archive holding the skin the object was auto-skinned into, or
+    #: ``None`` for an object wearing its file's own skin or none.
+    skin: str | None = None
+    #: Which way up the file is read.  ``None`` in a session from before
+    #: version 11, when one orientation served every object; that one is
+    #: the session's own and is applied in its place.
+    orientation: OrientationSettings | None = None
 
 
 def records_for(store: ObjectStore) -> list[ObjectRecord]:
@@ -547,6 +567,8 @@ def records_for(store: ObjectStore) -> list[ObjectRecord]:
             parent=store.index(obj.parent),
             visible=obj.visible,
             opacity=float(obj.opacity),
+            skin=None if obj.skin_path is None else str(obj.skin_path),
+            orientation=replace(obj.orientation),
         )
         for obj in store
     ]

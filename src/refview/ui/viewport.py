@@ -56,7 +56,7 @@ from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS, SKELETON
 from ..core.landmarks import landmark_title
 from ..core.measurement import Measurement
 from ..core.pedestal import build_pedestal
-from ..core.plane_film import film_key
+from ..core.plane_film import film_key, stage_counts
 from ..core.plane_film import shaded as film_shaded
 from ..core.plane_solids import SculptCache, wires_for
 from ..core.section import section_segments
@@ -226,6 +226,16 @@ class Viewport(QOpenGLWidget):
         #: turn of the geometry sliders and the next, so only the part that
         #: actually went stale is worked out again.
         self._sculpt = SculptCache()
+        #: The rebuild of the stand-in that is running now, if one is, and
+        #: whether the settings moved on while it ran -- in which case it
+        #: is run again when this one lands.  The cache is only ever worked
+        #: by one thread at a time this way: the GUI thread never touches
+        #: it while a rebuild holds it, and a model change hands the rebuild
+        #: the old cache to finish with and starts a new one.
+        self._sculpt_task = None
+        self._sculpt_again = False
+        #: The recording being shown as a task, with the film it is of.
+        self._film_task = None
         #: Records the whole making of a form, in the background, when the
         #: film is asked for.  Kept here rather than in the panel because it
         #: is the viewport that draws a stage.
@@ -354,14 +364,22 @@ class Viewport(QOpenGLWidget):
     def _parts(self) -> list:
         return [(mesh, opacity) for _, mesh, opacity in self._state.mesh_parts]
 
+    def _sync_body(self) -> None:
+        """Tell the renderer what the skin's body map is made from now."""
+        self._renderer.set_body(self._state.body_source())
+
     def _upload_mesh(self) -> None:
         if not self._ready:
             return
         self.makeCurrent()
         self._renderer.set_mesh(self._state.mesh, self._parts())
         self.doneCurrent()
+        self._sync_body()
         self._pedestal_key = self._section_key = self._sculpt_key = None
-        self._sculpt.clear()
+        # A fresh cache rather than a cleared one: a rebuild still running
+        # keeps the old one to itself, and its answer is for a model that
+        # has gone, so it is let finish and then disregarded.
+        self._sculpt = SculptCache()
         self._sync_scene()
 
     def _upload_geometry(self) -> None:
@@ -378,6 +396,7 @@ class Viewport(QOpenGLWidget):
         self.makeCurrent()
         self._renderer.set_mesh(self._state.mesh, self._parts())
         self.doneCurrent()
+        self._sync_body()
         self._stale_buried()
         self.update()
 
@@ -415,6 +434,7 @@ class Viewport(QOpenGLWidget):
         """
         if self._ready:
             render = self._state.render
+            self._sync_body()
             pedestal_key = (id(self._state.mesh), astuple(render.pedestal))
             if pedestal_key != self._pedestal_key:
                 self._pedestal_key = pedestal_key
@@ -511,37 +531,34 @@ class Viewport(QOpenGLWidget):
         """Rebuild the planar stand-in and hand it to the renderer.
 
         Cutting a form into planes takes long enough on a heavy model to be
-        felt, so the wait is shown for what it is rather than looking like a
-        hang.  The model itself is untouched throughout: picking, measuring,
-        painting and the section cut all still read the real surface.
+        felt, so it is done off the window, with a card over the view saying
+        so, and the last stand-in stays up until the new one lands.  The
+        model itself is untouched throughout: picking, measuring, painting
+        and the section cut all still read the real surface.  A setting
+        turned while the rebuild runs is not lost and not queued up either:
+        one more rebuild follows, for wherever the settings are by then.
 
-        When the film is asked for, the same work is done a stage at a time on
-        a thread instead, and what is drawn is whichever stage the scrub
+        When the film is asked for, the same work is done a stage at a time
+        on a thread instead, and what is drawn is whichever stage the scrub
         handle is on.  The first stage arrives in a fraction of the time the
         finished form would take, so the viewport fills rather than waiting.
         """
         planes = self._state.render.planes
         if self._state.mesh is None or not planes.sculpts_geometry:
             self._film.abandon()
+            self._end_recording_task()
             self._state.recording_changed.emit(False)
             self._show_sculpt(None)
+            return
+        if self._sculpt_task is not None and self._sculpt_task.running:
+            self._sculpt_again = True
             return
         wires = self._sculpt_wires()
         if not planes.sculpt_film:
             self._film.abandon()
+            self._end_recording_task()
             self._state.recording_changed.emit(False)
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                proxy = self._sculpt.mesh_for(self._state.mesh, planes, wires)
-            finally:
-                QApplication.restoreOverrideCursor()
-            if proxy is not None:
-                on = "" if wires is None else f" on {wires.count} lengths of wire"
-                self._state.status_message.emit(
-                    f"Form rebuilt from {planes.sculpt_count} planes{on}, "
-                    f"{planes.sculpt.value}"
-                )
-            self._show_sculpt(proxy)
+            self._rebuild_sculpt(replace(planes), wires)
             return
 
         key = film_key(planes, planes.coefficients, wires)
@@ -558,22 +575,98 @@ class Viewport(QOpenGLWidget):
             key,
             wires,
         )
+        self._begin_recording_task(film, planes)
         self._state.recording_changed.emit(True)
         self._state.status_message.emit(
             f"Recording the making of the form, {planes.sculpt.value}..."
         )
         self._show_stage(film)
 
+    def _rebuild_sculpt(self, planes, wires) -> None:
+        """Cut the stand-in on a thread; see :meth:`_upload_sculpt`."""
+        cache, mesh = self._sculpt, self._state.mesh
+        on = "" if wires is None else f" on {wires.count} lengths of wire"
+
+        def work(progress):
+            progress.report(
+                message=f"Cutting the form into {planes.sculpt_count} planes{on}, "
+                f"{planes.sculpt.value}..."
+            )
+            return cache.mesh_for(mesh, planes, wires)
+
+        def landed(proxy) -> None:
+            if cache is not self._sculpt:
+                return  # cut from a model that has since been replaced
+            if proxy is not None:
+                self._state.status_message.emit(
+                    f"Form rebuilt from {planes.sculpt_count} planes{on}, {planes.sculpt.value}"
+                )
+            self._show_sculpt(proxy)
+
+        def failed(error: BaseException) -> None:
+            self._state.status_message.emit(f"The form could not be rebuilt: {error}")
+
+        task = self._state.tasks.run(
+            "Rebuilding the form", work, done=landed, failed=failed, blocking=False
+        )
+        task.finished.connect(lambda: self._sculpt_settled(task))
+        self._sculpt_task = task
+
+    def _sculpt_settled(self, task) -> None:
+        if self._sculpt_task is not task:
+            return
+        self._sculpt_task = None
+        if self._sculpt_again:
+            self._sculpt_again = False
+            self._upload_sculpt()
+
+    def _begin_recording_task(self, film, planes) -> None:
+        """Show the recording as a task, its bar the stages landed so far."""
+        self._end_recording_task()
+        wanted = len(stage_counts(planes.sculpt, planes.sculpt_count, planes.sculpt_masses))
+        task = self._state.tasks.begin(
+            f"Recording the making, {planes.sculpt.value}", blocking=False
+        )
+        task.cancel_requested.connect(self._cancel_recording)
+        task.progress.report(0, max(wanted, 1), f"Stage 1 of {wanted}...")
+        self._film_task = (task, film, wanted)
+
+    def _end_recording_task(self) -> None:
+        if self._film_task is None:
+            return
+        task, _, _ = self._film_task
+        self._film_task = None
+        task.end()
+
+    def _cancel_recording(self) -> None:
+        """The cross on the recording's card: the film is dropped, the switch too."""
+        if self._film.abandon():
+            self._state.render.planes.sculpt_film = False
+            self._state.recording_changed.emit(False)
+            self._state.status_message.emit("Recording stopped")
+            self._end_recording_task()
+            self._state.notify_render()
+
     def _film_grew(self, film) -> None:
         """A stage landed: show it if it is the one being looked at."""
         if film is not self._film.film:
             return
+        if self._film_task is not None and self._film_task[1] is film:
+            task, _, wanted = self._film_task
+            landed = len(film)
+            task.progress.report(
+                landed, max(wanted, 1), f"Stage {min(landed + 1, wanted)} of {wanted}..."
+            )
         self._state.film_changed.emit(film)
         self._show_stage(film)
 
     def _film_settled(self, film, complete: bool) -> None:
         if film is not self._film.film:
             return
+        if self._film_task is not None and self._film_task[1] is film:
+            task, _, wanted = self._film_task
+            task.progress.report(wanted, max(wanted, 1), f"{len(film)} stages")
+            self._end_recording_task()
         self._state.film_changed.emit(film)
         self._state.recording_changed.emit(False)
         if complete:
@@ -2040,7 +2133,9 @@ class Viewport(QOpenGLWidget):
         return changed
 
     def _skeleton_moved(self) -> None:
-        """A skeleton changed: redraw it."""
+        """A skeleton changed: redraw it, and let the skin's body map follow its bones."""
+        if self._ready:
+            self._sync_body()
         self._stale_buried()
         self.update()
 

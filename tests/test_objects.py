@@ -253,7 +253,7 @@ def test_hidden_objects_leave_the_scene_mesh_and_come_back(app):
     state.source_mesh = _tetra()
     first = state.active_object
     other = _tetra((3.0, 0.0, 0.0))
-    second = SceneObject(other, state._oriented(other), name="second")
+    second = SceneObject(other, state._oriented(other, state.orientation), name="second")
     before = state.snapshot_objects()
     state.objects.add(second)
     state._commit_objects(before, "Add second")
@@ -329,7 +329,7 @@ def test_sessions_carry_the_objects_and_write_out_the_ones_without_files(app, tm
     saved = state.save_session(tmp_path / "scene.refview.json")
     assert merged.path is not None and merged.path.is_file()
     written = json.loads(saved.read_text(encoding="utf-8"))
-    assert written["version"] == 9 and len(written["objects"]) == 1
+    assert written["version"] == 11 and len(written["objects"]) == 1
 
     fresh = ViewerState()
     fresh.load_session(saved)
@@ -504,7 +504,7 @@ def test_alt_click_picks_an_object_under_any_tool_and_lights_it_up(app, monkeypa
     first = state.active_object
     other = _tetra((3.0, 0.0, 0.0))
     second = SceneObject(
-        other, state._oriented(other), name="second",
+        other, state._oriented(other, state.orientation), name="second",
         transform=Transform(translation=(3.0, 0.0, 0.0)),
     )
     state.objects.add(second, activate=False)
@@ -545,3 +545,117 @@ def test_alt_click_picks_an_object_under_any_tool_and_lights_it_up(app, monkeypa
         assert state.active_object is second
     finally:
         viewport.close()
+
+
+def test_normalizing_scales_the_selected_objects_to_the_active_one_as_one_undo_step():
+    state = ViewerState()
+    state.source_mesh = _tetra()
+    first = state.active_object
+    tall = Mesh(
+        np.array([[0, 0, 0], [0.1, 0, 0], [0, 4, 0], [0, 0, 0.1]], dtype=np.float32),
+        np.tile([0, 0, 1], (4, 1)).astype(np.float32),
+        np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]], dtype=np.uint32),
+        name="tall",
+    )
+    second = SceneObject(tall, tall.recentered(), name="second")
+    small = _tetra()
+    third = SceneObject(small, small.recentered(), name="third",
+                        transform=Transform(scale=(0.25, 0.25, 0.25)))
+    state.objects.add(second, activate=False)
+    state.objects.add(third, activate=False)
+    state.set_parent(third, second)
+    state.notify_object_settings()
+    assert state.active_object is first
+    steps = len(state.history._undo)
+
+    assert state.normalize_objects([second, third]) == 2
+    # Each is now as big as the active tetrahedron, in its largest extent,
+    # the child measured after its parent was resized.
+    for obj in (second, third):
+        assert state._extent(obj) == pytest.approx(state._extent(first), rel=1e-6)
+    # Uniform: the shape is kept.
+    assert second.transform.scale[0] == pytest.approx(second.transform.scale[1])
+    assert second.transform.scale[0] == pytest.approx(0.25)
+    assert len(state.history._undo) == steps + 1
+    state.undo()
+    assert second.transform.scale == (1.0, 1.0, 1.0)
+    assert third.transform.scale == pytest.approx((0.25, 0.25, 0.25))
+    # Nothing but the active object chosen: nothing to do, nothing recorded.
+    assert state.normalize_objects([first]) == 0
+    assert len(state.history._undo) == steps
+
+
+def test_reset_xform_bakes_the_turn_and_scale_into_the_mesh_and_nothing_moves(tmp_path):
+    state = ViewerState()
+    state.source_mesh = _tetra()
+    obj = state.active_object
+    state.set_transform(
+        obj,
+        Transform(translation=(1.0, 2.0, 3.0), rotation_deg=(30.0, -45.0, 10.0),
+                  scale=(2.0, 0.5, 1.5)),
+    )
+    seen = state.mesh.positions.copy()
+    was_source, was_rest, was_path = obj.source_mesh, obj.rest_mesh, obj.path
+    steps = len(state.history._undo)
+
+    assert state.reset_xform(obj)
+    assert obj.transform.rotation_deg == (0.0, 0.0, 0.0)
+    assert obj.transform.scale == (1.0, 1.0, 1.0)
+    assert np.allclose(state.mesh.positions, seen, atol=1e-5)  # nothing in the view moved
+    assert np.allclose(obj.rest_mesh.bounds.center, 0.0, atol=1e-5)  # the pivot is the centre
+    assert obj.path is None  # the mesh is not the file's any more
+    # The rest mesh is still the file mesh read through the orientation.
+    again = state._oriented(obj.source_mesh, obj.orientation)
+    assert np.allclose(again.positions, obj.rest_mesh.positions, atol=1e-5)
+    assert len(state.history._undo) == steps + 1
+    # Already reset: nothing to do and nothing recorded.
+    assert not state.reset_xform(obj)
+    assert len(state.history._undo) == steps + 1
+
+    state.undo()
+    assert obj.source_mesh is was_source and obj.rest_mesh is was_rest and obj.path is was_path
+    assert obj.transform.scale == (2.0, 0.5, 1.5)
+    assert np.allclose(state.mesh.positions, seen, atol=1e-5)
+    state.redo()
+    assert obj.transform.scale == (1.0, 1.0, 1.0)
+
+    # Saved, the baked mesh is written beside the session and comes back as it stands.
+    saved = state.save_session(tmp_path / "baked.refview.json")
+    fresh = ViewerState()
+    fresh.load_session(saved)
+    assert np.allclose(fresh.mesh.positions, seen, atol=1e-4)
+    assert fresh.active_object.transform.scale == (1.0, 1.0, 1.0)
+
+
+def test_reset_xform_keeps_a_file_s_rig_and_its_skeleton_answering(tmp_path):
+    path = tmp_path / "strip.obj"
+    save_mesh(_skinned_strip(), path)
+    state = ViewerState()
+    state.load_mesh(path, load_sidecar=False, source=_skinned_strip())
+    obj = state.active_object
+    assert obj.rig is not None and state.bound_skeleton() is not None
+    skeleton = state.bound_skeleton()
+    state.set_transform(obj, Transform(rotation_deg=(0.0, 90.0, 0.0), scale=(2.0, 2.0, 2.0)))
+    seen = state.mesh.positions.copy()
+
+    assert state.reset_xform(obj)
+    assert obj.rig is not None and obj.rig.tag and skeleton.rig_tag == obj.rig.tag
+    assert state.bound_skeleton() is skeleton
+    assert np.allclose(state.mesh.positions, seen, atol=1e-5)
+    # Posing still deforms the baked mesh through the carried rig.
+    skeleton.joints[1].translation = (0.0, 0.5, 0.0)
+    state.notify_skeleton()
+    assert not np.allclose(state.mesh.positions, seen, atol=1e-5)
+    skeleton.joints[1].translation = (0.0, 0.0, 0.0)
+    state.notify_skeleton()
+
+    saved = state.save_session(tmp_path / "strip.refview.json")
+    assert obj.skin_path is not None and obj.skin_path.is_file()
+    fresh = ViewerState()
+    fresh.load_session(saved)
+    assert fresh.active_object.rig is not None and fresh.bound_skeleton() is not None
+    assert np.allclose(fresh.mesh.positions, seen, atol=1e-4)
+
+    state.undo()
+    assert obj.rig is not None and not obj.rig.tag and skeleton.rig_tag == ""
+    assert state.bound_skeleton() is skeleton

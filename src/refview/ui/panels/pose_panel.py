@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.armature import Buried
+from ...core.autoskin import AutoSkinError, auto_skin
 from ...core.commands import AddItem, RemoveItem, ReplaceItems, SetAttributes
 from ...core.history import ARMATURE, SKELETON
 from ...core.landmarks import role_name
@@ -33,7 +36,7 @@ from ...core.rigging import (
     skeleton_from_armature,
     with_roles,
 )
-from ...core.skeleton import Joint, Skeleton, normalized_rotation
+from ...core.skeleton import Joint, Skeleton, SkinMethod, normalized_rotation
 from ..icons import lock_icon
 from ..widgets import PointEdit, SliderSpin, collapsible_group, form_group, symbol_button
 from .base import Panel
@@ -92,8 +95,44 @@ _SIMPLIFY_TIP = (
 )
 
 _DEFORM_TIP = (
-    "Whether the model follows this skeleton.  Only a skeleton that came with\n"
-    "the model has the skin weights to move it by; any other poses in the air."
+    "Whether the model follows this skeleton.  A skeleton that came with the\n"
+    "model has the skin weights to move it by, and one skinned to it here\n"
+    "has been given some; any other poses in the air."
+)
+
+_SKIN_TIP = (
+    "Give the active model skin weights for this skeleton, so that posing the\n"
+    "bones poses the model.  Not the weights a rigger would paint, but weights\n"
+    "made in a moment and good enough to read a pose off; one undo step, and\n"
+    "Unskin takes them off again.  The skeleton is bound as it stands: its\n"
+    "pose becomes its rest.  A skin made here is saved beside the session."
+)
+
+_METHOD_TIP = (
+    "How the weights are decided.  Heat diffusion lets each bone's warmth\n"
+    "spread over the surface of the model and takes the temperature as the\n"
+    "weight, so a hand on a hip stays the hand's; the blend at a joint is as\n"
+    "wide as the limb is thick.  Envelope shares each vertex among the\n"
+    "nearest few bones by distance, through the air.  Nearest bone gives\n"
+    "each vertex wholly to one bone, like a puppet."
+)
+
+_HEAT_TIP = (
+    "How tightly the weights hug the nearest bone.  Higher is a narrower\n"
+    "blend at every joint; lower lets each bone reach further along the skin."
+)
+
+_FALLOFF_TIP = (
+    "The power the distance is raised to.  Two is inverse-square; higher\n"
+    "sharpens each vertex towards its nearest bone."
+)
+
+_INFLUENCES_TIP = "How many bones may share one vertex.  One is rigid pieces."
+
+_FACING_TIP = (
+    "Pass over a bone that lies out in front of the skin rather than behind\n"
+    "it when choosing the nearest -- the other thigh, the torso beside an\n"
+    "arm.  Turn off only for a model whose normals point the wrong way."
 )
 
 _ROLE_TIP = (
@@ -165,6 +204,7 @@ class PosePanel(Panel):
 
         self._build_selection()
         self._build_skeleton()
+        self._build_skinning()
         self._build_placement()
         self._build_display()
         self._body.addStretch(1)
@@ -273,6 +313,34 @@ class PosePanel(Panel):
         form.addRow("", self._from_armature)
         self._place(box)
 
+    def _build_skinning(self) -> None:
+        box, form = collapsible_group("Auto-skin")
+        self._skin_box = box
+        self._skin_form = form
+        self._skin_method = QComboBox()
+        for method in SkinMethod:
+            self._skin_method.addItem(method.label, method.value)
+        self._skin_method.setToolTip(_METHOD_TIP)
+        form.addRow("Method", self._skin_method)
+        self._skin_influences = SliderSpin(1.0, 4.0, 4.0, decimals=0, step=1.0)
+        self._skin_influences.setToolTip(_INFLUENCES_TIP)
+        form.addRow("Bones per vertex", self._skin_influences)
+        self._skin_heat = SliderSpin(0.1, 10.0, 1.0, decimals=2, step=0.1)
+        self._skin_heat.setToolTip(_HEAT_TIP)
+        form.addRow("Heat", self._skin_heat)
+        self._skin_falloff = SliderSpin(0.5, 6.0, 2.0, decimals=1, step=0.5)
+        self._skin_falloff.setToolTip(_FALLOFF_TIP)
+        form.addRow("Falloff", self._skin_falloff)
+        self._skin_facing = QCheckBox("Prefer bones behind the surface")
+        self._skin_facing.setToolTip(_FACING_TIP)
+        form.addRow("", self._skin_facing)
+        self._skin = QPushButton("Skin to Model")
+        self._skin.setToolTip(_SKIN_TIP)
+        self._unskin = QPushButton("Unskin")
+        self._unskin.setToolTip("Take off the skin made here; the skeleton keeps its joints.")
+        form.addRow("", _row(self._skin, self._unskin))
+        self._place(box)
+
     def _build_placement(self) -> None:
         box, form = form_group("Placement")
         self._fit = QCheckBox("Fit: drag joints into place")
@@ -342,6 +410,20 @@ class PosePanel(Panel):
         self._simplify.clicked.connect(self.simplify)
         self._to_armature.clicked.connect(self.to_armature)
         self._from_armature.clicked.connect(self.from_armature)
+
+        self._skin_method.currentIndexChanged.connect(
+            lambda i: self._apply_skinning("method", SkinMethod(self._skin_method.itemData(i)))
+        )
+        self._skin_influences.valueChanged.connect(
+            lambda v: self._apply_skinning("influences", int(round(v)))
+        )
+        self._skin_heat.valueChanged.connect(lambda v: self._apply_skinning("heat", float(v)))
+        self._skin_falloff.valueChanged.connect(
+            lambda v: self._apply_skinning("falloff", float(v))
+        )
+        self._skin_facing.toggled.connect(lambda v: self._apply_skinning("facing", bool(v)))
+        self._skin.clicked.connect(self.skin_to_model)
+        self._unskin.clicked.connect(self.unskin)
 
         self._fit.toggled.connect(lambda v: self._apply("fit", v))
         self._free.toggled.connect(lambda v: self._apply("free_placement", v))
@@ -540,6 +622,70 @@ class PosePanel(Panel):
                 channel=SKELETON,
             )
         )
+
+    # -- skinning -------------------------------------------------------
+
+    def skin_to_model(self):
+        """Skin the active model to the current skeleton, on a thread, with a bar.
+
+        Returns the task, or ``None`` when there was nothing to do.  The mesh
+        and the skeleton are copied for the thread, so the artist can go on
+        working -- and if what they do is change the skeleton, the skin made
+        for the old one is turned away when it arrives.
+        """
+        found = self._current_skeleton()
+        obj = self.state.active_object
+        if found is None or obj is None:
+            return None
+        _, skeleton = found
+        if len(skeleton.joints) < 2:
+            self.state.status_message.emit(f"{skeleton.name} needs at least two joints to skin")
+            return None
+        busy = self.state.tasks.busy
+        if busy is not None:
+            self.state.status_message.emit(f"Wait for {busy.title} to finish")
+            return None
+        settings = replace(self.state.skeleton_settings.skinning)
+        world = self.state.objects.world_matrix(obj)
+        mesh = obj.world_rest(world)
+        frozen = Skeleton(name=skeleton.name, joints=[replace(j) for j in skeleton.joints])
+        state = self.state
+
+        def failed(error: BaseException) -> None:
+            if isinstance(error, AutoSkinError):
+                state.status_message.emit(str(error))
+            else:
+                state.status_message.emit(f"Skinning {obj.name} failed: {error}")
+
+        return state.tasks.run(
+            f"Skinning {obj.name} to {skeleton.name}",
+            lambda progress: auto_skin(mesh, frozen, settings, progress),
+            done=lambda made: state.skin_object(obj, skeleton, made, world),
+            failed=failed,
+        )
+
+    def unskin(self) -> None:
+        found = self._current_skeleton()
+        if found is None:
+            return
+        _, skeleton = found
+        obj = self.state.object_for(skeleton)
+        if obj is None or not skeleton.rig_tag:
+            return
+        self.state.unskin_object(obj, skeleton)
+
+    def _apply_skinning(self, field: str, value) -> None:
+        if self._busy:
+            return
+        setattr(self.state.skeleton_settings.skinning, field, value)
+        self._sync_skinning()
+
+    def _sync_skinning(self) -> None:
+        """Show the knobs the chosen method reads, and no others."""
+        method = self.state.skeleton_settings.skinning.method
+        self._skin_form.setRowVisible(self._skin_heat, method is SkinMethod.HEAT)
+        self._skin_form.setRowVisible(self._skin_falloff, method is SkinMethod.ENVELOPE)
+        self._skin_form.setRowVisible(self._skin_influences, method is not SkinMethod.NEAREST)
 
     # -- edits from the view --------------------------------------------
 
@@ -741,11 +887,20 @@ class PosePanel(Panel):
             self._buried.setCurrentIndex(self._buried.findData(settings.buried.value))
             self._bone_width.set_value(settings.bone_width)
             self._joint_radius.set_value(settings.joint_radius)
+            skinning = settings.skinning
+            self._skin_method.setCurrentIndex(
+                max(self._skin_method.findData(skinning.method.value), 0)
+            )
+            self._skin_influences.set_value(float(skinning.influences))
+            self._skin_heat.set_value(skinning.heat)
+            self._skin_falloff.set_value(skinning.falloff)
+            self._skin_facing.setChecked(skinning.facing)
             units = self.state.measurement_settings
             self._offset.set_decimals(units.decimals)
             self._offset.set_step(
                 max(float(self.state.camera.scene_radius) * units.unit_scale, 1.0) / 100.0
             )
+        self._sync_skinning()
         self.refresh_list()
 
     def refresh_list(self) -> None:
@@ -850,15 +1005,21 @@ class PosePanel(Panel):
 
         current = self._current_skeleton()
         self._skeleton_box.setVisible(current is not None)
+        self._skin_box.setVisible(current is not None)
         if current is not None:
             _, skeleton = current
-            bound = skeleton.bound and self.state.bound_skeleton() is skeleton
+            wearer = self.state.object_for(skeleton) if skeleton.bound else None
+            bound = wearer is not None
             with self._suppressed():
                 self._deform.setChecked(skeleton.deform)
             self._deform.setVisible(bound)
-            if bound:
+            if bound and skeleton.rig_tag:
                 self._bound_note.setText(
-                    f"Came with the model: {len(skeleton.joints)} joints, skinned."
+                    f"Skinned here to {wearer.name}: {len(skeleton.joints)} joints."
+                )
+            elif bound:
+                self._bound_note.setText(
+                    f"Came with {wearer.name}: {len(skeleton.joints)} joints, skinned."
                 )
             elif skeleton.bound:
                 self._bound_note.setText("Was skinned to a model that is not the one loaded.")
@@ -870,6 +1031,10 @@ class PosePanel(Panel):
             self._map.setEnabled(bool(skeleton.joints))
             self._simplify.setEnabled(bool(skeleton.joints))
             self._to_armature.setEnabled(bool(skeleton.joints))
+            active = self.state.active_object
+            self._skin.setEnabled(active is not None and len(skeleton.joints) >= 2)
+            self._skin.setText(f"Skin to {active.name}" if active is not None else "Skin to Model")
+            self._unskin.setEnabled(bound and bool(skeleton.rig_tag))
         self._from_armature.setEnabled(self._armature_source.count() > 0)
         self._armature_source.setEnabled(self._armature_source.count() > 0)
         self._skeleton_form.setRowVisible(self._armature_source, len(self.state.armatures) > 0)

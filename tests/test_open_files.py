@@ -40,8 +40,8 @@ def window(app):
 def opened(window, monkeypatch):
     """What the window was asked to open, by kind, without loading anything."""
     seen = []
-    monkeypatch.setattr(window, "open_model", lambda path: seen.append(("model", Path(path))))
-    monkeypatch.setattr(window, "load_session", lambda path: seen.append(("session", Path(path))))
+    monkeypatch.setattr(window, "open_model", lambda path, **_: seen.append(("model", Path(path))))
+    monkeypatch.setattr(window, "load_session", lambda path, **_: seen.append(("session", Path(path))))
     monkeypatch.setattr(window, "load_matcap", lambda path: seen.append(("matcap", Path(path))))
     return seen
 
@@ -80,7 +80,7 @@ def test_files_named_on_the_command_line_open_and_stand_in_for_the_last_session(
     window, opened, monkeypatch
 ):
     reopened = []
-    monkeypatch.setattr(window, "reopen_last_session", lambda: reopened.append(True))
+    monkeypatch.setattr(window, "reopen_last_session", lambda **_: reopened.append(True))
     arguments = application.build_parser().parse_args(["figure.obj", "clay.png"])
     application._apply_startup_arguments(window, arguments)
     assert [kind for kind, _ in opened][:2] == ["model", "matcap"]
@@ -89,7 +89,7 @@ def test_files_named_on_the_command_line_open_and_stand_in_for_the_last_session(
 
 def test_an_empty_command_line_goes_back_to_the_last_session(window, opened, monkeypatch):
     reopened = []
-    monkeypatch.setattr(window, "reopen_last_session", lambda: reopened.append(True))
+    monkeypatch.setattr(window, "reopen_last_session", lambda **_: reopened.append(True))
     application._apply_startup_arguments(window, application.build_parser().parse_args([]))
     assert reopened == [True]
 

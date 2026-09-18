@@ -29,10 +29,13 @@ class Session:
     #: cross-section, pedestal, high-quality and navigation settings, 4 the
     #: model orientation, 5 the armature and the landmarks behind it, 6 the
     #: primary forms, 7 the arrangement of the panels, 8 the skeletons and
-    #: their pose, and 9 the objects -- several models in one scene, each
-    #: with its place and its parent.  Older files still load: :func:`decode`
-    #: fills anything missing from the defaults.
-    version: int = 9
+    #: their pose, 9 the objects -- several models in one scene, each with
+    #: its place and its parent -- 10 the skins made here, kept in an
+    #: archive beside the session that each object's record names, and 11
+    #: an orientation for each object, where one had served them all.
+    #: Older files still load: :func:`decode` fills anything missing from
+    #: the defaults.
+    version: int = 11
     #: The model, for a file written before there were several; kept as the
     #: first object's file so that an older build can still open a newer
     #: session and see something.
@@ -56,9 +59,13 @@ class Session:
     skeleton_settings: SkeletonSettings = field(default_factory=SkeletonSettings)
     #: The skeletons and the pose each stands in.  The skin weights of a
     #: rigged model are not here: they are the model's, and are read back
-    #: out of the model file and matched to the joints by name.
+    #: out of the model file and matched to the joints by name.  A skin made
+    #: here is in an archive beside the session; see :attr:`ObjectRecord.skin`.
     skeletons: list[Skeleton] = field(default_factory=list)
     navigation: NavigationSettings = field(default_factory=NavigationSettings)
+    #: How the next file added is read in, and how every object of a session
+    #: from before version 11 was: since then each object's record carries
+    #: its own.
     orientation: OrientationSettings = field(default_factory=OrientationSettings)
     #: Where the panels were, and any the artist had built by hand.  Opaque
     #: here on purpose: what is in it is the window's business, and the core

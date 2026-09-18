@@ -237,3 +237,49 @@ def test_controls_and_presets_write_to_saved_material():
     assert state.render.skin == SkinSettings()
     panel.close()
     app.processEvents()
+
+
+def test_marks_and_body_regions_write_to_the_material_and_presets_leave_them_alone():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from refview.core.body_regions import BodyRegionSettings, RegionSource
+    from refview.ui.panels.shading_panel import ShadingPanel
+    from refview.ui.state import ViewerState
+    app = QApplication.instance() or QApplication([])
+    state = ViewerState()
+    panel = ShadingPanel(state)
+    panel._mode.setCurrentIndex(panel._mode.findData("human_skin"))
+    assert not panel._body_box.isHidden()
+    panel._skin_controls["acne"].valueChanged.emit(0.4)
+    panel._skin_controls["nevi"].valueChanged.emit(0.3)
+    panel._skin_controls["freckles"].valueChanged.emit(0.7)
+    panel._skin_controls["blemishes"].valueChanged.emit(0.2)
+    skin = state.render.skin
+    assert (skin.acne, skin.nevi, skin.freckles, skin.blemishes) == (0.4, 0.3, 0.7, 0.2)
+    # The marks are a person's, not a complexion's: a preset keeps them.
+    panel._apply_skin_preset(panel._skin_preset.findText("Tan / olive"))
+    skin = state.render.skin
+    assert (skin.acne, skin.nevi, skin.freckles, skin.blemishes) == (0.4, 0.3, 0.7, 0.2)
+
+    # The region being edited is the one the sliders write to.
+    panel._region_edited.setCurrentIndex(panel._region_edited.findData("hands"))
+    panel._region_controls["acne"].valueChanged.emit(2.0)
+    assert skin.regions.hands.acne == 2.0 and skin.regions.head.acne == 1.0
+    panel._region_edited.setCurrentIndex(panel._region_edited.findData("head"))
+    assert panel._region_controls["acne"].value() == pytest.approx(1.0)
+    panel._region_source.setCurrentIndex(panel._region_source.findData("whole"))
+    assert skin.regions.source is RegionSource.WHOLE
+    assert panel._body_form.isRowVisible(panel._region_whole)
+    panel._region_whole.setCurrentIndex(panel._region_whole.findData("feet"))
+    assert skin.regions.whole == "feet"
+    panel._region_source.setCurrentIndex(panel._region_source.findData("auto"))
+    assert panel._body_form.isRowVisible(panel._region_whole) is False
+    panel._reset_regions()
+    assert state.render.skin.regions == BodyRegionSettings()
+    # Another shading mode hides the group along with the rest of the skin.
+    panel._mode.setCurrentIndex(panel._mode.findData("matcap"))
+    assert panel._body_box.isHidden()
+    panel.close()
+    app.processEvents()

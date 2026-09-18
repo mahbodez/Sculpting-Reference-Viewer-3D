@@ -1,13 +1,15 @@
-"""Idle scheduling, asynchronous BVH preparation, shared skin tables and history."""
+"""Idle scheduling, asynchronous BVH and body-map preparation, shared skin tables and history."""
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from time import monotonic
 
+import numpy as np
 from OpenGL import GL
 from OpenGL.error import GLError
 
+from ..core.body_regions import BodySource, build_body_map
 from .framebuffer import FrameTarget, bind_default
 from .program import ShaderProgram
 from .skin_bvh import build_scene, texture_table
@@ -17,6 +19,8 @@ from .texture import DataTexture, Texture3D
 
 #: Texture units the skin tables live on, after the ghost's pair.
 NODES_UNIT, TRIANGLES_UNIT, RELIEF_UNIT, DIFFUSION_UNIT = 6, 7, 8, 9
+#: The two volumes of the body map, after those.
+BODY_A_UNIT, BODY_B_UNIT = 10, 11
 
 
 def pixel_jitter(sample: int) -> tuple[float, float]:
@@ -61,6 +65,16 @@ class SkinRefinement:
         self.needs_frame = False
         self.tracing = False
         self.status = ""
+        #: The body map: its two volumes, the box they cover, which source
+        #: they were made from, and the build in flight, if one is.
+        self.body_a = self.body_b = None
+        self.body_on = False
+        self.body_origin = np.zeros(3)
+        self.body_inv_size = np.ones(3)
+        self.body_key = None
+        self.body_pending = None
+        #: Bumped whenever a map lands, so a refinement in progress starts over.
+        self.body_serial = 0
 
     def initialize(self, vertex):
         self.programs = {
@@ -79,6 +93,59 @@ class SkinRefinement:
         self.relief.upload(relief_volume())
         self.diffusion = DataTexture(filtered=True)
         self.diffusion.upload(diffusion_lut())
+        self.body_a = Texture3D(tileable=False)
+        self.body_b = Texture3D(tileable=False)
+        # Complete samplers before any map has been built.
+        for texture in (self.body_a, self.body_b):
+            texture.upload(np.zeros((1, 1, 1, 4), np.float32))
+
+    def _executor(self):
+        if self.executor is None:
+            # Two workers: a body map need not wait behind a BVH, nor the other way.
+            self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="skin")
+        return self.executor
+
+    def prepare_body(self, source: BodySource | None, interactive: bool) -> None:
+        """Have the body map for ``source`` built off the thread, and take it when it lands.
+
+        Nothing is started while the scene is being dragged: a map is a
+        snapshot of where the skin stands, and one built for every frame of
+        a pull would land after the pull had moved on.  The last map stays
+        up meanwhile, a little behind the pose, which the eye does not read.
+        """
+        if source is None:
+            self.body_on = False
+            self.body_key = None
+            self.body_pending = None
+            return
+        if self.body_pending is not None:
+            pending_key, future = self.body_pending
+            if not future.done():
+                return
+            self.body_pending = None
+            if pending_key == source.key:
+                try:
+                    built = future.result()
+                except (ValueError, MemoryError, RuntimeError) as error:
+                    built = None
+                    self.failure = self.failure or f"body map: {error}"
+                self.body_key = source.key
+                if built is None:
+                    self.body_on = False
+                else:
+                    try:
+                        self.body_a.upload(built.first)
+                        self.body_b.upload(built.second)
+                    except GLError:
+                        self.body_on = False
+                        return
+                    self.body_origin = np.asarray(built.origin, dtype=np.float64)
+                    self.body_inv_size = 1.0 / np.maximum(built.size, 1e-12)
+                    self.body_on = True
+                self.body_serial += 1
+                return
+        if source.key != self.body_key and not interactive:
+            self.body_pending = (source.key, self._executor().submit(build_body_map, source))
 
     def prepare(self, key, revision, parts, skin, interactive, enabled):
         self.tracing = False
@@ -95,9 +162,7 @@ class SkinRefinement:
             return False
         if revision != self.revision:
             if self.pending is None:
-                if self.executor is None:
-                    self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="skin-bvh")
-                self.pending = (revision, self.executor.submit(build_scene, parts))
+                self.pending = (revision, self._executor().submit(build_scene, parts))
             pending_revision, future = self.pending
             if not future.done():
                 self.status = "Preview — preparing ray tracing"
@@ -134,10 +199,17 @@ class SkinRefinement:
         program.set_int("uSkinTriangles", TRIANGLES_UNIT)
         program.set_int("uSkinRelief", RELIEF_UNIT)
         program.set_int("uSkinDiffusion", DIFFUSION_UNIT)
+        program.set_int("uSkinBodyA", BODY_A_UNIT)
+        program.set_int("uSkinBodyB", BODY_B_UNIT)
+        program.set_bool("uSkinBodyOn", self.body_on)
+        program.set_vec3("uSkinBodyOrigin", self.body_origin)
+        program.set_vec3("uSkinBodyInvSize", self.body_inv_size)
         self.nodes.bind(NODES_UNIT)
         self.triangles.bind(TRIANGLES_UNIT)
         self.relief.bind(RELIEF_UNIT)
         self.diffusion.bind(DIFFUSION_UNIT)
+        self.body_a.bind(BODY_A_UNIT)
+        self.body_b.bind(BODY_B_UNIT)
         GL.glActiveTexture(GL.GL_TEXTURE0)
 
     def begin(self, width, height):
@@ -175,12 +247,17 @@ class SkinRefinement:
             self.executor.shutdown(wait=False, cancel_futures=True)
             self.executor = None
         self.pending = None
+        self.body_pending = None
+        self.body_key = None
+        self.body_on = False
         for target in [self.current, *self.history]:
             target.dispose()
         # New objects reset cached dimensions if Qt recreates the GL context.
         self.current = FrameTarget(floating=True)
         self.history = [FrameTarget(floating=True), FrameTarget(floating=True)]
-        for texture in (self.nodes, self.triangles, self.relief, self.diffusion):
+        for texture in (
+            self.nodes, self.triangles, self.relief, self.diffusion, self.body_a, self.body_b
+        ):
             if texture is not None:
                 texture.dispose()
         for program in self.programs.values():

@@ -52,7 +52,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QProgressDialog,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -72,6 +71,7 @@ from ..core.video import (
     written_by_ffmpeg,
 )
 from .overlay import OverlayParts
+from .tasks import ProgressCard
 from .widgets import form_group
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
@@ -500,8 +500,18 @@ class ExportVideoDialog(QDialog):
         self._export_button.clicked.connect(self._begin)
         buttons.rejected.connect(self.reject)
 
+        #: Where the export's card sits while one runs, under the columns
+        #: and above the buttons, so the dialog itself says how it is going.
+        self._card_row = QVBoxLayout()
+        self._card_row.setContentsMargins(0, 0, 0, 0)
+        self._card: ProgressCard | None = None
+
+        self._body = QWidget()
+        self._body.setLayout(columns)
+        self._buttons = buttons
         layout = QVBoxLayout(self)
-        layout.addLayout(columns, 1)
+        layout.addWidget(self._body, 1)
+        layout.addLayout(self._card_row)
         layout.addWidget(buttons)
         # Last, once every control exists: the first thing any of them does is
         # re-read all of them.
@@ -787,30 +797,48 @@ class ExportVideoDialog(QDialog):
         if chosen.suffix.lower() != settings.format.suffix:
             chosen = chosen.with_suffix(settings.format.suffix)
 
-        progress = QProgressDialog("Rendering the making...", "Cancel", 0, len(self._stages), self)
-        progress.setWindowTitle("Export Video")
-        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
-        progress.setMinimumDuration(0)
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
-        progress.setValue(0)
+        # The export is a task like any other, shown on a card in this
+        # dialog rather than on the window's banner: the dialog is modal,
+        # and a cross the artist could not reach would be no cross at all.
+        task = self._viewport.state.tasks.begin(f"Exporting {chosen.name}", hosted=True)
+        task.progress.report(0, len(self._stages), "Rendering the making...")
+        self._show_card(task)
 
         run = FilmExport(self._viewport, self._stages, self.look(), settings, chosen, self)
         self._export = run
-        run.progress.connect(lambda done, total: self._advance(progress, done, total))
-        progress.canceled.connect(run.cancel)
-        run.finished.connect(lambda ok, said: self._ended(progress, ok, said))
-        self.setEnabled(False)
+        run.progress.connect(lambda done, total: self._advance(task, done, total))
+        task.cancel_requested.connect(run.cancel)
+        run.finished.connect(lambda ok, said: self._ended(task, ok, said))
+        self._set_busy(True)
         run.start()
 
-    @staticmethod
-    def _advance(progress: QProgressDialog, done: int, total: int) -> None:
-        progress.setValue(done)
-        progress.setLabelText(f"Writing frame {done} of {total}...")
+    def _show_card(self, task) -> None:
+        self._drop_card()
+        self._card = ProgressCard(task, framed=False, parent=self)
+        self._card_row.addWidget(self._card)
 
-    def _ended(self, progress: QProgressDialog, ok: bool, said: str) -> None:
-        progress.close()
-        self.setEnabled(True)
+    def _drop_card(self) -> None:
+        if self._card is not None:
+            self._card_row.removeWidget(self._card)
+            self._card.deleteLater()
+            self._card = None
+
+    def _set_busy(self, busy: bool) -> None:
+        """Sleep the controls while frames are written; the card stays awake."""
+        self._body.setEnabled(not busy)
+        self._buttons.setEnabled(not busy)
+
+    @staticmethod
+    def _advance(task, done: int, total: int) -> None:
+        if not task.cancelled:  # a frame the encoder had in hand when the cross was pressed
+            task.progress.report(done, total, f"Writing frame {done} of {total}...")
+
+    def _ended(self, task, ok: bool, said: str) -> None:
+        if said == CANCELLED:
+            task.progress.cancel()
+        task.end(None, None if ok or said == CANCELLED else RuntimeError(said))
+        self._set_busy(False)
+        QTimer.singleShot(650, self._drop_card)
         self._export = None
         if ok:
             QMessageBox.information(self, "Export Video", f"Written to\n{said}")

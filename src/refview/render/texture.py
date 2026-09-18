@@ -161,20 +161,31 @@ class Texture2D:
 
 
 class Texture3D:
-    """A tileable RGBA16F volume, trilinear and mipmapped, for world-space detail.
+    """An RGBA16F volume, trilinear, for detail sampled by world position.
 
     Sampled by position rather than by UV, so a mesh needs no unwrap to carry
-    it. Repeat wrapping makes the tile seamless; the mip chain lets the shader
-    fade the detail out at distance instead of aliasing into sparkle.
+    it.  ``tileable``, the default, repeats the volume seamlessly and keeps a
+    mip chain, so the shader can fade the detail out at distance instead of
+    aliasing into sparkle.  Otherwise the volume is a map laid once over a
+    box -- the body's regions -- clamped at its edges and never mipmapped,
+    since it is read at the scale it was made.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, tileable: bool = True) -> None:
         self._id = int(GL.glGenTextures(1))
+        self._tileable = bool(tileable)
         GL.glBindTexture(GL.GL_TEXTURE_3D, self._id)
+        wrap = GL.GL_REPEAT if self._tileable else GL.GL_CLAMP_TO_EDGE
         for name in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T, GL.GL_TEXTURE_WRAP_R):
-            GL.glTexParameteri(GL.GL_TEXTURE_3D, name, GL.GL_REPEAT)
-        GL.glTexParameteri(GL.GL_TEXTURE_3D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR_MIPMAP_LINEAR)
+            GL.glTexParameteri(GL.GL_TEXTURE_3D, name, wrap)
+        GL.glTexParameteri(
+            GL.GL_TEXTURE_3D,
+            GL.GL_TEXTURE_MIN_FILTER,
+            GL.GL_LINEAR_MIPMAP_LINEAR if self._tileable else GL.GL_LINEAR,
+        )
         GL.glTexParameteri(GL.GL_TEXTURE_3D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        if not self._tileable:
+            GL.glTexParameteri(GL.GL_TEXTURE_3D, GL.GL_TEXTURE_MAX_LEVEL, 0)
         GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
 
     def upload(self, voxels: np.ndarray) -> None:
@@ -187,7 +198,8 @@ class Texture3D:
             GL.GL_TEXTURE_3D, 0, GL.GL_RGBA16F, width, height, depth, 0,
             GL.GL_RGBA, GL.GL_FLOAT, voxels,
         )
-        GL.glGenerateMipmap(GL.GL_TEXTURE_3D)
+        if self._tileable:
+            GL.glGenerateMipmap(GL.GL_TEXTURE_3D)
         GL.glBindTexture(GL.GL_TEXTURE_3D, 0)
 
     def bind(self, unit: int = 0) -> None:
