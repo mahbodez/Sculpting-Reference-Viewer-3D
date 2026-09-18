@@ -10,6 +10,7 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .grid import GridSettings
 from .pedestal import PedestalSettings
 from .plane_axes import DEFAULT_COEFFICIENTS, MAX_PLANE_AXES, Coefficients
 from .section import SectionSettings
@@ -595,6 +596,8 @@ class RenderSettings:
     planes: PlaneSettings = field(default_factory=PlaneSettings)
     section: SectionSettings = field(default_factory=SectionSettings)
     pedestal: PedestalSettings = field(default_factory=PedestalSettings)
+    #: The reference grids on the axis planes; the ground one is on by default.
+    grid: GridSettings = field(default_factory=GridSettings)
     matcap_path: str | None = None
     #: Shade each triangle from its own face normal.  The Planes panel edits
     #: this, but it stays on the render settings so that sessions written

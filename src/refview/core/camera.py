@@ -40,6 +40,12 @@ class Camera:
     projection: Projection = Projection.PERSPECTIVE
     scene_radius: float = 1.0
     scene_center: np.ndarray = field(default_factory=lambda: vec3(0.0, 0.0, 0.0))
+    #: The clipping distances set by hand, measured from the eye along the
+    #: view, or ``None`` for either to have it fitted to the scene each frame
+    #: -- as close and as far as the model reaches, with room to spare.  See
+    #: :meth:`clip_planes`.
+    near: float | None = None
+    far: float | None = None
     #: The last view-projection built, with the state it was built from.  The
     #: overlay projects every marker on every frame, and building the matrix
     #: afresh for each cost more than the projection itself.
@@ -48,6 +54,9 @@ class Camera:
     #: Zoom limits, expressed as multiples of the scene radius.
     MIN_DISTANCE_FACTOR = 1e-3
     MAX_DISTANCE_FACTOR = 5e2
+    #: The closest a hand-set perspective near plane may come to the eye, as
+    #: a multiple of the scene radius: nought would be a division by it.
+    MIN_NEAR_FACTOR = 1e-5
     #: Closest the view direction may come to the up axis, in radians.
     MIN_POLE_ANGLE = math.radians(1.5)
 
@@ -93,7 +102,7 @@ class Camera:
     def view_matrix(self) -> np.ndarray:
         return look_at(self.eye, self.target, self.world_up)
 
-    def clip_planes(self) -> tuple[float, float]:
+    def fitted_clip_planes(self) -> tuple[float, float]:
         """Near/far planes fitted to the scene bounding sphere."""
         radius = max(self.scene_radius, 1e-6)
         eye_distance = float(np.linalg.norm(self.eye - self.scene_center))
@@ -101,6 +110,22 @@ class Camera:
         if self.projection is Projection.ORTHOGRAPHIC:
             return -far, far
         near = max(eye_distance - radius * 1.5, radius * 1e-3, far * 1e-5)
+        return near, far
+
+    def clip_planes(self) -> tuple[float, float]:
+        """The near and far planes this frame: the fitted ones, unless set by hand.
+
+        A hand-set distance is taken as given, within what a projection can
+        do with it: a perspective near plane has to lie in front of the eye,
+        and the far plane beyond the near, or the depth buffer has nothing
+        to measure with.
+        """
+        fitted_near, fitted_far = self.fitted_clip_planes()
+        near = fitted_near if self.near is None else float(self.near)
+        far = fitted_far if self.far is None else float(self.far)
+        if self.projection is Projection.PERSPECTIVE:
+            near = max(near, self.MIN_NEAR_FACTOR * max(self.scene_radius, 1e-6))
+        far = max(far, near + max(abs(near) * 1e-3, 1e-6))
         return near, far
 
     def projection_matrix(self, aspect: float) -> np.ndarray:
@@ -120,6 +145,8 @@ class Camera:
             self.fov_deg,
             self.projection,
             self.scene_radius,
+            self.near,
+            self.far,
             aspect,
         )
         cached = self._projector
@@ -278,6 +305,8 @@ class Camera:
             "world_up": self.world_up.tolist(),
             "fov_deg": self.fov_deg,
             "projection": self.projection.value,
+            "near": self.near,
+            "far": self.far,
         }
 
     @classmethod
@@ -288,6 +317,8 @@ class Camera:
             world_up=np.asarray(data.get("world_up", (0.0, 1.0, 0.0)), dtype=np.float64),
             fov_deg=float(data.get("fov_deg", 40.0)),
             projection=Projection(data.get("projection", Projection.PERSPECTIVE.value)),
+            near=_distance_or_none(data.get("near")),
+            far=_distance_or_none(data.get("far")),
         )
 
     def copy(self) -> "Camera":
@@ -303,3 +334,16 @@ class Camera:
         self.world_up = other.world_up.copy()
         self.fov_deg = other.fov_deg
         self.projection = other.projection
+        self.near = other.near
+        self.far = other.far
+
+
+def _distance_or_none(value) -> float | None:
+    """A clipping distance as a file wrote it, or ``None`` for one left to the fit."""
+    if value is None:
+        return None
+    try:
+        distance = float(value)
+    except (TypeError, ValueError):
+        return None
+    return distance if math.isfinite(distance) else None

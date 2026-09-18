@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .gltf_loader import load_gltf
 from .mesh import Mesh, MeshLoadError
-from .obj_loader import load_obj
+from .obj_loader import load_obj, save_obj
 from .stl_loader import load_stl
 
 #: Suffix -> reader.  Keys are lower case and include the dot.
@@ -40,3 +40,11 @@ def load_mesh(path: str | Path) -> Mesh:
         supported = ", ".join(sorted(MESH_SUFFIXES))
         raise MeshLoadError(f"{path.name}: unsupported format (expected one of {supported})")
     return loader(path)
+
+
+def save_mesh(mesh: Mesh, path: str | Path) -> Path:
+    """Write a mesh out; only OBJ is written, whatever the suffix asked for."""
+    path = Path(path)
+    if path.suffix.lower() != ".obj":
+        path = path.with_suffix(".obj")
+    return save_obj(mesh, path)

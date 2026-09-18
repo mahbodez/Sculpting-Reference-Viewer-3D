@@ -104,3 +104,39 @@ def test_serialisation_round_trip(camera):
     assert np.allclose(restored.target, camera.target)
     assert restored.projection is Projection.ORTHOGRAPHIC
     assert restored.fov_deg == pytest.approx(27.5)
+    assert restored.near is None and restored.far is None
+
+
+def test_clip_planes_set_by_hand_override_the_fit_within_reason(camera):
+    fitted = camera.fitted_clip_planes()
+    assert camera.clip_planes() == fitted
+    camera.near, camera.far = 2.0, 30.0
+    assert camera.clip_planes() == (2.0, 30.0)
+    # Either one alone; the other stays fitted.
+    camera.far = None
+    assert camera.clip_planes() == (2.0, fitted[1])
+    # A perspective near plane stays in front of the eye, and the far beyond it.
+    camera.near, camera.far = -5.0, 1.0
+    near, far = camera.clip_planes()
+    assert 0.0 < near < 1e-3 and far > near
+    camera.near, camera.far = 10.0, 3.0
+    near, far = camera.clip_planes()
+    assert near == 10.0 and far > 10.0
+    # Under an orthographic projection a near plane may sit behind the eye.
+    camera.projection = Projection.ORTHOGRAPHIC
+    camera.near, camera.far = -4.0, 4.0
+    assert camera.clip_planes() == (-4.0, 4.0)
+    # The projection follows a change of plane, cache or no cache.
+    before = camera.view_projection(1.5).copy()
+    camera.far = 8.0
+    assert not np.allclose(camera.view_projection(1.5), before)
+    # And the settings travel with the camera: saved, copied, and adopted.
+    restored = Camera.from_dict(camera.to_dict())
+    assert (restored.near, restored.far) == (-4.0, 8.0)
+    assert Camera.from_dict({"near": "nonsense", "far": float("inf")}).near is None
+    assert Camera.from_dict({"near": "nonsense", "far": float("inf")}).far is None
+    copied = camera.copy()
+    assert (copied.near, copied.far) == (-4.0, 8.0)
+    other = Camera()
+    other.apply(camera)
+    assert (other.near, other.far) == (-4.0, 8.0)

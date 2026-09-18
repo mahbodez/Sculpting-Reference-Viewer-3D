@@ -17,7 +17,13 @@ camera.  A drag on a skeleton's joint swings the bone above it, or moves the
 figure when the joint is a root, and with Shift rolls the joint about its own
 bone; with the pose tool armed a click adds a joint.  Holding Alt always
 orbits, which is the escape hatch while painting, and holding Shift snaps an
-orbit to round angles.
+orbit to round angles.  With the transform tool armed the active object's
+gizmo takes the button before anything else: a drag on one of its handles
+moves, turns or scales the object, and a click on another object makes that
+one active.  An Alt-*click* -- Alt held, no travel -- makes the object under
+the cursor active whatever tool is armed, as it does in ZBrush; and whichever
+object becomes active, by any road, wears a line round its edge for a moment
+so the eye can find it.
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ from dataclasses import astuple, replace
 from time import perf_counter
 
 import numpy as np
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QSurfaceFormat
 from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
@@ -45,6 +51,7 @@ from ..core.forms import (
     shown_stages,
     stages_mesh,
 )
+from ..core.grid import build_grid
 from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS, SKELETON
 from ..core.landmarks import landmark_title
 from ..core.measurement import Measurement
@@ -65,6 +72,7 @@ from .form_tool import FormTool
 from .markers import DepthDrag
 from .measure_tool import MeasureTool
 from .navigation import DragMode, NavigationController
+from .object_tool import ObjectTool
 from .overlay import ViewportOverlay
 from .picking import SurfacePicker
 from .pose_tool import PoseTool
@@ -96,6 +104,20 @@ def configure_surface_format(samples: int = 4) -> None:
     QSurfaceFormat.setDefaultFormat(fmt)
 
 
+#: The letters that choose the transform tool's gesture while it is armed --
+#: the ones every modelling application puts them on.  Heard ahead of the
+#: view's own keys, two of which they share, so that with the tool armed E
+#: turns the object rather than picking up the eraser.
+GESTURE_KEYS = {Qt.Key.Key_W: "move", Qt.Key.Key_E: "rotate", Qt.Key.Key_R: "scale"}
+
+#: How long an object just made active wears its line, in seconds: held
+#: solid, then faded to nothing.
+HIGHLIGHT_HOLD = 0.7
+HIGHLIGHT_FADE = 0.9
+#: The line's colour: the amber the overlay marks a chosen landmark in.
+HIGHLIGHT_COLOR = (1.0, 0.77, 0.36)
+
+
 class Viewport(QOpenGLWidget):
     """Renders the scene and turns mouse gestures into camera and tool actions."""
 
@@ -120,6 +142,9 @@ class Viewport(QOpenGLWidget):
     skeleton_edited = Signal(object)
     #: A joint was clicked, as ``(skeleton, joint)``.
     joint_selected = Signal(object)
+    #: The transform tool's gesture was chosen by a key, so the panel's box
+    #: can say so.
+    object_mode_changed = Signal(str)
     pick_failed = Signal()
 
     def __init__(self, state: ViewerState, parent=None) -> None:
@@ -136,6 +161,7 @@ class Viewport(QOpenGLWidget):
         self.armature_tool = ArmatureTool()
         self.form_tool = FormTool()
         self.pose_tool = PoseTool()
+        self.object_tool = ObjectTool()
         self._ready = False
         self._depth_drag = None
         self._guide_shown = False
@@ -168,6 +194,20 @@ class Viewport(QOpenGLWidget):
         #: cursor is read across, so the joint does not chase its own depth.
         self._pose_anchor: np.ndarray | None = None
         self._pose_dragged = False
+        #: A transform gesture in progress: where the objects all stood when
+        #: it began, so the whole gesture is one undo step and Esc can put it
+        #: back, and the object being moved.
+        self._object_previous: tuple | None = None
+        self._object_held = None
+        #: The object wearing a line round it, and when it was put on; the
+        #: timer that keeps the frames coming while it fades; and which
+        #: object was active the last time the list spoke, so that a change
+        #: of active object can be told from any other change to the list.
+        self._highlight: tuple[object, float] | None = None
+        self._highlight_timer = QTimer(self)
+        self._highlight_timer.setInterval(16)
+        self._highlight_timer.timeout.connect(self.update)
+        self._active_seen = state.active_object
         #: The solids of each form, kept by the landmarks that built them so
         #: that scrubbing a form's stages or recolouring the clay does not
         #: work the hull out again.
@@ -181,6 +221,7 @@ class Viewport(QOpenGLWidget):
         self._pedestal_key: tuple | None = None
         self._section_key: tuple | None = None
         self._sculpt_key: tuple | None = None
+        self._grid_key: tuple | None = None
         #: Keeps the plane fit and the vertex-to-plane assignment between one
         #: turn of the geometry sliders and the next, so only the part that
         #: actually went stale is worked out again.
@@ -210,8 +251,14 @@ class Viewport(QOpenGLWidget):
         state.forms_changed.connect(self._forms_moved)
         state.skeleton_changed.connect(self._skeleton_moved)
         state.mesh_deformed.connect(self._upload_geometry)
-        for signal in (state.camera_changed, state.measurements_changed):
+        state.parts_changed.connect(self._upload_opacities)
+        for signal in (
+            state.camera_changed,
+            state.measurements_changed,
+            state.objects_changed,
+        ):
             signal.connect(self.update)
+        state.objects_changed.connect(self._active_changed)
         state.camera_changed.connect(self._stale_buried)
 
     # ------------------------------------------------------------------
@@ -251,6 +298,10 @@ class Viewport(QOpenGLWidget):
 
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
         self._sync_guide()
+        glow = self._highlight_now()
+        self._renderer.set_highlight(
+            None if glow is None else glow[0], 0.0 if glow is None else glow[1], HIGHLIGHT_COLOR
+        )
         painter = QPainter(self)
         painter.beginNativePainting()
         ratio = self.devicePixelRatioF()
@@ -284,7 +335,8 @@ class Viewport(QOpenGLWidget):
             self._buried_nodes(),
             forms=self.form_tool,
             pose=self.pose_tool,
-            occlude=self.pose_tool.grabbed is None,
+            occlude=self.pose_tool.grabbed is None and self._object_previous is None,
+            objects=self.object_tool,
         )
         self._section_gizmo.draw(painter, self._picker(), self._state.render.section)
         if self._depth_drag is not None:
@@ -299,11 +351,14 @@ class Viewport(QOpenGLWidget):
             # orbit smooth; one more frame after the throttle puts them right.
             QTimer.singleShot(int(self._overlay.THROTTLE * 1000) + 20, self.update)
 
+    def _parts(self) -> list:
+        return [(mesh, opacity) for _, mesh, opacity in self._state.mesh_parts]
+
     def _upload_mesh(self) -> None:
         if not self._ready:
             return
         self.makeCurrent()
-        self._renderer.set_mesh(self._state.mesh)
+        self._renderer.set_mesh(self._state.mesh, self._parts())
         self.doneCurrent()
         self._pedestal_key = self._section_key = self._sculpt_key = None
         self._sculpt.clear()
@@ -321,9 +376,18 @@ class Viewport(QOpenGLWidget):
         if not self._ready:
             return
         self.makeCurrent()
-        self._renderer.set_mesh(self._state.mesh)
+        self._renderer.set_mesh(self._state.mesh, self._parts())
         self.doneCurrent()
         self._stale_buried()
+        self.update()
+
+    def _upload_opacities(self) -> None:
+        """Hand the renderer how solid each object is now; nothing else moved."""
+        if not self._ready:
+            return
+        self.makeCurrent()
+        self._renderer.set_part_opacities([opacity for _, _, opacity in self._state.mesh_parts])
+        self.doneCurrent()
         self.update()
 
     def _upload_matcap(self) -> None:
@@ -359,6 +423,10 @@ class Viewport(QOpenGLWidget):
             if section_key != self._section_key:
                 self._section_key = section_key
                 self._upload_contour()
+            grid_key = (id(self._state.mesh), astuple(render.grid))
+            if grid_key != self._grid_key:
+                self._grid_key = grid_key
+                self._upload_grid()
             planes = render.planes
             # Only the settings the stand-in is actually built from: the rest
             # of the Planes panel moves the shading, and re-cutting the form
@@ -393,6 +461,18 @@ class Viewport(QOpenGLWidget):
         disc = None if mesh is None else build_pedestal(mesh.bounds, settings)
         self.makeCurrent()
         self._renderer.set_pedestal(disc)
+        self.doneCurrent()
+
+    def _upload_grid(self) -> None:
+        """Rebuild the reference grids for the scene as it stands."""
+        mesh = self._state.mesh
+        lines = build_grid(
+            self._state.render.grid,
+            None if mesh is None else mesh.bounds,
+            self._state.camera.scene_radius,
+        )
+        self.makeCurrent()
+        self._renderer.set_grid(lines)
         self.doneCurrent()
 
     def stop_recording(self) -> None:
@@ -669,6 +749,9 @@ class Viewport(QOpenGLWidget):
         kept = current_framebuffer()
         surface.bind()
         try:
+            # A line round the active object is a thing of the view, not of
+            # the film; whatever is fading on screen stays off the frames.
+            self._renderer.set_highlight(None)
             self._renderer.render(
                 self._state.camera, settings, width, height, ratio, self._antialiasing
             )
@@ -759,6 +842,9 @@ class Viewport(QOpenGLWidget):
     def set_pose_active(self, active: bool) -> None:
         self._arm(self.pose_tool, active)
 
+    def set_object_active(self, active: bool) -> None:
+        self._arm(self.object_tool, active)
+
     def _arm(self, tool, active: bool) -> None:
         """Arm one tool, disarming the rest.
 
@@ -774,6 +860,7 @@ class Viewport(QOpenGLWidget):
                 self.armature_tool,
                 self.form_tool,
                 self.pose_tool,
+                self.object_tool,
             ):
                 if other is not tool:
                     other.set_active(False)
@@ -825,6 +912,11 @@ class Viewport(QOpenGLWidget):
             self.pose_tool.grabbed = None
             self.pose_tool.mode = ""
             self._state.notify_skeleton()
+        if self._object_previous is not None:
+            before, self._object_previous = self._object_previous, None
+            self._object_held = None
+            self.object_tool.end()
+            self._state.restore_objects(before)
         self._depth_drag = None
         self._press_position = None
         self._join_from = None
@@ -834,12 +926,21 @@ class Viewport(QOpenGLWidget):
         self.armature_tool.cancel()
         self.form_tool.cancel()
         self.pose_tool.cancel()
+        self.object_tool.cancel()
         self._refresh_cursor()
         self.update()
 
     def _refresh_cursor(self) -> None:
         armed = self.measure_tool.active or self.annotate_tool.active
-        if armed or self.armature_tool.active or self.form_tool.active or self.pose_tool.active:
+        if self.object_tool.active:
+            # The gizmo's handles are what is taken hold of; the rest of the
+            # view still orbits, and the cursor says which is which.
+            self.setCursor(
+                Qt.CursorShape.OpenHandCursor
+                if self.object_tool.hover_handle
+                else Qt.CursorShape.ArrowCursor
+            )
+        elif armed or self.armature_tool.active or self.form_tool.active or self.pose_tool.active:
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif (
             self.measure_tool.hover_handle
@@ -920,6 +1021,9 @@ class Viewport(QOpenGLWidget):
 
         if event.button() == Qt.MouseButton.LeftButton and not self._orbit_override(event):
             depth = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            if self.object_tool.active and self._begin_object_drag(x, y):
+                self.update()
+                return
             if self._section_gizmo.begin(x, y, self._picker(), self._state.render.section):
                 self.update()
                 return
@@ -963,6 +1067,9 @@ class Viewport(QOpenGLWidget):
         if self._press_position is not None:
             self._travel = max(self._travel, abs(x - self._press_position[0])
                                + abs(y - self._press_position[1]))
+        if self._object_previous is not None:
+            self._move_grabbed_object(x, y, self._snap_degrees(event))
+            return
         if self._section_gizmo.drag is not None:
             self._state.render.section.offset = self._section_gizmo.move(x, y)
             self._state.notify_render()
@@ -1010,7 +1117,9 @@ class Viewport(QOpenGLWidget):
             self._depth_drag is not None or self._section_gizmo.drag is not None
         ):
             return
-        if self._section_gizmo.drag is not None:
+        if self._object_previous is not None:
+            self._commit_object_drag()
+        elif self._section_gizmo.drag is not None:
             previous = self._section_gizmo.drag[1]
             self._section_gizmo.drag = None
             section = self._state.render.section
@@ -1036,7 +1145,11 @@ class Viewport(QOpenGLWidget):
         else:
             self._navigation.end()
             left = event.button() == Qt.MouseButton.LeftButton
-            if was_click and left and self.measure_tool.active:
+            if was_click and left and self._orbit_override(event):
+                # Alt went down for an orbit that never travelled: an
+                # Alt-click, which picks an object whatever tool is armed.
+                self._pick_object(position.x(), position.y())
+            elif was_click and left and self.measure_tool.active:
                 self._place_measure_point(position.x(), position.y())
             elif was_click and left and self.armature_tool.active:
                 self._place_armature_node(position.x(), position.y())
@@ -1044,6 +1157,8 @@ class Viewport(QOpenGLWidget):
                 self._place_form_landmark(position.x(), position.y())
             elif was_click and left and self.pose_tool.active:
                 self._place_joint(position.x(), position.y())
+            elif was_click and left and self.object_tool.active:
+                self._pick_object(position.x(), position.y())
 
         self._depth_drag = None
         self._press_position = None
@@ -1069,9 +1184,25 @@ class Viewport(QOpenGLWidget):
         )
         self.update()
 
+    def event(self, event) -> bool:
+        # A key the view's shortcuts would take is offered to the widget
+        # first; accepting the offer is what keeps W, E and R for the
+        # transform tool while it is armed, and leaves them where they were
+        # -- the eraser, the armature tool -- the rest of the time.
+        if event.type() == QEvent.Type.ShortcutOverride and self._gesture_for(event) is not None:
+            event.accept()
+            return True
+        return super().event(event)
+
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if event.key() == Qt.Key.Key_Escape:
             self.cancel_tools()
+            return
+        mode = self._gesture_for(event)
+        if mode is not None:
+            self.object_tool.set_mode(mode)
+            self.object_mode_changed.emit(mode)
+            self.update()
             return
         super().keyPressEvent(event)
 
@@ -1514,6 +1645,12 @@ class Viewport(QOpenGLWidget):
     def _update_hover(self, x: float, y: float) -> None:
         """Track whatever the cursor is over, so the overlay can respond."""
         dirty = False
+        if self.object_tool.active:
+            handle = self.object_tool.handle_at(x, y, self._object_gizmo())
+            if handle != self.object_tool.hover_handle:
+                self.object_tool.hover_handle = handle
+                self._refresh_cursor()
+                dirty = True
         # The rail takes the press before any tool does, so it is offered first.
         over_rail = self._section_gizmo.hit(x, y, self._picker(), self._state.render.section)
         if over_rail != self._section_gizmo.hover:
@@ -1602,6 +1739,127 @@ class Viewport(QOpenGLWidget):
             self._refresh_cursor()
         tool.hover_bone = bone
         return changed
+
+    # ------------------------------------------------------------------
+    # Objects
+    # ------------------------------------------------------------------
+    #
+    # A drag on the gizmo rewrites the active object's transform on every
+    # move, so the figure follows the hand, and the whole drag is recorded
+    # as one step when the button comes up: the snapshot of the objects
+    # taken at the press against the one taken at the release.
+
+    def _object_gizmo(self):
+        """Where the active object's gizmo falls on screen, or ``None``."""
+        active = self._state.active_object
+        if active is None or not self._state.objects.shown(active, self._state.object_settings):
+            return None
+        return self.object_tool.gizmo(self._picker(), self._state.objects.world_matrix(active))
+
+    def _begin_object_drag(self, x: float, y: float) -> bool:
+        active = self._state.active_object
+        if active is None:
+            return False
+        handle = self.object_tool.handle_at(x, y, self._object_gizmo())
+        if handle is None:
+            return False
+        objects = self._state.objects
+        began = self.object_tool.begin(
+            handle,
+            x,
+            y,
+            self._picker(),
+            objects.world_matrix(active),
+            objects.parent_matrix(active),
+        )
+        if not began:
+            return False
+        self._object_previous = self._state.snapshot_objects()
+        self._object_held = active
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        return True
+
+    def _move_grabbed_object(self, x: float, y: float, snap_deg: float) -> None:
+        held = self._object_held
+        if held is None:
+            return
+        transform = self.object_tool.drag(
+            x, y, self._picker(), snap_deg, self._state.object_settings.uniform_scale
+        )
+        if transform is None:
+            return
+        self._state.preview_transform(held, transform)
+
+    def _commit_object_drag(self) -> None:
+        before, self._object_previous = self._object_previous, None
+        held, self._object_held = self._object_held, None
+        self.object_tool.end()
+        self._refresh_cursor()
+        if before is None or held is None:
+            return
+        verb = {"move": "Move", "rotate": "Turn", "scale": "Scale"}[self.object_tool.mode]
+        self._state.commit_transform(held, before, f"{verb} {held.name}")
+
+    def _pick_object(self, x: float, y: float) -> None:
+        """Make the object under the cursor the active one."""
+        hit = self._picker().hit(x, y)
+        if hit is None:
+            return
+        owner = self._state.triangle_owner(hit.triangle)
+        if owner is not None:
+            self._state.set_active(owner)
+            self.update()
+
+    def _gesture_for(self, event) -> str | None:
+        """The gesture a key press chooses, if the transform tool is armed to hear it."""
+        if not self.object_tool.active or self.object_tool.dragging:
+            return None
+        if event.modifiers() != Qt.KeyboardModifier.NoModifier:
+            return None
+        return GESTURE_KEYS.get(Qt.Key(event.key()))
+
+    # The line round a newly active object is drawn by the renderer, over
+    # the finished frame; the view only says which object, and how far
+    # along the fade the frame is.
+
+    def _active_changed(self) -> None:
+        """Put the line on the active object, if it is a different one than before."""
+        active = self._state.active_object
+        if active is self._active_seen:
+            return
+        self._active_seen = active
+        # With one object there is nothing to tell it from; the line would
+        # only say what loading a model already said.
+        if active is not None and len(self._state.objects) > 1:
+            self.highlight_object(active)
+
+    def highlight_object(self, obj) -> None:
+        """Draw a line round ``obj`` for a moment, then let it fade."""
+        self._highlight = (obj, perf_counter())
+        self._highlight_timer.start()
+        self.update()
+
+    def _highlight_now(self) -> tuple[int, float] | None:
+        """Which part wears the line this frame, and how solid it is, or ``None``.
+
+        Also where the fade is retired: the frame that finds it over stops
+        the timer that was feeding the frames.
+        """
+        if self._highlight is None:
+            return None
+        obj, began = self._highlight
+        elapsed = perf_counter() - began
+        if elapsed >= HIGHLIGHT_HOLD + HIGHLIGHT_FADE or self._state.objects.index(obj) < 0:
+            self._highlight = None
+            self._highlight_timer.stop()
+            return None
+        alpha = 1.0 - max(elapsed - HIGHLIGHT_HOLD, 0.0) / HIGHLIGHT_FADE
+        index = next(
+            (i for i, (held, _, _) in enumerate(self._state.mesh_parts) if held is obj), -1
+        )
+        if index < 0:
+            return None  # Hidden; the line waits for it to be shown again.
+        return index, alpha
 
     # ------------------------------------------------------------------
     # Skeletons

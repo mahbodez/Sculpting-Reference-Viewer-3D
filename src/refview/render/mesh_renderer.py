@@ -16,6 +16,7 @@ from OpenGL import GL
 
 from ..core.annotation import Stroke
 from ..core.camera import Camera, Projection
+from ..core.grid import GridSettings
 from ..core.linalg import look_at, orthographic, spherical_direction, vec3
 from ..core.mesh import Mesh
 from ..core.plane_axes import Coefficients, PlaneAxes, PlaneSet
@@ -39,7 +40,7 @@ from .skin_refinement import (
     TRIANGLES_UNIT,
     SkinRefinement,
 )
-from .stroke_renderer import StrokeBuffers
+from .stroke_renderer import StrokeBuffers, build_segment_vertices
 from .texture import DataTexture, Texture2D, default_matcap_pixels
 
 #: How far annotations are lifted off the surface, as a share of the scene
@@ -50,6 +51,9 @@ _STROKE_LIFT = 0.0015
 _STROKE_DEPTH_BIAS = 2e-4
 #: The section contour sits exactly on the cut, so it needs a larger nudge.
 _CONTOUR_DEPTH_BIAS = 8e-4
+#: How solid the depth guide is where it is not faded: never quite, so the
+#: form still reads through it.
+_GUIDE_PEAK = 0.7
 #: Shadow map resolution.  2048 keeps the penumbra smooth without a
 #: measurable cost next to drawing the model itself.
 _SHADOW_SIZE = 2048
@@ -60,6 +64,8 @@ _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT = 4, 5
 #: The whole frame, read back by the resolve pass.  On unit nought, because
 #: that pass runs alone once everything else has let go of its textures.
 _FRAME_UNIT = 0
+#: How wide the line round a highlighted object is, in logical pixels.
+_HIGHLIGHT_WIDTH = 2.5
 
 #: How the frame is smoothed on its way to the screen: not at all, FXAA over a
 #: frame the screen's own size, or supersampling -- the frame drawn at twice
@@ -84,8 +90,15 @@ class MeshBuffers:
         self._normal_vbo = int(GL.glGenBuffers(1))
         self._ebo = int(GL.glGenBuffers(1))
         self._index_count = 0
+        #: The :attr:`~refview.core.mesh.Mesh.serial` of what is uploaded,
+        #: so the same mesh handed over twice is not sent twice.
+        self._serial = 0
+
+    def holds(self, mesh: Mesh) -> bool:
+        return self._index_count > 0 and self._serial == mesh.serial
 
     def upload(self, mesh: Mesh) -> None:
+        self._serial = mesh.serial
         GL.glBindVertexArray(self._vao)
 
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._position_vbo)
@@ -115,6 +128,7 @@ class MeshBuffers:
     def clear(self) -> None:
         """Forget the contents without releasing the buffer objects."""
         self._index_count = 0
+        self._serial = 0
 
     def draw(self) -> None:
         if self.is_empty:
@@ -139,7 +153,12 @@ class SceneRenderer:
 
     def __init__(self) -> None:
         self._programs: dict[str, ShaderProgram] = {}
-        self._buffers: MeshBuffers | None = None
+        #: One set of buffers per object drawn, with how solid each is; the
+        #: scene is several models now, and a ghosted one beside a solid one
+        #: has to be drawn in a pass of its own.  The list grows to the most
+        #: objects ever shown and the spare entries sit empty.
+        self._buffers: list[MeshBuffers] = []
+        self._parts: list[tuple[MeshBuffers, float]] = []
         #: The planar stand-in drawn in place of the model, when the artist has
         #: asked for the form itself to be broken into planes.  Empty the rest
         #: of the time, and never anything the model is measured or picked
@@ -159,6 +178,9 @@ class SceneRenderer:
         #: behind it and says which.
         self._guide: StrokeBuffers | None = None
         self._guide_fade: tuple[np.ndarray, float] | None = None
+        #: The reference grids, and the point they fade about.
+        self._grid: StrokeBuffers | None = None
+        self._grid_centre: np.ndarray | None = None
         self._shadow_map = DepthTarget(clamp_to_lit=True)
         self._scene_depth = GeometryTarget()
         self._occlusion = ColorTarget()
@@ -168,6 +190,11 @@ class SceneRenderer:
         #: Where the frame is drawn when it is to be smoothed before the
         #: screen sees it; untouched when it is not.
         self._frame = FrameTarget()
+        #: Where one object is stamped on its own, so that the line drawn
+        #: round it can be found; and which part wears the line this frame,
+        #: how solid, and in what colour.  See :meth:`set_highlight`.
+        self._mask = ColorTarget()
+        self._highlight: tuple[int, float, tuple[float, float, float]] | None = None
         self._empty_vao = 0
         self._matcap: Texture2D | None = None
         self._mesh: Mesh | None = None
@@ -205,14 +232,19 @@ class SceneRenderer:
             "resolve": ShaderProgram(
                 shaders.FULLSCREEN_VERTEX, shaders.RESOLVE_FRAGMENT, "resolve"
             ),
+            "outline": ShaderProgram(
+                shaders.FULLSCREEN_VERTEX, shaders.OUTLINE_FRAGMENT, "outline"
+            ),
         }
-        self._buffers = MeshBuffers()
+        self._buffers = []
+        self._parts = []
         self._sculpt = MeshBuffers()
         self._forms = MeshBuffers()
         self._pedestal = MeshBuffers()
         self._strokes = StrokeBuffers()
         self._contour = StrokeBuffers()
         self._guide = StrokeBuffers()
+        self._grid = StrokeBuffers()
         self._empty_vao = int(GL.glGenVertexArrays(1))
         self._matcap = Texture2D()
         self._matcap.upload(default_matcap_pixels())
@@ -228,16 +260,19 @@ class SceneRenderer:
             program.dispose()
         self._programs.clear()
         for buffers in (
-            self._buffers,
+            *self._buffers,
             self._sculpt,
             self._forms,
             self._pedestal,
             self._strokes,
             self._contour,
             self._guide,
+            self._grid,
         ):
             if buffers is not None:
                 buffers.dispose()
+        self._buffers = []
+        self._parts = []
         for target in (
             self._shadow_map,
             self._scene_depth,
@@ -245,6 +280,7 @@ class SceneRenderer:
             self._occlusion_blur,
             self._ghost,
             self._frame,
+            self._mask,
         ):
             target.dispose()
         if self._matcap is not None:
@@ -259,17 +295,64 @@ class SceneRenderer:
 
     # -- content --------------------------------------------------------
 
-    def set_mesh(self, mesh: Mesh | None) -> None:
+    def set_mesh(
+        self, mesh: Mesh | None, parts: list[tuple[Mesh, float]] | None = None
+    ) -> None:
+        """Replace the model: the whole scene as one mesh, and the objects it is made of.
+
+        ``mesh`` is what the planes are fitted to and the skin tracer reads;
+        ``parts`` is what is drawn, one entry per object with how solid it
+        is, so that each object can be ghosted on its own.  Left out, the
+        mesh is drawn as the one solid part it used to be.
+        """
         self._trace_parts["model"] = mesh
         self._trace_parts["sculpt"] = None
         self._content_revision += 1
-        self._set_geometry(self._buffers, mesh)
+        if parts is None:
+            parts = [] if mesh is None else [(mesh, 1.0)]
+        while len(self._buffers) < len(parts):
+            self._buffers.append(MeshBuffers())
+        self._parts = []
+        for buffers, (part, opacity) in zip(self._buffers, parts, strict=False):
+            # Only the object that moved is sent again: on a drag the others
+            # are the very meshes already in their buffers.
+            if not buffers.holds(part):
+                self._set_geometry(buffers, part)
+            self._parts.append((buffers, min(max(float(opacity), 0.0), 1.0)))
+        for buffers in self._buffers[len(parts):]:
+            buffers.clear()
         # Any stand-in in hand was built out of the model being replaced, so
         # it goes now rather than being drawn for the frames until a new one
         # arrives.
         self._set_geometry(self._sculpt, None)
         self._mesh = mesh
         self._plane_axes.clear()
+
+    def set_part_opacities(self, opacities: list[float]) -> None:
+        """Change how solid each object is drawn, leaving the geometry where it is."""
+        self._parts = [
+            (buffers, min(max(float(opacity), 0.0), 1.0))
+            for (buffers, _), opacity in zip(self._parts, opacities, strict=False)
+        ] + self._parts[len(opacities):]
+        self._content_revision += 1
+
+    def set_highlight(
+        self,
+        part: int | None,
+        alpha: float = 1.0,
+        color: tuple[float, float, float] = (1.0, 0.77, 0.36),
+    ) -> None:
+        """Draw a line round the object at ``part`` -- the index into the parts -- or none.
+
+        The line is laid over the finished frame, so it is not part of the
+        picture: the skin tracer's samples, the smoothing and the ghost all
+        come out the same with it as without.  Which is why it is not in the
+        content revision, and a fade needs no more than a frame a step.
+        """
+        if part is None or alpha <= 0.0:
+            self._highlight = None
+        else:
+            self._highlight = (int(part), min(float(alpha), 1.0), tuple(color))
 
     def set_sculpt(self, mesh: Mesh | None) -> None:
         """Draw ``mesh`` in place of the model; pass ``None`` to draw the model.
@@ -302,12 +385,26 @@ class SceneRenderer:
         self._trace_parts["forms"] = mesh
         self._content_revision += 1
 
-    @property
-    def _model(self) -> MeshBuffers | None:
-        """Whichever geometry is standing for the model this frame."""
+    def _model_parts(self, settings: RenderSettings) -> list[tuple[MeshBuffers, float]]:
+        """Whatever is standing for the model this frame, with how solid each piece is.
+
+        The planar stand-in, when there is one, stands in for every object at
+        once; otherwise each object is its own part at its own solidity,
+        under the scene-wide ghost.
+        """
+        opacity = settings.surface_opacity
         if self._sculpt is not None and not self._sculpt.is_empty:
-            return self._sculpt
-        return self._buffers
+            return [(self._sculpt, opacity)]
+        return [
+            (buffers, opacity * own) for buffers, own in self._parts if not buffers.is_empty
+        ]
+
+    @property
+    def _model_buffers(self) -> list[MeshBuffers]:
+        """Every buffer standing for the model, for the passes that draw them all alike."""
+        if self._sculpt is not None and not self._sculpt.is_empty:
+            return [self._sculpt]
+        return [buffers for buffers, _ in self._parts if not buffers.is_empty]
 
     def _planes_for(self, mode: PlaneMode, coefficients: Coefficients, count: int) -> PlaneSet:
         """The model's own planes under ``mode``, fitted once and kept."""
@@ -375,6 +472,31 @@ class SceneRenderer:
             None if centre is None or reach <= 0.0
             else (np.asarray(centre, dtype=np.float64), float(reach))
         )
+
+    def set_grid(self, lines) -> None:
+        """Replace the reference grids; pass ``None`` to take them away.
+
+        ``lines`` is a :class:`~refview.core.grid.GridLines`: the segments
+        arrive with a colour and a width each, since the axis lines and the
+        heavy lines differ from the rest.
+        """
+        if self._grid is None:
+            return
+        if lines is None or len(lines.segments) == 0:
+            self._grid.upload_vertices(np.zeros((0, 14), dtype=np.float32))
+            self._grid_centre = None
+        else:
+            blocks = []
+            # One block per distinct colour-and-width, which is a handful.
+            keys = np.concatenate([lines.colors, lines.widths[:, None]], axis=1)
+            distinct, back = np.unique(keys, axis=0, return_inverse=True)
+            back = back.ravel()
+            for index, key in enumerate(distinct):
+                chosen = lines.segments[back == index]
+                blocks.append(build_segment_vertices(chosen, key[:3], float(key[3])))
+            self._grid.upload_vertices(np.concatenate(blocks))
+            self._grid_centre = np.asarray(lines.centre, dtype=np.float64)
+        self.skin.clock.key = None
 
     # -- drawing --------------------------------------------------------
 
@@ -444,6 +566,7 @@ class SceneRenderer:
                     self.skin.present(screen, width, height, self._draw_fullscreen)
                 self.skin.needs_frame = self.skin.clock.samples < skin.samples
                 self.skin.status = f"Human Skin · {self.skin.clock.samples}/{skin.samples} samples"
+                self._draw_highlight(camera, settings, screen, width, height, pixel_ratio)
                 return
             if offscreen:
                 # Allocated before anything else is bound, for the same reason
@@ -457,6 +580,7 @@ class SceneRenderer:
                 bind_default(screen)
                 GL.glViewport(0, 0, width, height)
                 self._resolve_frame(antialiasing == "fxaa")
+            self._draw_highlight(camera, settings, screen, width, height, pixel_ratio)
         finally:
             bind_default(screen)
             self._reset_state()
@@ -473,6 +597,60 @@ class SceneRenderer:
             program.set_bool("uFxaa", fxaa)
             self._frame.bind_texture(_FRAME_UNIT)
             self._draw_fullscreen()
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
+    def _draw_highlight(
+        self,
+        camera: Camera,
+        settings: RenderSettings,
+        screen: int,
+        width: int,
+        height: int,
+        pixel_ratio: float,
+    ) -> None:
+        """Lay the line round the highlighted object over the finished frame.
+
+        Two passes: the object alone is stamped into the mask, with no depth
+        test so that the line follows its whole silhouette and not only the
+        part standing in front of the others -- the point of the line is to
+        say which object was picked, even one half behind another -- and
+        then the pixels just outside the stamp are coloured on the screen.
+        """
+        if self._highlight is None:
+            return
+        index, alpha, color = self._highlight
+        if not 0 <= index < len(self._parts):
+            return
+        buffers = self._parts[index][0]
+        if buffers.is_empty:
+            return
+        view = camera.view_matrix()
+        projection = camera.projection_matrix(width / height)
+        self._mask.resize(width, height)
+        self._mask.bind()
+        GL.glClearBufferfv(GL.GL_COLOR, 0, [0.0, 0.0, 0.0, 0.0])
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glDepthMask(GL.GL_FALSE)
+        GL.glDisable(GL.GL_BLEND)
+        with self._programs["flat"] as program:
+            program.set_matrix4("uView", view)
+            program.set_matrix4("uProjection", projection)
+            program.set_vec4("uColor", (1.0, 1.0, 1.0, 1.0))
+            _set_section(program, settings.section.planes())
+            buffers.draw()
+        bind_default(screen)
+        GL.glViewport(0, 0, width, height)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        with self._programs["outline"] as program:
+            program.set_int("uMask", _FRAME_UNIT)
+            program.set_vec2("uTexelSize", (1.0 / width, 1.0 / height))
+            program.set_float("uRadius", _HIGHLIGHT_WIDTH * max(pixel_ratio, 0.1))
+            program.set_vec4("uColor", (*color, alpha))
+            self._mask.bind_texture(_FRAME_UNIT)
+            self._draw_fullscreen()
+        GL.glDisable(GL.GL_BLEND)
         GL.glDepthMask(GL.GL_TRUE)
         GL.glEnable(GL.GL_DEPTH_TEST)
 
@@ -522,6 +700,7 @@ class SceneRenderer:
         self._draw_background(settings)
 
         if not self._has_geometry:
+            self._draw_grid(camera, projection @ view, settings.grid, width, height, pixel_ratio)
             return
 
         self._draw_scene(
@@ -536,7 +715,7 @@ class SceneRenderer:
 
     @property
     def _has_geometry(self) -> bool:
-        model = self._buffers is not None and not self._buffers.is_empty
+        model = any(not buffers.is_empty for buffers, _ in self._parts)
         disc = self._pedestal is not None and not self._pedestal.is_empty
         return model or disc
 
@@ -545,20 +724,18 @@ class SceneRenderer:
 
         Asked in two places -- where the buffers are allocated and where they
         are filled -- and the two must agree, or a frame allocates nothing and
-        then draws into it.
+        then draws into it.  With several objects it is the most see-through
+        of them; what matters to the caller is whether any is.
         """
-        model = self._model
-        opacity = settings.surface_opacity
-        if model is None or model.is_empty or opacity >= 1.0:
-            return None
-        return opacity
+        ghosted = [opacity for _, opacity in self._model_parts(settings) if opacity < 1.0]
+        return min(ghosted) if ghosted else None
 
     def _accumulate_ghost(
         self,
         program: ShaderProgram,
-        model: MeshBuffers,
+        ghosts: list[tuple[MeshBuffers, float]],
+        solid: list[MeshBuffers],
         camera: Camera,
-        opacity: float,
         width: int,
         height: int,
     ) -> None:
@@ -591,23 +768,31 @@ class SceneRenderer:
         self._ghost.bind()
         self._ghost.clear()
 
-        # The ground the model stands behind still has to hide it, and this
-        # framebuffer has a depth buffer of its own, so the disc is laid in
-        # again with the colour writes shut off.
+        # The ground the model stands behind still has to hide it -- and so
+        # do the objects drawn solid -- and this framebuffer has a depth
+        # buffer of its own, so they are laid in again with the colour writes
+        # shut off.
+        blockers = [*solid]
         if self._pedestal is not None and not self._pedestal.is_empty:
+            blockers.append(self._pedestal)
+        if self._forms is not None and not self._forms.is_empty:
+            blockers.append(self._forms)
+        if blockers:
             GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE)
-            self._pedestal.draw()
+            for buffers in blockers:
+                buffers.draw()
             GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
 
         near, span = _ghost_depth_range(camera)
         program.set_float("uGhostNear", near)
         program.set_float("uGhostSpan", span)
-        program.set_float("uOpacity", opacity)
         program.set_bool("uAccumulate", True)
         GL.glEnable(GL.GL_BLEND)
         GL.glBlendFunc(GL.GL_ONE, GL.GL_ONE)
         GL.glDepthMask(GL.GL_FALSE)
-        model.draw()
+        for buffers, opacity in ghosts:
+            program.set_float("uOpacity", opacity)
+            buffers.draw()
         GL.glDepthMask(GL.GL_TRUE)
         GL.glDisable(GL.GL_BLEND)
         program.set_bool("uAccumulate", False)
@@ -678,10 +863,12 @@ class SceneRenderer:
         pixel_ratio: float = 1.0,
     ) -> None:
         """The model, the pedestal under it and the flat cap over the cut."""
-        assert self._buffers is not None and self._pedestal is not None
+        assert self._pedestal is not None
         key_direction, fill_direction = light_directions(settings, view)
 
-        model = self._model
+        parts = self._model_parts(settings)
+        solid = [buffers for buffers, opacity in parts if opacity >= 1.0]
+        ghosts = [(buffers, opacity) for buffers, opacity in parts if opacity < 1.0]
         ghost_opacity = self._ghost_opacity(settings)
 
         with self._programs["mesh"] as program:
@@ -811,14 +998,22 @@ class SceneRenderer:
                 self._forms.draw()
                 program.set_vec3("uMatcapTint", matcap.tint)
                 program.set_bool("uPlaneShading", shades)
-            if model is not None:
+            if parts:
                 program.set_bool("uSkinFurniture", False)
                 program.set_vec3("uDiffuseColor", surface.diffuse_color)
-                if ghost_opacity is not None:
-                    self._accumulate_ghost(program, model, camera, ghost_opacity, width, height)
-                else:
-                    program.set_float("uOpacity", 1.0)
-                    model.draw()
+                program.set_float("uOpacity", 1.0)
+                # The solid objects first, so that the ghosts can be hidden
+                # behind them; the ghosts are summed afterwards into buffers
+                # of their own and laid over the frame.
+                for buffers in solid:
+                    buffers.draw()
+                if ghosts:
+                    self._accumulate_ghost(program, ghosts, solid, camera, width, height)
+
+        # The grid goes down before the ghost is laid over the frame, so a
+        # see-through figure still reads as standing on it rather than
+        # behind it.
+        self._draw_grid(camera, projection @ view, settings.grid, width, height, pixel_ratio)
 
         # After the program has been let go, since this is a pass of its own --
         # and before the cap, which belongs over the ghost as it did before.
@@ -894,7 +1089,9 @@ class SceneRenderer:
 
     @property
     def _flat_targets(self) -> tuple[MeshBuffers, ...]:
-        return tuple(b for b in (self._model, self._forms, self._pedestal) if b is not None)
+        return tuple(
+            b for b in (*self._model_buffers, self._forms, self._pedestal) if b is not None
+        )
 
     def _draw_contour(
         self,
@@ -917,6 +1114,7 @@ class SceneRenderer:
             program.set_float("uNormalOffset", camera.scene_radius * 1e-3)
             program.set_float("uDepthBias", _CONTOUR_DEPTH_BIAS)
             program.set_float("uFadeRadius", 0.0)
+            program.set_float("uAlpha", 1.0)
             _set_section(program, [])  # The contour lies on the cut; never clip it.
             self._contour.draw()
 
@@ -945,6 +1143,7 @@ class SceneRenderer:
             program.set_float("uNormalOffset", camera.scene_radius * _STROKE_LIFT)
             program.set_float("uDepthBias", _STROKE_DEPTH_BIAS)
             program.set_float("uFadeRadius", 0.0)
+            program.set_float("uAlpha", 1.0)
             _set_section(program, planes)
             self._strokes.draw()
         GL.glDepthMask(GL.GL_TRUE)
@@ -974,8 +1173,57 @@ class SceneRenderer:
             program.set_float("uDepthBias", _STROKE_DEPTH_BIAS)
             program.set_vec3("uFadeCentre", centre)
             program.set_float("uFadeRadius", reach)
+            program.set_float("uFadePeak", _GUIDE_PEAK)
             _set_section(program, [])
             self._guide.draw()
+        GL.glDisable(GL.GL_BLEND)
+        GL.glDepthMask(GL.GL_TRUE)
+
+    def _draw_grid(
+        self,
+        camera: Camera,
+        view_projection: np.ndarray,
+        grid: GridSettings,
+        width: int,
+        height: int,
+        pixel_ratio: float,
+    ) -> None:
+        """The reference grids: in the scene, behind whatever stands on them.
+
+        Drawn as the depth guide is -- tested against the depth buffer, not
+        written into it, blended, never cut by the section -- and faded about
+        the camera rather than about a point on the grid, so the far squares
+        go before they can crowd into a moire at the horizon.  The fade is a
+        multiple of how far the camera stands from the grid's centre, which
+        is what keeps it looking the same at every zoom.
+        """
+        if self._grid is None or self._grid.is_empty or self._grid_centre is None:
+            return
+        if not grid.any:
+            return  # an export can ask for the frame without it
+        eye = np.asarray(camera.eye, dtype=np.float64)
+        away = float(np.linalg.norm(eye - self._grid_centre))
+        if camera.projection is Projection.ORTHOGRAPHIC:
+            # An orthographic eye can sit anywhere along its own axis; what
+            # is meaningful is the framed height.
+            away = max(camera.ortho_half_height * 2.0, away)
+        reach = max(float(grid.fade), 0.0) * max(away, 1e-6)
+        GL.glDepthMask(GL.GL_FALSE)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        with self._programs["stroke"] as program:
+            program.set_matrix4("uViewProjection", view_projection)
+            program.set_vec2("uViewport", (width, height))
+            program.set_float("uWidthScale", max(pixel_ratio, 0.1))
+            program.set_float("uNormalOffset", 0.0)
+            program.set_float("uDepthBias", _STROKE_DEPTH_BIAS)
+            program.set_vec3("uFadeCentre", eye)
+            program.set_float("uFadeRadius", reach)
+            peak = min(max(float(grid.opacity), 0.0), 1.0)
+            program.set_float("uFadePeak", peak)
+            program.set_float("uAlpha", peak)
+            _set_section(program, [])
+            self._grid.draw()
         GL.glDisable(GL.GL_BLEND)
         GL.glDepthMask(GL.GL_TRUE)
 

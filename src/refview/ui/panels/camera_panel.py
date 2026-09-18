@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -54,6 +55,30 @@ class CameraPanel(Panel):
         form.addRow("FOV", self._fov)
         form.addRow("Shift snap", self._snap)
         self._add(box)
+
+        clip_box, clip_form = form_group("Clipping")
+        self._clip_by_hand = QCheckBox("Set by hand")
+        self._clip_by_hand.setToolTip(
+            "Off, the near and far planes are fitted to the scene every frame:\n"
+            "as close and as far as the model reaches, with room to spare.\n"
+            "On, the two distances below are yours, and stay put as the\n"
+            "camera moves."
+        )
+        self._near = SliderSpin(0.0, 1.0, 0.1, decimals=3, ceiling=1e9)
+        self._near.setToolTip(
+            "Nothing closer to the eye than this is drawn.  Smaller lets the\n"
+            "camera go inside a model without the walls vanishing; larger\n"
+            "spends the depth buffer's precision where the model is."
+        )
+        self._far = SliderSpin(0.0, 1.0, 1.0, decimals=3, ceiling=1e12)
+        self._far.setToolTip(
+            "Nothing further from the eye than this is drawn.  The closer it\n"
+            "sits to the near plane, the finer the depth is resolved between."
+        )
+        clip_form.addRow("", self._clip_by_hand)
+        clip_form.addRow("Near", self._near)
+        clip_form.addRow("Far", self._far)
+        self._add(clip_box)
 
         views_box, _ = form_group("Standard Views")
         grid = QGridLayout()
@@ -107,6 +132,9 @@ class CameraPanel(Panel):
         self._projection.currentIndexChanged.connect(self._on_projection)
         self._fov.valueChanged.connect(self._on_fov)
         self._snap.valueChanged.connect(self._on_snap)
+        self._clip_by_hand.toggled.connect(self._on_clip_by_hand)
+        self._near.valueChanged.connect(lambda v: self._on_clip("near", v))
+        self._far.valueChanged.connect(lambda v: self._on_clip("far", v))
 
         # Scoped to the panel so F2 keeps its usual meaning everywhere else.
         rename = QShortcut(QKeySequence("F2"), self)
@@ -131,6 +159,24 @@ class CameraPanel(Panel):
         if not self._busy:
             self.state.navigation.snap_angle_deg = value
 
+    def _on_clip_by_hand(self, by_hand: bool) -> None:
+        """Take the planes in hand where the fit left them, or hand them back."""
+        if self._busy:
+            return
+        camera = self.state.camera
+        if by_hand:
+            camera.near, camera.far = camera.fitted_clip_planes()
+        else:
+            camera.near = camera.far = None
+        self.state.notify_camera()
+        self.refresh_camera()
+
+    def _on_clip(self, which: str, value: float) -> None:
+        if self._busy or not self._clip_by_hand.isChecked():
+            return
+        setattr(self.state.camera, which, float(value))
+        self.state.notify_camera()
+
     def look_along(self, direction) -> None:
         camera = self.state.camera
         camera.look_along(direction)
@@ -154,10 +200,23 @@ class CameraPanel(Panel):
         view list that often would also cancel a rename the moment it started.
         """
         camera = self.state.camera
+        by_hand = camera.near is not None or camera.far is not None
+        near, far = camera.clip_planes()
+        # The bars reach as far as the fit ever would; a number typed past
+        # the end still lands, up to the ceiling.
+        _, reach = camera.fitted_clip_planes()
+        floor = -reach if camera.projection is Projection.ORTHOGRAPHIC else 0.0
         with self._suppressed():
             self._projection.setCurrentIndex(self._projection.findData(camera.projection.value))
             self._fov.set_value(camera.fov_deg)
             self._snap.set_value(self.state.navigation.snap_angle_deg)
+            self._clip_by_hand.setChecked(by_hand)
+            self._near.set_range(floor, max(reach, 1e-6), 1e9)
+            self._far.set_range(floor, max(reach * 2.0, 1e-6), 1e12)
+            self._near.set_value(near)
+            self._far.set_value(far)
+        self._near.setEnabled(by_hand)
+        self._far.setEnabled(by_hand)
 
     def refresh_bookmarks(self) -> None:
         row = self.state.bookmarks.current_index

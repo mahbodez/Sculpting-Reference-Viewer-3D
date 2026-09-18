@@ -153,6 +153,8 @@ class ExportLook:
     ghost_opacity: float = 0.35
     wireframe: bool = False
     pedestal: bool = True
+    #: The reference grids, as the viewport has them set.
+    grid: bool = True
     #: Strokes painted on the surface.  Real geometry, so this one is a matter
     #: of what the renderer is handed rather than of what is drawn over it.
     annotations: bool = True
@@ -186,6 +188,9 @@ class ExportLook:
             ghost=self.ghost,
             ghost_opacity=max(float(self.ghost_opacity), GHOST_MIN),
             show_wireframe=self.wireframe,
+            grid=base.grid
+            if self.grid
+            else replace(base.grid, ground=False, front=False, side=False),
         )
 
     def caption_for(self, stage: Stage) -> str:
@@ -558,6 +563,8 @@ class ExportVideoDialog(QDialog):
         self._wireframe = QCheckBox("Wireframe over the form")
         self._pedestal = QCheckBox("Pedestal under the form")
         self._pedestal.setChecked(True)
+        self._grid = QCheckBox("Grid, as the viewport shows it")
+        self._grid.setChecked(True)
         form.addRow("Size", self._size)
         form.addRow("Width", self._width)
         form.addRow("Height", self._height)
@@ -566,6 +573,7 @@ class ExportVideoDialog(QDialog):
         form.addRow("Opacity", self._ghost_opacity)
         form.addRow("", self._wireframe)
         form.addRow("", self._pedestal)
+        form.addRow("", self._grid)
         self._picture_form = form
         self._set_size()
         return box
@@ -628,6 +636,7 @@ class ExportVideoDialog(QDialog):
             self._ghost,
             self._wireframe,
             self._pedestal,
+            self._grid,
             self._annotations,
             self._measurements,
             self._armature,
@@ -651,6 +660,7 @@ class ExportVideoDialog(QDialog):
             ghost_opacity=self._ghost_opacity.value(),
             wireframe=self._wireframe.isChecked(),
             pedestal=self._pedestal.isChecked(),
+            grid=self._grid.isChecked(),
             annotations=self._annotations.isChecked(),
             measurements=self._measurements.isChecked(),
             armature=self._armature.isChecked(),

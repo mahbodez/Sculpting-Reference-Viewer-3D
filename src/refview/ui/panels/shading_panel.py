@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
+from ...core.grid import COUNT_MAX, COUNT_MIN, FADE_MAX, FADE_MIN
 from ...core.settings import (
     CONTOUR_DENSITY_MAX,
     CONTOUR_DENSITY_MIN,
@@ -217,6 +218,50 @@ class ShadingPanel(Panel):
         pedestal_form.addRow("Colour", self._pedestal_color)
         self._add(pedestal_box)
 
+        grid_box, grid_form = form_group("Grid")
+        self._grid_ground = QCheckBox("Ground (XZ)")
+        self._grid_ground.setToolTip("A floor of squares under the scene")
+        self._grid_front = QCheckBox("Front wall (XY)")
+        self._grid_front.setToolTip("A wall of squares behind the model, read from the front")
+        self._grid_side = QCheckBox("Side wall (YZ)")
+        self._grid_side.setToolTip("A wall of squares beside the model, read from the side")
+        self._grid_count = SliderSpin(COUNT_MIN, COUNT_MAX, 20, decimals=0, step=1)
+        self._grid_count.setToolTip("Lines from the centre of the grid to each of its edges")
+        self._grid_spacing = SliderSpin(0.0, 1.0, 0.0, decimals=4)
+        self._grid_spacing.setToolTip(
+            "Distance between lines, in scene units.  Nought picks a round number\n"
+            "that puts the grid a little wider than the scene."
+        )
+        self._grid_major = SliderSpin(0, 20, 10, decimals=0, step=1)
+        self._grid_major.setToolTip("Every this-many lines a heavier one is drawn; nought for none")
+        self._grid_fade = SliderSpin(FADE_MIN, FADE_MAX, 2.5, decimals=1, step=0.1)
+        self._grid_fade.setToolTip(
+            "How far the lines reach before they have faded away, as a multiple\n"
+            "of the camera's distance to the grid.  Nought draws them all alike."
+        )
+        self._grid_opacity = SliderSpin(0.05, 1.0, 0.55, decimals=2, step=0.05)
+        self._grid_width = SliderSpin(0.5, 4.0, 1.0, decimals=1, step=0.1)
+        self._grid_color = ColorButton((0.55, 0.56, 0.60))
+        self._grid_axes = QCheckBox("Colour the axes")
+        self._grid_axes.setToolTip("Draw the X, Y and Z lines through the grid in their own colour")
+        self._grid_floor = QCheckBox("Ground sits under the scene")
+        self._grid_floor.setToolTip(
+            "Put the ground grid at the scene's lowest point rather than through\n"
+            "the origin, so it never cuts the model in two."
+        )
+        for widget in (self._grid_ground, self._grid_front, self._grid_side):
+            grid_form.addRow("", widget)
+        grid_form.addRow("Lines", self._grid_count)
+        grid_form.addRow("Spacing", self._grid_spacing)
+        grid_form.addRow("Heavy every", self._grid_major)
+        grid_form.addRow("Fade", self._grid_fade)
+        grid_form.addRow("Opacity", self._grid_opacity)
+        grid_form.addRow("Line width", self._grid_width)
+        grid_form.addRow("Colour", self._grid_color)
+        grid_form.addRow("", self._grid_axes)
+        grid_form.addRow("", self._grid_floor)
+        self._add(grid_box)
+
         background_box, background_form = form_group("Background")
         self._background_top = ColorButton((0.26, 0.27, 0.30))
         self._background_bottom = ColorButton((0.10, 0.10, 0.12))
@@ -282,6 +327,19 @@ class ShadingPanel(Panel):
         self._pedestal_thickness.valueChanged.connect(self._pedestal_setter("thickness"))
         self._pedestal_color.colorChanged.connect(self._pedestal_setter("color"))
 
+        self._grid_ground.toggled.connect(self._grid_setter("ground"))
+        self._grid_front.toggled.connect(self._grid_setter("front"))
+        self._grid_side.toggled.connect(self._grid_setter("side"))
+        self._grid_count.valueChanged.connect(lambda v: self._grid_setter("count")(int(v)))
+        self._grid_spacing.valueChanged.connect(self._grid_setter("spacing"))
+        self._grid_major.valueChanged.connect(lambda v: self._grid_setter("major_every")(int(v)))
+        self._grid_fade.valueChanged.connect(self._grid_setter("fade"))
+        self._grid_opacity.valueChanged.connect(self._grid_setter("opacity"))
+        self._grid_width.valueChanged.connect(self._grid_setter("line_width"))
+        self._grid_color.colorChanged.connect(self._grid_setter("color"))
+        self._grid_axes.toggled.connect(self._grid_setter("show_axes"))
+        self._grid_floor.toggled.connect(self._grid_setter("at_floor"))
+
         self._diffuse.colorChanged.connect(self._surface_setter("diffuse_color"))
         self._specular_color.colorChanged.connect(self._surface_setter("specular_color"))
         self._specular_level.valueChanged.connect(self._surface_setter("specular_level"))
@@ -335,6 +393,10 @@ class ShadingPanel(Panel):
     def _contour_setter(self, field: str):
         """Slot that writes one field of the contour shading settings."""
         return lambda value: self._apply(self.state.render.contour, field, value)
+
+    def _grid_setter(self, field: str):
+        """Slot that writes one field of the grid settings."""
+        return lambda value: self._apply(self.state.render.grid, field, value)
 
     def _on_contour_direction(self, index: int) -> None:
         if self._busy:
@@ -444,6 +506,23 @@ class ShadingPanel(Panel):
             self._pedestal_diameter.set_value(pedestal.diameter)
             self._pedestal_thickness.set_value(pedestal.thickness)
             self._pedestal_color.set_color(pedestal.color)
+
+            grid = render.grid
+            self._grid_ground.setChecked(grid.ground)
+            self._grid_front.setChecked(grid.front)
+            self._grid_side.setChecked(grid.side)
+            self._grid_count.set_value(grid.count)
+            # The spacing slider reaches a good share of the scene, and reads
+            # nought as "pick one for me".
+            self._grid_spacing.set_range(0.0, max(radius * 0.5, 1e-3))
+            self._grid_spacing.set_value(grid.spacing)
+            self._grid_major.set_value(grid.major_every)
+            self._grid_fade.set_value(grid.fade)
+            self._grid_opacity.set_value(grid.opacity)
+            self._grid_width.set_value(grid.line_width)
+            self._grid_color.set_color(grid.color)
+            self._grid_axes.setChecked(grid.show_axes)
+            self._grid_floor.setChecked(grid.at_floor)
 
             self._mode.setCurrentIndex(self._mode.findData(render.shading_mode.value))
             self._wireframe.setChecked(render.show_wireframe)

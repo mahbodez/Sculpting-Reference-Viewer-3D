@@ -69,6 +69,18 @@ CONTROLS_TEXT = """
 <tr><td><b>Shading panel</b></td><td>Ghost the model to see through it</td></tr>
 <tr><td><b>1</b> ... <b>6</b></td><td>Front, back, left, right, top, bottom</td></tr>
 </table>
+<h3>Objects</h3>
+<table cellpadding='3'>
+<tr><td><b>Ctrl+Shift+O</b></td><td>Add another model to the scene, at the origin</td></tr>
+<tr><td><b>T</b></td><td>Arm the transform tool on the active object</td></tr>
+<tr><td><b>Drag an arm</b></td><td>Move, turn or scale along that axis (the panel says
+which)</td></tr>
+<tr><td><b>Drag the ring</b></td><td>Move across the view, turn about it, or scale the
+whole</td></tr>
+<tr><td><b>Shift + drag</b></td><td>Turn in round steps</td></tr>
+<tr><td><b>Click an object</b></td><td>Make it the active one (tool armed)</td></tr>
+<tr><td><b>Model panel</b></td><td>Rename, show, ghost, link, merge and split objects</td></tr>
+</table>
 <h3>Measuring</h3>
 <table cellpadding='3'>
 <tr><td><b>M</b></td><td>Arm the measuring tool</td></tr>
@@ -439,6 +451,9 @@ class MainWindow(QMainWindow):
             file_menu, "&Open Model...", self._open_model, "Ctrl+O", command="file.open_model"
         )
         self._menu_action(
+            file_menu, "&Add Model...", self._add_model, "Ctrl+Shift+O", command="file.add_model"
+        )
+        self._menu_action(
             file_menu, "Load &Matcap...", self._matcap_panel.browse, command="file.load_matcap"
         )
         file_menu.addSeparator()
@@ -490,6 +505,34 @@ class MainWindow(QMainWindow):
         self._menu_action(
             view_menu, "Section Plane From &View", self._section_panel.set_plane_from_view,
             command="view.section_from_view",
+        )
+        model_menu = self.menuBar().addMenu("Mo&del")
+        self._object_action = self._menu_action(
+            model_menu, "&Transform Tool", self._toggle_object, checkable=True
+        )
+        model_menu.addSeparator()
+        for mode, label in (("move", "&Move"), ("rotate", "&Rotate"), ("scale", "&Scale")):
+            self._menu_action(
+                model_menu, label, lambda _=False, m=mode: self._model_panel.set_mode(m),
+                command=f"model.{mode}", label=f"Gesture: {label.replace('&', '')}",
+            )
+        model_menu.addSeparator()
+        self._menu_action(
+            model_menu, "&Remove Object", self._model_panel.remove_active, command="model.remove"
+        )
+        self._menu_action(
+            model_menu, "D&uplicate Object", self._model_panel.duplicate_active,
+            command="model.duplicate",
+        )
+        self._menu_action(
+            model_menu, "Mer&ge Selected", self._model_panel.merge_selected, command="model.merge"
+        )
+        self._menu_action(
+            model_menu, "S&plit Object", self._model_panel.split_active, command="model.split"
+        )
+        self._menu_action(
+            model_menu, "Place at &Origin", self._model_panel.reset_transform,
+            command="model.reset_transform",
         )
         panels_menu = self.menuBar().addMenu("&Panels")
         self._build_panels_menu(panels_menu)
@@ -742,6 +785,8 @@ class MainWindow(QMainWindow):
             "Armature")
         add("forms.tool", "Forms Tool", self._toggle_forms, "G", self._forms_action, "Forms")
         add("pose.tool", "Pose Tool", self._toggle_pose, "B", self._pose_action, "Pose")
+        add("model.tool", "Transform Tool", self._toggle_object, "T", self._object_action,
+            "Model")
         add("tools.cancel", "Cancel Current", self._viewport.cancel_tools, "Esc",
             self._cancel_action, "Measure")
         add("camera.previous_view", "Previous Saved View", lambda: self._camera_panel.cycle(-1),
@@ -773,6 +818,7 @@ class MainWindow(QMainWindow):
             ("armature.toggle", "armature.tool"),
             ("forms.toggle", "forms.tool"),
             ("pose.toggle", "pose.tool"),
+            ("model.toggle", "model.tool"),
             ("section.enabled", "view.section"),
         ):
             control = lookup(element)
@@ -816,9 +862,18 @@ class MainWindow(QMainWindow):
         self._state.film_changed.connect(self._planes_panel.film_changed)
         self._state.recording_changed.connect(self._planes_panel.recording_changed)
         self._state.camera_changed.connect(self._camera_panel.refresh_camera)
+        # The clipping bars are scaled to the scene, which a new model resizes.
+        self._state.mesh_changed.connect(self._camera_panel.refresh_camera)
         self._state.history_changed.connect(self._update_history_actions)
         self._state.render_changed.connect(self._sync_section_action)
         self._state.mesh_changed.connect(self._model_panel.refresh)
+        self._state.objects_changed.connect(self._model_panel.refresh)
+        self._state.mesh_deformed.connect(self._model_panel.refresh_transform)
+        self._model_panel.attach(self._viewport.object_tool)
+        self._model_panel.object_toggled.connect(self._set_transforming)
+        self._model_panel.add_requested.connect(self._add_model)
+        self._model_panel.repaint_requested.connect(self._viewport.update)
+        self._viewport.object_mode_changed.connect(self._model_panel.set_mode)
         for signal in (
             self._state.render_changed,
             self._state.measurements_changed,
@@ -826,6 +881,7 @@ class MainWindow(QMainWindow):
             self._state.armature_changed,
             self._state.forms_changed,
             self._state.skeleton_changed,
+            self._state.objects_changed,
         ):
             signal.connect(self._sync_tab_switches)
 
@@ -948,6 +1004,10 @@ class MainWindow(QMainWindow):
         self._viewport.set_pose_active(active)
         self._sync_tools(posing=active)
 
+    def _set_transforming(self, active: bool) -> None:
+        self._viewport.set_object_active(active)
+        self._sync_tools(transforming=active)
+
     def _sync_tools(
         self,
         measuring: bool = False,
@@ -955,6 +1015,7 @@ class MainWindow(QMainWindow):
         armaturing: bool = False,
         forming: bool = False,
         posing: bool = False,
+        transforming: bool = False,
     ) -> None:
         """Put every panel button and menu entry where the tools now stand.
 
@@ -972,6 +1033,11 @@ class MainWindow(QMainWindow):
         self._forms_action.setChecked(forming)
         self._pose_panel.set_posing(posing)
         self._pose_action.setChecked(posing)
+        self._model_panel.set_active(transforming)
+        self._object_action.setChecked(transforming)
+
+    def _toggle_object(self) -> None:
+        self._set_transforming(not self._viewport.object_tool.active)
 
     def _toggle_measure(self) -> None:
         self._set_measuring(not self._viewport.measure_tool.active)
@@ -1217,6 +1283,30 @@ class MainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self._pose_panel.map_humanoid()
+
+    def add_model(self, path: str | Path) -> None:
+        """Add a model to the scene beside what is already there."""
+        try:
+            self._state.add_mesh(path)
+        except (MeshLoadError, OSError) as error:
+            QMessageBox.critical(self, "Add Model", str(error))
+            return
+        self._remember_model(path)
+        if self._session_path is None:
+            self._session_path = self._state.default_session_path()
+        self._refresh_panels()
+        self._offer_humanoid_mapping()
+
+    def _add_model(self) -> None:
+        start = model_dir()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Add Model",
+            str(start if start.is_dir() else Path.home()),
+            MESH_FILTER,
+        )
+        if path:
+            self.add_model(path)
 
     def _open_model(self) -> None:
         start = model_dir()

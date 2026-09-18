@@ -35,6 +35,12 @@ from .armature_tool import ArmatureTool, Handle
 from .form_tool import FormTool
 from .markers import MarkerVisibility, VisualMarker, draw_text
 from .measure_tool import MeasureTool
+from .object_tool import (
+    CENTRE_RADIUS,
+    HANDLE_RADIUS,
+    MODE_LABELS,
+    ObjectTool,
+)
 from .picking import SurfacePicker
 from .pose_tool import PoseTool
 from .state import ViewerState
@@ -166,6 +172,7 @@ class ViewportOverlay:
         forms: FormTool | None = None,
         pose: PoseTool | None = None,
         occlude: bool = True,
+        objects: ObjectTool | None = None,
     ) -> None:
         """Draw everything over the scene.
 
@@ -207,10 +214,14 @@ class ViewportOverlay:
             self._draw_skeletons(painter, state, pose, width, height)
         if parts.tools:
             self._draw_annotation(painter, state, annotate, width, height)
+        if parts.tools and objects is not None and objects.active:
+            self._draw_object_gizmo(painter, state, objects, width, height)
         if parts.gizmo:
             self._draw_gizmo(painter, state.camera, width, height)
         if parts.readout:
-            self._draw_hud(painter, state, tool, annotate, armature, width, height, forms, pose)
+            self._draw_hud(
+                painter, state, tool, annotate, armature, width, height, forms, pose, objects
+            )
 
     def invalidate_visibility(self) -> None:
         self._visibility = MarkerVisibility()
@@ -930,6 +941,58 @@ class ViewportOverlay:
             return [f"Armature: every landmark placed ({placed} of {wanted})"]
         return [f"Landmark {placed + 1} of {wanted}: {entry.title}", entry.hint]
 
+    def _draw_object_gizmo(
+        self, painter: QPainter, state: ViewerState, tool: ObjectTool, width: int, height: int
+    ) -> None:
+        """The transform handles on the active object: three arms and a ring.
+
+        The arm pointing away from the viewer is drawn paler, as the corner
+        gizmo draws its axes, so the depth of the three can be read; the
+        handle under the cursor, or in hand, is drawn white.
+        """
+        active = state.active_object
+        if active is None or not state.objects.shown(active, state.object_settings):
+            return
+        picker = SurfacePicker(state.camera, state.mesh, width, height)
+        gizmo = tool.gizmo(picker, state.objects.world_matrix(active))
+        if gizmo is None:
+            return
+        origin = QPointF(*gizmo.origin)
+        lit = tool.grabbed or tool.hover_handle
+        painter.save()
+        for name, color, (tip, towards, _) in zip("xyz", _AXIS_COLORS, gizmo.arms, strict=True):
+            faded = QColor(color)
+            faded.setAlpha(240 if towards else 130)
+            point = QPointF(*tip)
+            painter.setPen(QPen(QColor(0, 0, 0, 140), 4.0))
+            painter.drawLine(origin, point)
+            painter.setPen(QPen(faded, 2.0))
+            painter.drawLine(origin, point)
+            fill = _HANDLE_HOVER if lit == name else faded
+            painter.setPen(QPen(_HANDLE_OUTLINE, 1.5))
+            painter.setBrush(fill)
+            if tool.mode == "scale":
+                half = HANDLE_RADIUS * 0.85
+                painter.drawRect(QRectF(point.x() - half, point.y() - half, 2 * half, 2 * half))
+            elif tool.mode == "rotate":
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(fill, 2.5))
+                painter.drawEllipse(point, HANDLE_RADIUS, HANDLE_RADIUS)
+            else:
+                painter.drawEllipse(point, HANDLE_RADIUS, HANDLE_RADIUS)
+        ring = _HANDLE_HOVER if lit == "centre" else QColor(236, 238, 242, 220)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(0, 0, 0, 140), 4.0))
+        painter.drawEllipse(origin, CENTRE_RADIUS, CENTRE_RADIUS)
+        painter.setPen(QPen(ring, 2.0))
+        painter.drawEllipse(origin, CENTRE_RADIUS, CENTRE_RADIUS)
+        font = QFont(painter.font())
+        font.setPointSize(9)
+        font.setBold(True)
+        label = f"{MODE_LABELS[tool.mode]}: {active.name}"
+        draw_text(painter, origin.x() + CENTRE_RADIUS + 6, origin.y() - CENTRE_RADIUS, label, font)
+        painter.restore()
+
     def _draw_gizmo(self, painter: QPainter, camera: Camera, width: int, height: int) -> None:
         origin = QPointF(
             self.MARGIN + self.GIZMO_RADIUS + 8, height - self.MARGIN - self.GIZMO_RADIUS - 8
@@ -973,12 +1036,27 @@ class ViewportOverlay:
         height: int,
         forms: FormTool | None = None,
         pose: PoseTool | None = None,
+        objects: ObjectTool | None = None,
     ) -> None:
         lines = []
-        if state.mesh is None:
+        if state.mesh is None and len(state.objects):
+            count = len(state.objects)
+            lines.append(
+                f"All {count} objects are hidden  -  tick one in the Model panel"
+                if count > 1
+                else f"{state.objects[0].name} is hidden  -  tick it in the Model panel"
+            )
+        elif state.mesh is None:
             lines.append("No model loaded  -  File > Open Model... (Ctrl+O)")
         else:
-            lines.append(f"{state.mesh.name}  -  {state.mesh.triangle_count:,} tris")
+            shown = len(state.mesh_parts)
+            if shown > 1:
+                lines.append(
+                    f"{shown} of {len(state.objects)} objects  -  "
+                    f"{state.mesh.triangle_count:,} tris"
+                )
+            else:
+                lines.append(f"{state.mesh.name}  -  {state.mesh.triangle_count:,} tris")
             projection = state.camera.projection.label
             lines.append(f"{projection}  -  {state.camera.fov_deg:.0f} deg FOV")
             section = state.render.section
@@ -1001,6 +1079,17 @@ class ViewportOverlay:
             lines.extend(self._forms_hud(state, forms))
         if pose is not None and pose.active:
             lines.extend(self._pose_hud(state, pose))
+        if objects is not None and objects.active:
+            active = state.active_object
+            if active is None:
+                lines.append("Transform: add a model first")
+            else:
+                verb = MODE_LABELS[objects.mode].lower()
+                lines.append(
+                    f"Transform {active.name}: drag a handle to {verb}, the ring to {verb} freely"
+                )
+                lines.append("W move, E rotate, R scale")
+                lines.append("Click another object to make it active  (Alt+drag orbits)")
 
         font = QFont(painter.font())
         font.setPointSize(10)

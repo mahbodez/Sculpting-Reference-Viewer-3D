@@ -12,6 +12,7 @@ from .bookmark import CameraBookmark
 from .forms import FormSettings, PrimaryForm
 from .measurement import Measurement, MeasurementSettings
 from .orientation import OrientationSettings
+from .scene import ObjectRecord, ObjectSettings
 from .serialization import decode, encode
 from .settings import NavigationSettings, RenderSettings
 from .skeleton import Skeleton, SkeletonSettings
@@ -27,11 +28,20 @@ class Session:
     #: 1: the original format.  2 added the annotation layer.  3 added the
     #: cross-section, pedestal, high-quality and navigation settings, 4 the
     #: model orientation, 5 the armature and the landmarks behind it, 6 the
-    #: primary forms, 7 the arrangement of the panels, and 8 the skeletons
-    #: and their pose.  Older files still load: :func:`decode` fills anything
-    #: missing from the defaults.
-    version: int = 8
+    #: primary forms, 7 the arrangement of the panels, 8 the skeletons and
+    #: their pose, and 9 the objects -- several models in one scene, each
+    #: with its place and its parent.  Older files still load: :func:`decode`
+    #: fills anything missing from the defaults.
+    version: int = 9
+    #: The model, for a file written before there were several; kept as the
+    #: first object's file so that an older build can still open a newer
+    #: session and see something.
     mesh_path: str | None = None
+    #: Every object in the scene, parents by index into this same list.
+    #: Empty in a session from before version 9, which is read as one object
+    #: standing at :attr:`mesh_path`.
+    objects: list[ObjectRecord] = field(default_factory=list)
+    object_settings: ObjectSettings = field(default_factory=ObjectSettings)
     camera: dict = field(default_factory=dict)
     render: RenderSettings = field(default_factory=RenderSettings)
     measurement_settings: MeasurementSettings = field(default_factory=MeasurementSettings)

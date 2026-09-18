@@ -443,7 +443,7 @@ def test_a_posed_skeleton_survives_a_session_round_trip():
     figure.joints[5].source = "Head"
     session = Session(skeletons=[figure])
     back = Session.from_dict(json.loads(json.dumps(session.to_dict())))
-    assert back.version == 8
+    assert back.version == 9
     assert len(back.skeletons) == 1
     restored = back.skeletons[0]
     assert restored.joints[5].source == "Head" and restored.bound

@@ -20,6 +20,7 @@ BOOKMARKS = "bookmarks"
 ARMATURE = "armature"
 FORMS = "forms"
 SKELETON = "skeleton"
+OBJECTS = "objects"
 
 
 class Command:

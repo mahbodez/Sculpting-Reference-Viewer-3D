@@ -246,3 +246,25 @@ def _load_generic(text: str, name: str) -> Mesh:
         normal_array = normal_array / np.maximum(lengths, 1e-20)
 
     return Mesh(vertex_array, normal_array, index_array, name=name)
+
+
+def save_obj(mesh: Mesh, path: str | Path) -> Path:
+    """Write ``mesh`` as a plain OBJ: positions, normals and triangles.
+
+    What a session falls back on for an object that has no file of its own
+    -- one merged out of several, or split off one -- so that the session
+    can be opened again.  Nothing but the geometry goes: OBJ has no rig, and
+    a merged mesh has none to give.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    positions = np.asarray(mesh.positions, dtype=np.float64)
+    normals = np.asarray(mesh.normals, dtype=np.float64)
+    faces = np.asarray(mesh.indices, dtype=np.int64) + 1
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"# Reference Viewer: {mesh.name}\n")
+        handle.write(f"o {mesh.name}\n")
+        np.savetxt(handle, positions, fmt="v %.7g %.7g %.7g")
+        np.savetxt(handle, normals, fmt="vn %.5g %.5g %.5g")
+        np.savetxt(handle, np.repeat(faces, 2, axis=1), fmt="f %d//%d %d//%d %d//%d")
+    return path

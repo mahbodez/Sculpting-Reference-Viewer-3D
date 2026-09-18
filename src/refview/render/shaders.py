@@ -795,17 +795,19 @@ out vec4 fragColor;
 //: A stroke can be asked to fade out with distance from a point: never quite
 //: solid, so the form still reads through it, level to a third of the way
 //: and gone at uFadeRadius.  Nought means no fade at all, which is what the
-//: annotations and the contour ask for.
+//: annotations and the contour ask for.  uFadePeak is how solid the line is
+//: where it is not faded; uAlpha the same for a line that does not fade.
 uniform vec3  uFadeCentre;
 uniform float uFadeRadius;
-const float FADED_PEAK = 0.7;
+uniform float uFadePeak;
+uniform float uAlpha;
 
 void main() {
     clipSection(vWorldPosition);
-    float alpha = 1.0;
+    float alpha = uAlpha;
     if (uFadeRadius > 0.0) {
         float away = distance(vWorldPosition, uFadeCentre) / uFadeRadius;
-        alpha = FADED_PEAK * (1.0 - smoothstep(0.35, 1.0, away));
+        alpha = uFadePeak * (1.0 - smoothstep(0.35, 1.0, away));
     }
     fragColor = vec4(vColor, alpha);
 }
@@ -982,6 +984,42 @@ void main() {
         }
     }
     fragColor = vec4(vec3(total / 16.0), 1.0);
+}
+"""
+
+
+OUTLINE_FRAGMENT = """
+#version 330 core
+
+// The line drawn round an object the artist just made active: every pixel
+// outside its mask that has the mask within a line's width of it.  Sixteen
+// taps round a ring at the full width and sixteen at half, so a limb thinner
+// than the ring cannot slip between two taps.  The mask is read with linear
+// filtering, which is what softens the line's outer edge.
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uMask;
+uniform vec2 uTexelSize;
+uniform float uRadius;
+uniform vec4 uColor;
+
+void main() {
+    if (texture(uMask, vUv).r > 0.5) {
+        discard;  // The line goes round the object, not over it.
+    }
+    float near = 0.0;
+    for (int i = 0; i < 16; ++i) {
+        float angle = float(i) * 0.39269908;  // A sixteenth of a turn.
+        vec2 step = vec2(cos(angle), sin(angle)) * uTexelSize * uRadius;
+        near = max(near, texture(uMask, vUv + step).r);
+        near = max(near, texture(uMask, vUv + step * 0.5).r);
+    }
+    if (near <= 0.0) {
+        discard;
+    }
+    fragColor = vec4(uColor.rgb, uColor.a * near);
 }
 """
 

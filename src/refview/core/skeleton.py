@@ -427,6 +427,19 @@ class Skeleton:
             for position, joint in enumerate(self.joints)
         ]
 
+    def carry(self, matrix) -> None:
+        """Move the whole skeleton through ``matrix``, in place.
+
+        The same carrying as :meth:`transformed`, written into the joints
+        already held rather than into copies: how a skeleton follows the
+        object it is bound to when that object is moved, where the undo
+        steps already recorded against its joints must go on finding them.
+        """
+        matrix = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
+        for index in self.roots():
+            joint = self.joints[index]
+            joint.rest = _matrix16(matrix @ joint.rest_matrix)
+
     def transformed(self, matrix) -> list[Joint]:
         """The list with the whole skeleton carried through a rigid transform.
 

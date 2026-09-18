@@ -63,3 +63,30 @@ def test_the_switch_is_the_panels_own_visibility_setting(app, make, read):
 @pytest.mark.parametrize("make", [CameraPanel, ShadingPanel])
 def test_a_panel_that_draws_nothing_has_no_switch(app, make):
     assert make(ViewerState()).shown() is None
+
+
+def test_the_camera_panel_takes_the_clip_planes_in_hand_where_the_fit_left_them(app):
+    state = ViewerState()
+    panel = CameraPanel(state)
+    camera = state.camera
+    panel.refresh_camera()
+    # Fitted: the bars show the fit and cannot be dragged.
+    assert not panel._clip_by_hand.isChecked() and not panel._near.isEnabled()
+    fitted = camera.fitted_clip_planes()
+    assert panel._near.value() == pytest.approx(fitted[0], abs=1e-3)
+    assert panel._far.value() == pytest.approx(fitted[1], abs=1e-3)
+    # Taken in hand, they start where the fit left them and then hold still.
+    heard = []
+    state.camera_changed.connect(lambda: heard.append(1))
+    panel._clip_by_hand.setChecked(True)
+    assert (camera.near, camera.far) == fitted and heard
+    assert panel._near.isEnabled() and panel._far.isEnabled()
+    panel._far._write(fitted[1] * 3.0, commit=True)
+    assert camera.far == pytest.approx(fitted[1] * 3.0)
+    camera.eye = camera.eye * 2.0
+    state.notify_camera()
+    assert camera.far == pytest.approx(fitted[1] * 3.0)  # The fit moved; the hand did not.
+    # Handed back, the fit takes over again.
+    panel._clip_by_hand.setChecked(False)
+    assert camera.near is None and camera.far is None
+    assert not panel._near.isEnabled()

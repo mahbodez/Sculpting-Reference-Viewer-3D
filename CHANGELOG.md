@@ -4,6 +4,85 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.4.0]
+
+### Added
+
+- **Several models in one scene.** `File > Add Model` (`Ctrl+Shift+O`) puts a
+  second, third, tenth model into the scene beside the first, each an
+  *object* with a name, a place and a solidity of its own.  The **Model** tab
+  lists them as a tree: rename a row, tick it to show or hide the object, and
+  drag its solidity bar to ghost that one object -- the same see-through the
+  Shading tab applies to the whole scene, one object at a time.  When every
+  object is hidden the viewport says so.  One object is active: the one the
+  panel's boxes describe and the tools move.  Everything the viewer already
+  did -- picking, measuring, the section, the pedestal, the planes, the
+  shadows, the skin tracer -- reads the scene as one mesh and needs no
+  telling.
+
+- **Move, turn and scale by hand.** `T` arms the transform tool: the active
+  object grows a gizmo of three arms and a ring.  Drag an arm to move along,
+  turn about or scale along that axis; drag the ring for a free move across
+  the view, a turn about the line of sight, or a scale of the whole.  `Shift`
+  snaps a turn to round angles, `Esc` cancels, and every drag is one undo
+  step.  Position, Rotation and Scale boxes take exact numbers; scaling acts
+  on all axes together unless told otherwise.  While the tool is armed, `W`,
+  `E` and `R` choose the gesture -- move, rotate, scale -- ahead of whatever
+  else those letters do.  Clicking another object with the tool armed makes
+  that one active.
+
+- **Picking an object by eye.** `Alt`-click an object in the view and it
+  becomes the active one, whichever tool is armed, as in ZBrush (an `Alt`-drag
+  still orbits).  Whichever way an object becomes active -- a click, a row in
+  the list, an Add or a Duplicate -- a line is drawn round its edge for a
+  moment and then fades, so the eye can find it among the others.
+
+- **Clipping planes by hand.** The near and far planes have always been fitted
+  to the scene each frame; **Set by hand** under Clipping in the Camera tab
+  now takes them over.  The two bars start where the fit left them and hold
+  still as the camera moves -- pull the near plane in to look inside a model,
+  or push it out for finer depth where the model is -- and untick to hand
+  them back.  They are saved with the session and with each saved view.
+
+- **Duplicate.** A button in the Model tab, and `Model > Duplicate Object`,
+  make a copy of the active object standing exactly on top of it, ready to be
+  moved aside.  Only the mesh is copied: a rig stays with the original, and
+  so do the children.  The copy has no file until the session is saved.
+
+- **Linking.** Drag a row onto another in the Model tab -- or choose a Parent
+  -- and the object follows its parent's moves, turns and scales, keeping its
+  place at the moment it is linked.  The tree shows the hierarchy the way an
+  outliner does.  What else a child follows is set under **Linking**: hiding a
+  parent hides its children, a parent's solidity is handed down, and removing
+  a parent re-hangs its children rather than removing them, each of which can
+  be turned the other way.
+
+- **Merge and split.** Merge the selected objects into one mesh standing
+  where they stood, or split an object into its loose pieces -- the parts that
+  share no vertices -- each an object of its own.  An object made this way has
+  no file until the session is saved, when it is written out as an OBJ beside
+  the session.
+
+- **A grid.** A ground grid, on by default, and two more for the walls behind
+  and beside the model, under **Shading > Grid**.  Lines, spacing (or a round
+  number picked to suit the scene), a heavier line every so many, colour,
+  width and solidity are all settable; the world axes are drawn through the
+  grid in their own colours; and the lines fade with distance from the camera,
+  by a settable multiple of its distance to the grid.  The ground sits under
+  the scene's lowest point unless told to pass through the origin.  An
+  exported clip can leave it out.
+
+- Sessions are at version 9 and carry the objects, their places and their
+  parents; older files load as before, as one object at the model's path.
+
+### Changed
+
+- A rigged model's skeleton moves with the object it is bound to, so a figure
+  can be placed and still posed.  Measurements, annotations, armatures and
+  forms are marks in the scene rather than on any one object, and stay where
+  they were made when an object is moved.
+- The orientation setting applies to every object in the scene.
+
 ## [2.3.0]
 
 ### Added

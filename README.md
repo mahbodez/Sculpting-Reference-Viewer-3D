@@ -77,6 +77,7 @@ Built with PySide6 and OpenGL 3.3.
 | Right or middle drag | Pan |
 | Wheel | Zoom towards whatever the cursor is over |
 | Alt + left drag | Orbit even while a tool is armed |
+| Alt + click | Make the object under the cursor active, whichever tool is armed |
 | Shift + left drag | Orbit in whole steps of the snap angle (15° by default) |
 | `F` | Frame the object |
 | `P` | Toggle perspective / orthographic |
@@ -87,9 +88,78 @@ Built with PySide6 and OpenGL 3.3.
 - Field of view from 5° to 120°, and a true orthographic projection. The
   orthographic extent is derived from the FOV and distance, so switching
   projection keeps the object the same size on screen.
+- The near and far clipping planes are fitted to the scene every frame, so
+  nothing is ever cut off by accident. Tick **Set by hand** under Clipping in
+  the Camera tab to take them over: pull the near plane in to go inside a
+  model, or push it out to spend the depth buffer where the model is. The
+  bars start where the fit left them, hold still as the camera moves, and are
+  saved with the session and with each saved view.
 - Save any camera pose under a name, rename it in place (`F2` or a double
   click), overwrite it, and cycle through the list with `[` and `]` or recall
   directly with `Ctrl+1` … `Ctrl+9`.
+
+**Objects**
+
+A scene holds any number of models. **File > Open Model** (`Ctrl+O`) still
+opens one as the whole scene; **File > Add Model** (`Ctrl+Shift+O`), or the
+`+` in the Model tab, adds another standing at the origin, and the picking,
+the section, the pedestal, the planes and the shadows all read the scene as
+one. The Model tab lists the objects as a tree, as an outliner does:
+
+- Double-click a name to rename it. Tick a box to show or hide an object; when
+  every object is hidden the viewport says so. The bar on each row is the
+  object's own **solidity** — the same ghost the Shading tab applies to the
+  whole scene, one object at a time — so a reference can be laid over a
+  block-in and seen through.
+- One object is *active*: bold in the list, the one the boxes describe and
+  the transform tool moves. Click a row, `Alt`-click an object in the view
+  (whichever tool is armed, as in ZBrush), or plain-click one with the
+  transform tool armed. Whichever way an object becomes active, a line is
+  drawn round its edge for a moment and fades, so the eye can find it.
+- **Duplicate** makes a copy of the active object standing on top of it,
+  ready to be moved aside — the mesh only: a rig and any children stay with
+  the original.
+- **Move, turn and scale** an object by hand: press `T` and the active object
+  grows a gizmo — three arms along the axes and a ring at the centre. Drag an
+  arm to move along, turn about, or scale along that axis; drag the ring to
+  move across the view, turn about the line of sight, or scale the whole.
+  `Shift` snaps a turn to round angles, `Esc` puts the object back, and each
+  drag is one undo step. The Model tab's Gesture box says which of the three
+  a drag does — or press `W`, `E` or `R` while the tool is armed — and the
+  Position, Rotation and Scale boxes take exact numbers.
+  Scaling acts on all three axes together by default; a switch lets each axis
+  go its own way. A move, a turn and a scale are about the object's own
+  pivot, which is the centre of its box as it was read in.
+- **Link** an object to another by dragging its row onto that one — or with
+  the Parent box — and it follows its parent's moves, turns and scales, as a
+  child does in any modelling application. Linking keeps the child where it
+  stands. What else a child follows is under **Linking**, with the usual
+  answers switched on: hiding a parent hides its children, a parent's
+  solidity is handed down, and removing a parent hangs its children from the
+  grandparent rather than removing them too. Each of those can be turned the
+  other way.
+- **Merge** the selected objects into one mesh standing where they stood
+  (`Ctrl`-click rows to select several), or **Split** an object into its
+  loose pieces — the parts that share no vertices — each an object of its own,
+  which is how a file that packs several parts into one mesh comes apart. A
+  merged or split object has no file of its own until the session is saved,
+  at which point it is written out as an OBJ beside the session file.
+- A rigged model's skeleton moves with it, so a figure can be placed and still
+  posed. Measurements, annotations, armatures and forms are marks in the
+  scene rather than on any one object, and stay where they were made.
+
+**Grid**
+
+A reference grid on the ground, on by default, and two more for the walls
+behind and beside the model, under **Shading > Grid**. The number of lines,
+their spacing (or a round number picked to suit the scene), a heavier line
+every so many, the colour, the line width and how solid the lines are, are all
+settable, and the world axes are drawn through the grid in their own colours.
+The lines fade with distance from the camera — how far, as a multiple of the
+camera's distance to the grid, is a slider too, and nought turns the fade off —
+so the far squares go before they can crowd into a moiré at the horizon. The
+ground grid sits under the scene's lowest point unless told to pass through
+the origin, so it never cuts the model in two.
 
 **Orientation**
 
@@ -97,8 +167,10 @@ Formats disagree about which axis points up — CAD and Blender exports are
 usually Z-up, most sculpting tools are Y-up, and STL declares nothing — so a
 file can arrive lying on its side. The Model tab turns it upright: pick the up
 axis the file used, flip it if it came in upside down, and spin it a quarter
-turn to face forwards. Measurements and annotations turn with the model, and
-going back to the previous setting puts everything exactly where it was.
+turn to face forwards. The setting applies to every object in the scene, since
+files from one pipeline share an up axis. Measurements and annotations turn
+with the model, and going back to the previous setting puts everything exactly
+where it was.
 
 **Armature**
 
@@ -778,8 +850,8 @@ undo useless in a 3D viewer.
 
 **Sessions**
 
-Camera, shading, matcap choice, measurements, annotations and saved views are
-written to a JSON file. Saving with `Ctrl+S` writes `<model>.refview.json` next
+Camera, shading, matcap choice, the objects with their places and parents,
+measurements, annotations and saved views are written to a JSON file. Saving with `Ctrl+S` writes `<model>.refview.json` next
 to the model, and that sidecar is picked up automatically the next time the
 model is opened. Files written by an older build still load. Model, session and
 image files can also be dropped onto the window, opened with the viewer from
@@ -859,7 +931,8 @@ Point `REFVIEW_RESOURCES` at another directory to use your own library.
 ```
 src/refview/
   core/      pure Python, no Qt: mesh, the OBJ/STL/glTF loaders, the picking
-             index, camera, raycasting, cross-sections, the pedestal,
+             index, camera, raycasting, cross-sections, the pedestal, the
+             grid, the scene's objects and their transforms,
              measurements, annotations, the armature and its landmark
              presets, the forms and the convex solids they are built from,
              the skeleton, its skinning and the rigging that grows one out
@@ -868,8 +941,9 @@ src/refview/
   render/    OpenGL: shader programs, matcap textures, offscreen targets, the
              scene and stroke renderers
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
-             armature, forms and pose tools, the 2D overlay, the observable
-             document, panels, the docks they live in and the main window
+             armature, forms, pose and transform tools, the 2D overlay, the
+             observable document, panels, the docks they live in and the
+             main window
   ui/elements/
              the controls the panels are built from: the reflowing layout,
              the folding frame, the sliders and swatches drawn by hand, and
@@ -893,7 +967,9 @@ Three rules keep the pieces apart:
   add, remove, replace — cover measurements, annotations, armatures and
   bookmarks alike, so undo needs no new code when a new kind of object turns
   up. The armature was added without a fifth, and so were the forms and the
-  skeletons.
+  skeletons. The objects added one: an edit to the list -- a move, a
+  linking, a merge -- is recorded as the list before and after, since a
+  removal that re-hangs three children is not one attribute of one object.
 
 Measurements are drawn in screen space with `QPainter` rather than as 3D
 geometry. That gives reliable line thickness and antialiasing on every driver,

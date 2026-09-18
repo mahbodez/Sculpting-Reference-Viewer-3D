@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -65,6 +66,10 @@ class Bounds:
         return max(self.diagonal * 0.5, 1e-6)
 
 
+#: Hands every mesh a number of its own; see :attr:`Mesh.serial`.
+_SERIALS = itertools.count(1)
+
+
 class Mesh:
     """An indexed triangle mesh with per-vertex positions and normals.
 
@@ -82,6 +87,7 @@ class Mesh:
         "source_offset",
         "units",
         "rig",
+        "serial",
         "_bounds",
         "_index",
     )
@@ -112,6 +118,10 @@ class Mesh:
         #: own coordinates, or ``None`` for a model that has no bones.  See
         #: :class:`refview.core.skeleton.Rig`.
         self.rig = rig
+        #: A number no other mesh in the process has had.  What the renderer
+        #: tells one upload from the next by, since a mesh built afresh for
+        #: every frame of a drag can land at the address the last one left.
+        self.serial = next(_SERIALS)
         self._bounds: Bounds | None = None
         self._index: TriangleIndex | None = None
 
@@ -162,6 +172,36 @@ class Mesh:
             source_offset=rotation @ self.source_offset,
             units=self.units,
             rig=None if self.rig is None else self.rig.transformed(turn),
+        )
+
+    def transformed_by(self, matrix: np.ndarray) -> Mesh:
+        """Return a copy carried by a full 4x4 -- a move, a turn and a scale together.
+
+        This is how an object is placed in the scene, so unlike
+        :meth:`transformed` it cannot assume a rotation: the normals go
+        through the inverse transpose and are made unit again, which is what
+        keeps them square to a surface that has been stretched.
+        """
+        matrix = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
+        if np.allclose(matrix, np.eye(4)):
+            return self
+        linear = matrix[:3, :3]
+        positions = self.positions.astype(np.float64) @ linear.T + matrix[:3, 3]
+        try:
+            normal_matrix = np.linalg.inv(linear).T
+        except np.linalg.LinAlgError:
+            normal_matrix = linear
+        normals = self.normals.astype(np.float64) @ normal_matrix.T
+        lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+        normals = np.where(lengths > 1e-12, normals / np.maximum(lengths, 1e-20), self.normals)
+        return Mesh(
+            positions.astype(np.float32),
+            normals.astype(np.float32),
+            self.indices,
+            self.name,
+            source_offset=self.source_offset,
+            units=self.units,
+            rig=None if self.rig is None else self.rig.transformed(matrix),
         )
 
     def recentered(self) -> "Mesh":
@@ -315,3 +355,77 @@ def compute_vertex_normals(positions: np.ndarray, indices: np.ndarray) -> np.nda
     lengths = np.linalg.norm(normals, axis=1, keepdims=True)
     np.divide(normals, np.maximum(lengths, 1e-20), out=normals)
     return normals.astype(np.float32)
+
+
+def concatenated(meshes: list[Mesh], name: str = "scene") -> Mesh:
+    """Several meshes as one, in the coordinates they already stand in.
+
+    The units are the first mesh's, since a scene is measured in one unit or
+    not at all, and no rig comes through: skin weights name one file's
+    joints, and a joined mesh has no one file.
+    """
+    live = [mesh for mesh in meshes if mesh.vertex_count > 0]
+    if not live:
+        return Mesh(np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3)), name)
+    if len(live) == 1:
+        one = live[0]
+        return Mesh(one.positions, one.normals, one.indices, name, units=one.units)
+    offsets = np.cumsum([0, *(mesh.vertex_count for mesh in live[:-1])])
+    indices = np.concatenate(
+        [
+            mesh.indices.astype(np.int64) + int(shift)
+            for mesh, shift in zip(live, offsets, strict=True)
+        ]
+    )
+    return Mesh(
+        np.concatenate([mesh.positions for mesh in live]),
+        np.concatenate([mesh.normals for mesh in live]),
+        indices,
+        name,
+        units=live[0].units,
+    )
+
+
+def submesh(mesh: Mesh, triangles: np.ndarray, name: str | None = None) -> Mesh:
+    """The triangles of ``mesh`` named by index, with only the vertices they use."""
+    triangles = np.asarray(triangles, dtype=np.int64).reshape(-1)
+    faces = np.asarray(mesh.indices, dtype=np.int64)[triangles]
+    used, compact = np.unique(faces.ravel(), return_inverse=True)
+    return Mesh(
+        mesh.positions[used],
+        mesh.normals[used],
+        compact.reshape(-1, 3),
+        mesh.name if name is None else name,
+        source_offset=mesh.source_offset,
+        units=mesh.units,
+    )
+
+
+def loose_parts(mesh: Mesh) -> list[np.ndarray]:
+    """The triangles of ``mesh`` gathered into the pieces that touch, largest first.
+
+    Two triangles are one piece when they share a vertex *position* -- welded
+    by where the corners are rather than by index, so a file that stores
+    every corner three times over still comes out as the solids it draws.
+    Each entry is an array of triangle indices; there is one for a mesh that
+    is all one piece.
+    """
+    if mesh.triangle_count == 0:
+        return []
+    indices = np.asarray(mesh.indices, dtype=np.int64).reshape(-1, 3)
+    _, welded = np.unique(mesh.positions, axis=0, return_inverse=True)
+    face = welded.ravel()[indices]
+    total = int(face.max()) + 1
+    links = np.concatenate([face[:, [0, 1]], face[:, [1, 2]]])
+    root = _gathered(links, total)
+    # The pointer jumping above can leave a chain a step long; one more
+    # round of following settles every corner on its group's least name.
+    for _ in range(_GROUP_ROUNDS):
+        before = root
+        root = root[root]
+        if np.array_equal(root, before):
+            break
+    labels = root[face[:, 0]]
+    names, counts = np.unique(labels, return_counts=True)
+    order = np.argsort(-counts, kind="stable")
+    return [np.flatnonzero(labels == names[at]) for at in order]
