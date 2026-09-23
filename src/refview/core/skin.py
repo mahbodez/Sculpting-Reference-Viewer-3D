@@ -29,6 +29,7 @@ class SkinSettings:
     pore_size: float = 0.0028
     mottle: float = 0.35
     blood: float = 0.35
+    veins: float = 0.2
     fuzz: float = 0.2
     #: Patches of irritated, reddened and of dry, duller skin, at a scale
     #: well above the pores.
@@ -76,7 +77,7 @@ SKIN_RANGES = {
     "roughness": (0.12, 1.0), "specular": (0.0, 2.0), "oiliness": (0.0, 1.0),
     "sss": (0.0, 1.0), "radius": (0.001, 0.08), "transmission": (0.0, 1.0),
     "detail": (0.0, 2.0), "pore_size": (0.0005, 0.03), "mottle": (0.0, 1.0),
-    "blood": (0.0, 1.0), "fuzz": (0.0, 1.0),
+    "blood": (0.0, 1.0), "veins": (0.0, 1.0), "fuzz": (0.0, 1.0),
     "blemishes": (0.0, 1.0), "freckles": (0.0, 1.0), "nevi": (0.0, 1.0), "acne": (0.0, 1.0),
     "light_size": (0.0, 30.0), "exposure": (-3.0, 3.0), "indirect": (0.0, 2.0),
     "samples": (8, 1024), "resolution": (0.25, 1.0),

@@ -54,11 +54,14 @@ def test_old_sessions_without_relief_fields_load_with_defaults():
     session = Session()
     session.render.skin = replace(SKIN_PRESETS["Fair / rosy"], pore_size=0.002)
     data = session.to_dict()
-    for name in ("detail", "pore_size", "mottle", "blood", "fuzz"):
+    for name in ("detail", "pore_size", "mottle", "blood", "veins", "fuzz"):
         del data["render"]["skin"][name]
     restored = Session.from_dict(data).render.skin
     assert restored.color == SKIN_PRESETS["Fair / rosy"].color
-    assert (restored.detail, restored.pore_size) == (SkinSettings().detail, SkinSettings().pore_size)
+    assert (restored.detail, restored.pore_size) == (
+        SkinSettings().detail, SkinSettings().pore_size
+    )
+    assert restored.veins == SkinSettings().veins
 
 
 def test_relief_volume_tiles_seamlessly_and_stores_unitless_slopes():
@@ -268,12 +271,15 @@ def test_controls_and_presets_write_to_saved_material():
     assert panel._skin_preset.currentText() == "Custom"
     panel._skin_controls["pore_size"].valueChanged.emit(0.002)
     panel._skin_controls["blood"].valueChanged.emit(0.9)
+    panel._skin_controls["veins"].valueChanged.emit(0.6)
     assert state.render.skin.pore_size == 0.002 and state.render.skin.blood == 0.9
+    assert state.render.skin.veins == 0.6
     # Tone comes from the preset; the model-dependent relief scale is kept.
     panel._apply_skin_preset(panel._skin_preset.findText("Fair / rosy"))
     assert state.render.skin.blood == SKIN_PRESETS["Fair / rosy"].blood
     assert state.render.skin.pore_size == 0.002
     assert state.render.skin.sss == SKIN_PRESETS["Fair / rosy"].sss
+    assert state.render.skin.veins == 0.6
     panel.refresh()
     assert state.render.skin.pore_size == 0.002
     panel._reset()
@@ -309,9 +315,13 @@ def test_marks_and_body_regions_write_to_the_material_and_presets_leave_them_alo
     # The region being edited is the one the sliders write to.
     panel._region_edited.setCurrentIndex(panel._region_edited.findData("hands"))
     panel._region_controls["acne"].valueChanged.emit(2.0)
+    panel._region_controls["veins"].valueChanged.emit(2.5)
     assert skin.regions.hands.acne == 2.0 and skin.regions.head.acne == 1.0
+    assert skin.regions.hands.veins == 2.5
+    assert skin.regions.head.veins == BodyRegionSettings().head.veins
     panel._region_edited.setCurrentIndex(panel._region_edited.findData("head"))
     assert panel._region_controls["acne"].value() == pytest.approx(1.0)
+    assert panel._region_controls["veins"].value() == pytest.approx(0.75)
     panel._region_source.setCurrentIndex(panel._region_source.findData("whole"))
     assert skin.regions.source is RegionSource.WHOLE
     assert panel._body_form.isRowVisible(panel._region_whole)

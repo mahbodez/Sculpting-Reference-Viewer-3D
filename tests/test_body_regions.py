@@ -163,6 +163,7 @@ def test_the_map_covers_the_skin_and_a_little_round_it_and_reads_back_the_region
 def test_region_settings_round_trip_bound_and_default_where_a_session_has_none():
     settings = BodyRegionSettings(source=RegionSource.WHOLE, whole="arms")
     settings.arms.acne = 2.5
+    settings.arms.veins = 2.25
     session = Session()
     session.render.shading_mode = ShadingMode.HUMAN_SKIN
     session.render.skin = replace(SkinSettings(acne=0.4, nevi=0.2), regions=settings)
@@ -170,6 +171,14 @@ def test_region_settings_round_trip_bound_and_default_where_a_session_has_none()
     assert back.regions.source is RegionSource.WHOLE and back.regions.whole == "arms"
     assert back.regions.arms.acne == 2.5 and back.acne == 0.4 and back.nevi == 0.2
     assert back.regions.multipliers("acne")[REGIONS.index("arms")] == 2.5
+    assert back.regions.arms.veins == 2.25
+    assert back.regions.multipliers("veins")[REGIONS.index("arms")] == 2.25
+
+    old_profile_data = session.to_dict()
+    del old_profile_data["render"]["skin"]["regions"]["arms"]["veins"]
+    old_profile = Session.from_dict(old_profile_data).render.skin.regions.arms
+    # A saved profile from before vein regions keeps the old global appearance.
+    assert old_profile.veins == 1.0
 
     data = session.to_dict()
     for name in ("acne", "nevi", "freckles", "blemishes", "regions"):
@@ -179,13 +188,16 @@ def test_region_settings_round_trip_bound_and_default_where_a_session_has_none()
     # The defaults know a face from a foot.
     assert old.regions.head.acne > old.regions.feet.acne
     assert old.regions.feet.blood > old.regions.arms.blood
+    assert old.regions.hands.veins > old.regions.torso.veins
 
     wild = SkinSettings(acne=7.0, regions=BodyRegionSettings(whole="nowhere"))
-    wild.regions.head = RegionProfile(acne=float("nan"), oil=-4.0, nevi=99.0)
+    wild.regions.head = RegionProfile(acne=float("nan"), oil=-4.0, nevi=99.0,
+                                      veins=float("nan"))
     tame = wild.bounded()
     assert tame.acne == 1.0 and tame.regions.whole == "head"
     assert tame.regions.head.acne == 1.0 and tame.regions.head.oil == 0.0
     assert tame.regions.head.nevi == 3.0
+    assert tame.regions.head.veins == 1.0
 
 
 def test_the_state_hands_the_renderer_a_source_whose_key_follows_the_scene():

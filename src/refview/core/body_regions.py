@@ -96,13 +96,13 @@ class RegionSource(str, Enum):
             RegionSource.AUTO: "Skeleton, else height bands",
             RegionSource.BANDS: "Height bands of a standing figure",
             RegionSource.WHOLE: "The whole model is one region",
-            RegionSource.OFF: "Off (marks fall evenly)",
+            RegionSource.OFF: "Off (effects fall evenly)",
         }[self]
 
 
 @dataclass
 class RegionProfile:
-    """How much of each kind of mark one region gets, as multipliers of the sliders."""
+    """How much of each skin effect one region gets, relative to its slider."""
 
     acne: float = 1.0
     nevi: float = 1.0
@@ -110,6 +110,7 @@ class RegionProfile:
     blemishes: float = 1.0
     oil: float = 1.0
     blood: float = 1.0
+    veins: float = 1.0
 
     def bounded(self) -> RegionProfile:
         out = replace(self)
@@ -137,25 +138,33 @@ PROFILE_LABELS: dict[str, str] = {
     "blemishes": "Blemishes",
     "oil": "Oily highlights",
     "blood": "Blood / flush",
+    "veins": "Subtle veins",
 }
 
 
 def _default_profiles() -> dict[str, RegionProfile]:
-    """Where skin marks tend to fall on a body, as a starting point."""
+    """Starting values for skin effects across a generic body."""
     return {
-        "head": RegionProfile(acne=1.0, nevi=0.7, freckles=1.5, blemishes=1.0, oil=1.6, blood=1.2),
-        "neck": RegionProfile(acne=0.5, nevi=0.8, freckles=0.8, blemishes=0.8, oil=0.9, blood=1.0),
-        "torso": RegionProfile(acne=0.8, nevi=1.2, freckles=0.6, blemishes=0.8, oil=0.7, blood=0.9),
-        "arms": RegionProfile(acne=0.15, nevi=1.1, freckles=1.3, blemishes=0.7, oil=0.4, blood=0.9),
-        "hands": RegionProfile(acne=0.0, nevi=0.4, freckles=0.7, blemishes=0.5, oil=0.2, blood=1.4),
-        "legs": RegionProfile(acne=0.15, nevi=0.8, freckles=0.5, blemishes=0.9, oil=0.3, blood=0.8),
-        "feet": RegionProfile(acne=0.0, nevi=0.3, freckles=0.2, blemishes=0.6, oil=0.1, blood=1.3),
+        "head": RegionProfile(acne=1.0, nevi=0.7, freckles=1.5, blemishes=1.0, oil=1.6,
+                              blood=1.2, veins=0.75),
+        "neck": RegionProfile(acne=0.5, nevi=0.8, freckles=0.8, blemishes=0.8, oil=0.9,
+                              blood=1.0, veins=0.9),
+        "torso": RegionProfile(acne=0.8, nevi=1.2, freckles=0.6, blemishes=0.8, oil=0.7,
+                               blood=0.9, veins=0.65),
+        "arms": RegionProfile(acne=0.15, nevi=1.1, freckles=1.3, blemishes=0.7, oil=0.4,
+                              blood=0.9, veins=1.15),
+        "hands": RegionProfile(acne=0.0, nevi=0.4, freckles=0.7, blemishes=0.5, oil=0.2,
+                               blood=1.4, veins=1.5),
+        "legs": RegionProfile(acne=0.15, nevi=0.8, freckles=0.5, blemishes=0.9, oil=0.3,
+                              blood=0.8, veins=0.9),
+        "feet": RegionProfile(acne=0.0, nevi=0.3, freckles=0.2, blemishes=0.6, oil=0.1,
+                              blood=1.3, veins=1.25),
     }
 
 
 @dataclass
 class BodyRegionSettings:
-    """Where the regions come from, and what each does to the marks."""
+    """Where the regions come from, and what each does to the skin effects."""
 
     source: RegionSource = RegionSource.AUTO
     #: The region the whole model is, under :attr:`RegionSource.WHOLE`.

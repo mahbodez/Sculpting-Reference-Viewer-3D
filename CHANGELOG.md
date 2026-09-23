@@ -4,6 +4,19 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.7.0]
+
+### Changed
+
+- **Human Skin backlighting.** Traced transmission uses the measured distance
+  to the opposite, outward-facing skin surface. Blood and a new, adjustable
+  vessel pattern increase absorption along that path, so thin areas glow while
+  thick areas stay opaque. The vessel pattern adds a faint cool tint in
+  reflection, fades when too small to resolve, and needs no UV map.
+- The Human Skin panel has a **Subtle veins** control. It starts low and is
+  preserved when changing tone presets. Its vessels now vary gently in width
+  and strength, and each Body Region has an editable vein multiplier.
+
 ## [2.6.0]
 
 ### Added

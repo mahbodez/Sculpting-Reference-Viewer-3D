@@ -1041,7 +1041,7 @@ class SceneRenderer:
                 ("Transmission", skin.transmission), ("Exposure", skin.exposure),
                 ("Indirect", skin.indirect), ("LightSize", math.radians(skin.light_size)),
                 ("Detail", skin.detail), ("Mottle", skin.mottle),
-                ("Blood", skin.blood), ("Fuzz", skin.fuzz),
+                ("Blood", skin.blood), ("Veins", skin.veins), ("Fuzz", skin.fuzz),
                 ("Blemishes", skin.blemishes), ("Freckles", skin.freckles),
                 ("Nevi", skin.nevi), ("Acne", skin.acne),
                 ("Radius", skin.radius * max(camera.scene_radius, 1e-6)),
@@ -1052,6 +1052,7 @@ class SceneRenderer:
             for uniform, effect in (
                 ("Acne", "acne"), ("Nevi", "nevi"), ("Freckles", "freckles"),
                 ("Blemish", "blemishes"), ("Oil", "oil"), ("Blood", "blood"),
+                ("Vein", "veins"),
             ):
                 # Seven regions, four to a vec4; the eighth slot is unused.
                 multipliers = [*skin.regions.multipliers(effect), 0.0]

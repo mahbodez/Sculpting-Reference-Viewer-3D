@@ -24,6 +24,7 @@ uniform float uSkinDetail;
 uniform float uSkinPoreSize;
 uniform float uSkinMottle;
 uniform float uSkinBlood;
+uniform float uSkinVeins;
 uniform float uSkinFuzz;
 uniform float uSkinBlemishes;
 uniform float uSkinFreckles;
@@ -44,6 +45,7 @@ uniform vec4 uSkinFrecklesA, uSkinFrecklesB;
 uniform vec4 uSkinBlemishA, uSkinBlemishB;
 uniform vec4 uSkinOilA, uSkinOilB;
 uniform vec4 uSkinBloodA, uSkinBloodB;
+uniform vec4 uSkinVeinA, uSkinVeinB;
 
 const float SKIN_RELIEF_CELLS = @CELLS@;
 const float SKIN_LUT_LOG_MIN = @LUT_MIN@;
@@ -263,15 +265,37 @@ vec3 skinAlbedo(vec3 base, SkinSurface s, float blood) {
     float pooled=blood*smoothstep(0.25,0.85,s.flush);
     return clamp(mix(albedo,albedo*SKIN_FLUSH,pooled),0.0,1.0);
 }
+// A narrow, warped isocontour of two smooth 3D fields makes an unobtrusive
+// vessel network without UVs or another texture. Its footprint fade avoids
+// sparkling when a vessel is smaller than a pixel.
+float skinVessel(vec3 p, SkinSurface surface) {
+    vec3 q=p/(uSkinPoreSize*SKIN_RELIEF_CELLS);
+    vec3 dx=dFdx(q), dy=dFdy(q);
+    float footprint=length(abs(dx)+abs(dy))*0.16;
+    float fade=1.0-smoothstep(0.04,0.13,footprint);
+    if (fade<=0.0) return 0.0;
+    // Explicit gradients keep mip selection defined after the footprint branch.
+    float broad=textureGrad(uSkinRelief,q*0.16+vec3(0.43,0.17,0.69),
+                            dx*0.16,dy*0.16).w;
+    float warp=textureGrad(uSkinRelief,q*0.39+vec3(0.11,0.79,0.31),
+                           dx*0.39,dy*0.39).w;
+    // The same smooth fields already read for tone and flush vary each line's
+    // width and darkness gently along its path, without another volume fetch.
+    float width=mix(0.06,0.085,surface.tone);
+    float line=1.0-smoothstep(width*0.3,width,abs(broad+0.22*(warp-0.5)-0.51));
+    float strength=mix(0.78,1.0,surface.flush);
+    return line*smoothstep(0.30,0.62,warp)*strength*fade;
+}
 
 // Where on the body the point is: how much each kind of mark, and the oil
 // and the blood, are turned up or down there.  Off the map, or off a
 // figure, everything is 1.
 struct SkinRegion {
     float acne; float nevi; float freckles; float blemishes; float oil; float blood;
+    float veins;
 };
 SkinRegion skinRegion(vec3 p) {
-    SkinRegion r=SkinRegion(1.0,1.0,1.0,1.0,1.0,1.0);
+    SkinRegion r=SkinRegion(1.0,1.0,1.0,1.0,1.0,1.0,1.0);
     if (!uSkinBodyOn) return r;
     vec3 uvw=(p-uSkinBodyOrigin)*uSkinBodyInvSize;
     vec4 a=texture(uSkinBodyA,uvw), b=texture(uSkinBodyB,uvw);
@@ -284,6 +308,7 @@ SkinRegion skinRegion(vec3 p) {
     r.blemishes=rest+dot(a,uSkinBlemishA)+dot(b,uSkinBlemishB);
     r.oil=rest+dot(a,uSkinOilA)+dot(b,uSkinOilB);
     r.blood=rest+dot(a,uSkinBloodA)+dot(b,uSkinBloodB);
+    r.veins=rest+dot(a,uSkinVeinA)+dot(b,uSkinVeinB);
     return r;
 }
 
@@ -487,6 +512,10 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
     float oil=uSkinFurniture ? 0.0 : clamp(uSkinOil*region.oil+marks.oil,0.0,1.0);
     float roughness=clamp(uSkinRoughness+(uSkinFurniture ? 0.0 : marks.rough),0.12,1.0);
     float blood=uSkinFurniture ? 0.0 : clamp(uSkinBlood*region.blood,0.0,1.0);
+    float vessel=0.0;
+    float veinAmount=clamp(uSkinVeins*region.veins,0.0,1.0);
+    // Keep texture derivatives in uniform control flow across the fragment quad.
+    if (!uSkinFurniture && uSkinVeins>0.0) vessel=skinVessel(p,surface)*veinAmount;
     // A mark's own relief is not the artist's detail slider: a papule stands
     // up on the smoothest skin.
     vec3 markSlope=uSkinFurniture ? vec3(0.0) : marks.slope;
@@ -494,6 +523,9 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
     vec3 nDiff=skinBump(n,surface.slope*detail*0.35+markSlope*0.6,1.0);
     vec3 albedo=uSkinFurniture ? skinLinear(uDiffuseColor)
         : clamp(skinAlbedo(skinLinear(uSkinColor),surface,blood)*marks.tint,0.0,1.0);
+    // Buried vessels are barely visible in reflection. They matter more when
+    // a backlight crosses the dermis, where the same blood absorbs light.
+    albedo*=mix(vec3(1.0),vec3(0.68,0.78,0.90),vessel*0.55);
     vec3 lengths=skinDiffusionLengths(albedo);
     float sphereRadius=skinSphereRadius(n);
     float sss=uSkinFurniture ? 0.0 : uSkinSSS;
@@ -624,10 +656,11 @@ vec3 skinShade(vec3 viewNormal, vec3 viewDirection) {
             bool skin=mod(skinTexel(uSkinTriangles,hit*3).w,2.0)<0.5;
             if (job<JOB_EXIT_SEES) {
                 int i=job-JOB_EXIT;
-                if (skin) {
+                if (skin && dot(normal,ray)>0.05) {
                     exits[i]=true;
                     exitPoint[i]=origin+ray*distance;
-                    carried[i]=exp(-distance/max(uSkinRadius*uSkinScatter,vec3(uSkinEpsilon)));
+                    vec3 attenuation=max(uSkinRadius*uSkinScatter,vec3(uSkinEpsilon));
+                    carried[i]=exp(-distance*(1.0+0.35*blood+0.9*vessel)/attenuation);
                 }
             } else if (job==JOB_DIFFUSE) {
                 if (skin && dot(normal,n)>0.25) {

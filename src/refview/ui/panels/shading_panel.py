@@ -185,6 +185,7 @@ class ShadingPanel(Panel):
             ("pore_size", "Pore size", 4, 0.0005, " × radius"),
             ("mottle", "Tone variation", 2, 0.05, ""),
             ("blood", "Blood / flush", 2, 0.05, ""),
+            ("veins", "Subtle veins", 2, 0.05, ""),
             ("fuzz", "Peach fuzz", 2, 0.05, ""),
             ("blemishes", "Blemishes", 2, 0.05, ""),
             ("freckles", "Freckles", 2, 0.05, ""),
@@ -218,6 +219,9 @@ class ShadingPanel(Panel):
         self._skin_controls["mottle"].setToolTip("Uneven pigment: lighter and darker patches.")
         self._skin_controls["blood"].setToolTip(
             "Flush from blood under the surface: reddens patches, cavities and backlight."
+        )
+        self._skin_controls["veins"].setToolTip(
+            "Faint cool vessels on the surface; they absorb more backlight through thin skin."
         )
         self._skin_controls["fuzz"].setToolTip("Soft rim from vellus hair at grazing angles.")
         self._skin_controls["blemishes"].setToolTip(
@@ -468,11 +472,11 @@ class ShadingPanel(Panel):
         self._reflection.colorChanged.connect(self._surface_setter("reflection_color"))
 
     def _build_body_regions(self) -> None:
-        """Where on the body the marks fall, and how much of each in each region."""
+        """Where on the body skin effects appear, and their relative strength."""
         self._body_box, form = collapsible_group("Body Regions")
         self._body_box.setToolTip(
             "Acne gathers on the face and the back, freckles on the arms, the\n"
-            "knuckles run red: the marks above are scaled by where on the body\n"
+            "knuckles run red: marks and subtle veins are scaled by where on the body\n"
             "the skin is.  The regions come from a skeleton with humanoid\n"
             "roles when the scene has one, else from the height bands of a\n"
             "standing figure; a bust or a hand is best told what it is."
@@ -512,7 +516,7 @@ class ShadingPanel(Panel):
             self._region_controls[field] = control
             control.valueChanged.connect(self._region_setter(field))
         reset = QPushButton("Reset Regions")
-        reset.setToolTip("Put every region's multipliers back to where marks tend to fall")
+        reset.setToolTip("Restore each region's skin effect multipliers")
         reset.clicked.connect(self._reset_regions)
         form.addRow("", reset)
         self._add(self._body_box)
@@ -652,7 +656,8 @@ class ShadingPanel(Panel):
             exposure=current.exposure, indirect=current.indirect,
             detail=current.detail, pore_size=current.pore_size,
             blemishes=current.blemishes, freckles=current.freckles,
-            nevi=current.nevi, acne=current.acne, regions=current.regions,
+            nevi=current.nevi, acne=current.acne, veins=current.veins,
+            regions=current.regions,
         )
         self.state.notify_render()
         self.refresh()

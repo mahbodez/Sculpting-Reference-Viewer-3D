@@ -35,6 +35,14 @@ and `Blood / flush` pulls patches, cavities and transmitted light towards a
 haemoglobin tint. `Peach fuzz` is a grazing-angle sheen standing in for vellus
 hair, lit from the light's side and a little from behind.
 
+`Subtle veins` draws a narrow, warped contour from two coarse samples of the
+same volume. It leaves a faint cool trace in reflected light and adds local
+absorption when light travels through the tissue. Its footprint fades below a
+pixel, and setting it to zero skips both extra volume reads. The pattern is a
+procedural visual cue, not an inferred vascular map. Existing tone and flush
+samples introduce small changes in the width and intensity along each vein,
+without adding a third vessel texture lookup.
+
 ## Marks and body regions
 
 Skin is marked, and the marks are what separate it from *perfect* skin. Four
@@ -78,7 +86,10 @@ tell the feet, the legs, the torso, the neck and the head apart -- arms and
 hands cannot be told this way -- and the artist can instead say the whole
 model is one region, for a bust or a hand. Seven regions, each a
 `RegionProfile` of multipliers for acne, moles, freckles, blemishes, the
-oily lobe and the flush, starting from where marks tend to fall.
+oily lobe, the flush and veins, starting from where those effects tend to fall.
+The default vein multiplier is higher for hands, feet and arms, and lower on
+the torso. Old saved profiles lacking this field load it as one, preserving
+their previous global vein strength.
 
 The shader reads the regions from a *body map*: a 64³ volume over the
 scene's box, two RGBA textures' worth, with a weight per region and, last,
@@ -91,7 +102,7 @@ snapshots the parts, the bones and the settings under a key; the renderer
 hands that to `SkinRefinement.prepare_body`, which builds the map on the
 shared worker when the key changes and the scene is not being dragged, and
 bumps a serial the accumulation key includes when a map lands. The
-per-region multipliers are twelve `vec4` uniforms, so turning a region up
+per-region multipliers are fourteen `vec4` uniforms, so turning a region up
 or down costs nothing but a frame.
 
 ## Material and transport
@@ -126,8 +137,10 @@ replace those approximations with:
   the one three times longer, and a mixture of the three channel PDFs weights
   the result. Red's default diffusion length is longer than green's and blue's.
   Scattering colour controls these relative distances, not a surface colour.
-- Beer attenuation through the distance to the next surface along a backlight
-  ray, followed by a visibility ray from that exit to the light.
+- Beer attenuation through the measured distance to the next outward-facing
+  skin surface along a backlight ray, followed by a visibility ray from that
+  exit to the light. Local blood and vessel strength increase the extinction;
+  a thin shell therefore carries more warm light than a thick one.
 
 This bounded transport is **not** a full volumetric random walk, spectral skin
 model, or unlimited-bounce path tracer. Secondary glossy paths are not traced;
@@ -137,7 +150,8 @@ incompatible geometry. Transmission assumes a closed, consistently oriented skin
 shell; overlapping shells, open scans and cut surfaces can violate that
 assumption. Section planes clip ray intersections, but the display's synthetic
 section caps are not part of the ray geometry. There is no anatomical thickness
-map or texture requirement.
+map or texture requirement. Navigation still uses a constant-cost backlight
+approximation; thickness-dependent transmission appears after idle refinement.
 
 The design follows the separation of surface reflection and subsurface transport
 described in [GPU Gems 3's skin rendering chapter](https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-14-advanced-techniques-realistic-real-time-skin),

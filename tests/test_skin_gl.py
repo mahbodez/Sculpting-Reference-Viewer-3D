@@ -270,7 +270,8 @@ def test_relief_and_flush_change_the_shaded_image(gl_context):
         # Pores break up a flat plane; compare luminance so channel differences do not count.
         assert bumped.mean(-1).std() > smooth.mean(-1).std() + 0.01
         flushed = render(detail=0.0, blood=1.0)
-        red_shift = (flushed[..., 0] - flushed[..., 2]).mean() - (smooth[..., 0] - smooth[..., 2]).mean()
+        red_shift = ((flushed[..., 0] - flushed[..., 2]).mean()
+                     - (smooth[..., 0] - smooth[..., 2]).mean())
         assert red_shift > 0.005
     finally:
         renderer.dispose()
@@ -337,6 +338,67 @@ def _patch(size: int = 24) -> Mesh:
     quads = np.stack([index[:-1, :-1], index[1:, :-1], index[1:, 1:], index[:-1, 1:]], -1)
     indices = np.concatenate([quads[..., [0, 1, 2]], quads[..., [0, 2, 3]]]).reshape(-1, 3)
     return Mesh(positions, np.tile([0, 0, 1], (len(positions), 1)).astype(np.float32), indices)
+
+
+def _closed_patch(thickness: float) -> Mesh:
+    """Two opposite skin faces with a known distance along the backlight ray."""
+    front = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], np.float32)
+    back = front.copy()
+    back[:, 2] = -thickness
+    positions = np.concatenate((front, back))
+    normals = np.tile([0, 0, 1], (8, 1)).astype(np.float32)
+    normals[4:, 2] = -1
+    faces = np.array([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]])
+    return Mesh(positions, normals, faces)
+
+
+def test_traced_backlight_prefers_thin_skin(gl_context):
+    """Actual exit distance makes a thin shell glow more than a thick one."""
+    gl = gl_context
+    renderer = SceneRenderer()
+    renderer.initialize()
+    target = FrameTarget()
+    target.resize(64, 64)
+    settings = RenderSettings(shading_mode=ShadingMode.HUMAN_SKIN)
+    settings.light.azimuth_deg = 180.0
+    settings.light.elevation_deg = 0.0
+    settings.light.intensity = 3.0
+    settings.light.fill_intensity = 0.0
+    settings.light.ambient_intensity = 0.0
+    settings.skin.sss = settings.skin.transmission = 1.0
+    settings.skin.radius = 0.02
+    settings.skin.detail = settings.skin.mottle = settings.skin.blood = 0.0
+    settings.skin.veins = settings.skin.oiliness = settings.skin.specular = 0.0
+    settings.skin.fuzz = settings.skin.indirect = 0.0
+    settings.skin.light_size = 0.0
+    settings.skin.resolution = 1.0
+    settings.skin.samples = 8
+    camera = Camera()
+
+    def render(thickness: float) -> np.ndarray:
+        mesh = _closed_patch(thickness)
+        renderer.set_mesh(mesh)
+        camera.frame(mesh.bounds)
+        start = time.monotonic()
+        while time.monotonic() - start < 10:
+            target.bind()
+            renderer.render(camera, settings, 64, 64, refine=True)
+            if renderer.skin.clock.samples == settings.skin.samples:
+                break
+            time.sleep(0.02)
+        assert renderer.skin.clock.samples == settings.skin.samples
+        pixels = np.asarray(gl.glReadPixels(0, 0, 64, 64, gl.GL_RGBA, gl.GL_FLOAT))
+        assert np.all(np.isfinite(pixels)) and gl.glGetError() == gl.GL_NO_ERROR
+        return pixels[24:40, 24:40, :3].mean(axis=(0, 1))
+
+    try:
+        thin = render(0.003)
+        thick = render(0.08)
+        assert thin[0] > thick[0] + 0.02
+        assert thin[0] > thin[2]
+    finally:
+        renderer.dispose()
+        target.dispose()
 
 
 def test_marks_fall_on_the_skin_and_the_body_map_says_where(gl_context):
@@ -408,6 +470,12 @@ def test_marks_fall_on_the_skin_and_the_body_map_says_where(gl_context):
         again = render()
         assert renderer.skin.body_pending is None
         np.testing.assert_allclose(again, marked, atol=0.02)
+        # The same body map gates veins independently of the spot controls.
+        settings.skin.regions.feet.veins = 0.0
+        bare = render(nevi=0.0, acne=0.0, freckles=0.0, veins=1.0)
+        settings.skin.regions.feet.veins = 3.0
+        veined = render()
+        assert np.abs(veined - bare).mean() > 0.001
         renderer.set_body(None)
         render()
         assert not renderer.skin.body_on
