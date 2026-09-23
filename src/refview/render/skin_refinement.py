@@ -12,7 +12,7 @@ from OpenGL.error import GLError
 from ..core.body_regions import BodySource, build_body_map
 from .framebuffer import FrameTarget, bind_default
 from .program import ShaderProgram
-from .skin_bvh import build_scene, texture_table
+from .skin_bvh import build_scene, table_width, texture_table
 from .skin_detail import diffusion_lut, relief_volume
 from .skin_shader import ACCUMULATE_FRAGMENT, PRESENT_FRAGMENT
 from .texture import DataTexture, Texture3D
@@ -21,6 +21,14 @@ from .texture import DataTexture, Texture3D
 NODES_UNIT, TRIANGLES_UNIT, RELIEF_UNIT, DIFFUSION_UNIT = 6, 7, 8, 9
 #: The two volumes of the body map, after those.
 BODY_A_UNIT, BODY_B_UNIT = 10, 11
+#: The triangles' normals and colours, read only for a nearest hit.  After
+#: the HDRI's three (12 to 14), on the last unit GL 3.3 promises a shader.
+ATTRIBUTES_UNIT = 15
+#: How long one frame may spend on refinement samples before it hands the
+#: window back, in seconds.  Enough for several samples a frame on a card
+#: that can, so the image clears in a fraction of a second rather than two
+#: or three, and short enough that the window still answers the mouse.
+SAMPLE_BUDGET = 0.024
 
 
 def pixel_jitter(sample: int) -> tuple[float, float]:
@@ -54,9 +62,11 @@ class SkinRefinement:
         self.clock = RefinementClock()
         self.current = FrameTarget(floating=True)
         self.history = [FrameTarget(floating=True), FrameTarget(floating=True)]
-        self.nodes = self.triangles = None
+        self.nodes = self.triangles = self.attributes = None
         self.relief = self.diffusion = None
         self.node_count = 0
+        #: log2 of the width the tables are laid out at.
+        self.table_shift = 0
         self.programs = {}
         self.executor = None
         self.pending = None
@@ -81,12 +91,12 @@ class SkinRefinement:
             "accumulate": ShaderProgram(vertex, ACCUMULATE_FRAGMENT, "skin accumulation"),
             "present": ShaderProgram(vertex, PRESENT_FRAGMENT, "skin presentation"),
         }
-        self.nodes, self.triangles = DataTexture(), DataTexture()
+        self.nodes, self.triangles, self.attributes = DataTexture(), DataTexture(), DataTexture()
         # Complete sampler textures even before any mesh has been prepared.
-        import numpy as np
         empty = np.zeros((1, 1, 4), np.float32)
         self.nodes.upload(empty)
         self.triangles.upload(empty)
+        self.attributes.upload(empty)
         # The preview needs these as much as refinement does; both are fixed
         # tables, built once from NumPy.
         self.relief = Texture3D()
@@ -177,8 +187,11 @@ class SkinRefinement:
                 limit = int(GL.glGetIntegerv(GL.GL_MAX_TEXTURE_SIZE))
                 nodes = texture_table(scene.nodes, limit)
                 triangles = texture_table(scene.triangles, limit)
+                attributes = texture_table(scene.attributes, limit)
                 self.nodes.upload(nodes)
                 self.triangles.upload(triangles)
+                self.attributes.upload(attributes)
+                self.table_shift = table_width(limit).bit_length() - 1
                 self.node_count = len(scene.nodes)
             except (ValueError, MemoryError, RuntimeError, GLError) as error:
                 self.failure = str(error)
@@ -195,8 +208,10 @@ class SkinRefinement:
         program.set_bool("uSkinTrace", self.tracing)
         program.set_int("uSkinSample", self.clock.samples)
         program.set_int("uSkinNodeCount", self.node_count)
+        program.set_int("uSkinTableShift", self.table_shift)
         program.set_int("uSkinNodes", NODES_UNIT)
         program.set_int("uSkinTriangles", TRIANGLES_UNIT)
+        program.set_int("uSkinAttributes", ATTRIBUTES_UNIT)
         program.set_int("uSkinRelief", RELIEF_UNIT)
         program.set_int("uSkinDiffusion", DIFFUSION_UNIT)
         program.set_int("uSkinBodyA", BODY_A_UNIT)
@@ -206,6 +221,7 @@ class SkinRefinement:
         program.set_vec3("uSkinBodyInvSize", self.body_inv_size)
         self.nodes.bind(NODES_UNIT)
         self.triangles.bind(TRIANGLES_UNIT)
+        self.attributes.bind(ATTRIBUTES_UNIT)
         self.relief.bind(RELIEF_UNIT)
         self.diffusion.bind(DIFFUSION_UNIT)
         self.body_a.bind(BODY_A_UNIT)
@@ -256,7 +272,8 @@ class SkinRefinement:
         self.current = FrameTarget(floating=True)
         self.history = [FrameTarget(floating=True), FrameTarget(floating=True)]
         for texture in (
-            self.nodes, self.triangles, self.relief, self.diffusion, self.body_a, self.body_b
+            self.nodes, self.triangles, self.attributes, self.relief, self.diffusion,
+            self.body_a, self.body_b,
         ):
             if texture is not None:
                 texture.dispose()

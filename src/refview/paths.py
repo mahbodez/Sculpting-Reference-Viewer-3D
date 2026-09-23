@@ -70,6 +70,27 @@ def model_dir() -> Path:
     return resources_dir() / "models"
 
 
+#: What an HDRI can be read from.  Mirrors
+#: :data:`refview.core.environment.ENVIRONMENT_SUFFIXES`, which this module
+#: does not import so that it stays free of numpy.
+ENVIRONMENT_SUFFIXES = (".hdr", ".exr")
+
+
+def environment_dir() -> Path:
+    """Where the bundled HDRIs are."""
+    return resources_dir() / "hdris"
+
+
+def available_environments() -> list[Path]:
+    """Every HDRI in the bundled folder, sorted by name."""
+    directory = environment_dir()
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path for path in directory.iterdir() if path.suffix.lower() in ENVIRONMENT_SUFFIXES
+    )
+
+
 def image_path(name: str) -> Path:
     return resources_dir() / "images" / name
 

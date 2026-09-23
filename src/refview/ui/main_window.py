@@ -23,7 +23,7 @@ from ..core.mesh_io import load_mesh as read_mesh
 from ..core.rigging import humanoid_roles, looks_humanoid
 from ..core.session import SESSION_SUFFIX, Session
 from ..core.update_check import Release
-from ..paths import model_dir
+from ..paths import ENVIRONMENT_SUFFIXES, model_dir
 from ..render.texture import MatcapLoadError
 from ..wakelock import WakeLock
 from .elements.clone import carried, in_flight
@@ -66,6 +66,8 @@ CONTROLS_TEXT = """
 <tr><td><b>Wheel</b></td><td>Zoom towards the cursor</td></tr>
 <tr><td><b>Alt + left drag</b></td><td>Orbit even while a tool is armed</td></tr>
 <tr><td><b>Shift + left drag</b></td><td>Orbit in round steps (set the angle in Camera)</td></tr>
+<tr><td><b>Shift + right drag</b></td><td>Turn the lights, the HDRI with them, in a lit
+shading mode; Esc puts them back</td></tr>
 <tr><td><b>F</b></td><td>Frame the object</td></tr>
 <tr><td><b>P</b></td><td>Toggle perspective / orthographic</td></tr>
 <tr><td><b>Shading panel</b></td><td>Ghost the model to see through it</td></tr>
@@ -156,6 +158,7 @@ round</td></tr>
 <tr><td><b>Wheel</b></td><td>Turn it in steps of five degrees, or one with Ctrl</td></tr>
 <tr><td><b>Double-click</b></td><td>Put the grading back</td></tr>
 <tr><td><b>Fine Adjustments</b></td><td>The same five numbers, to type into</td></tr>
+<tr><td><b>Right-click an added matcap</b></td><td>Take it out of the gallery</td></tr>
 </table>
 <h3>Preferences</h3>
 <table cellpadding='3'>
@@ -325,8 +328,10 @@ _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
 
 
 def opens_as(path: str | Path) -> str | None:
-    """What a file would open as -- ``"model"``, ``"session"`` or ``"matcap"`` -- by its suffix."""
+    """What a file opens as, by its suffix: a model, a session, a matcap or an HDRI."""
     suffix = Path(path).suffix.lower()
+    if suffix in ENVIRONMENT_SUFFIXES:
+        return "hdri"
     if suffix in MESH_SUFFIXES:
         return "model"
     if suffix == ".json":
@@ -465,6 +470,10 @@ class MainWindow(QMainWindow):
         )
         self._menu_action(
             file_menu, "Load &Matcap...", self._matcap_panel.browse, command="file.load_matcap"
+        )
+        self._menu_action(
+            file_menu, "Load &HDRI...", self._shading_panel.browse_environment,
+            command="file.load_hdri",
         )
         file_menu.addSeparator()
         self._menu_action(
@@ -1647,7 +1656,7 @@ class MainWindow(QMainWindow):
         return opens_as(url.toLocalFile()) is not None
 
     def open_path(self, path: str | Path, background: bool = False) -> bool:
-        """Open a file by what it is: a model, a session or a matcap.
+        """Open a file by what it is: a model, a session, a matcap or an HDRI.
 
         The one door every file arrives through, whether dropped on the
         window, named on the command line, handed over by the desktop's
@@ -1664,6 +1673,9 @@ class MainWindow(QMainWindow):
             self.load_session(path, background=background)
         elif kind == "matcap":
             self.load_matcap(path)
+        elif kind == "hdri":
+            # A map dropped on the window is a map to light with.
+            self._state.load_environment(path, light=True)
         else:
             return False
         return True

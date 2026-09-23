@@ -10,6 +10,8 @@ progressive BVH ray tracing while the camera rests.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
+from time import perf_counter
 
 import numpy as np
 from OpenGL import GL
@@ -17,13 +19,23 @@ from OpenGL import GL
 from ..core.annotation import Stroke
 from ..core.body_regions import BodySource
 from ..core.camera import Camera, Projection
+from ..core.environment import EnvironmentMap
 from ..core.grid import GridSettings
-from ..core.linalg import look_at, orthographic, spherical_direction, vec3
+from ..core.linalg import look_at, orthographic, vec3
 from ..core.mesh import Mesh
 from ..core.plane_axes import Coefficients, PlaneAxes, PlaneSet
 from ..core.plane_clusters import fit_planes
 from ..core.settings import CONTOUR_DENSITY_MIN, PlaneMode, RenderSettings, ShadingMode
 from . import shaders
+from .environment import (
+    ENV_CDF_UNIT,
+    ENV_MAP_UNIT,
+    ENV_TEXELS_UNIT,
+    EnvironmentTextures,
+    LightRig,
+    background_basis,
+    light_rig,
+)
 from .framebuffer import (
     AccumTarget,
     ColorTarget,
@@ -35,11 +47,13 @@ from .framebuffer import (
 )
 from .program import ShaderProgram
 from .skin_refinement import (
+    ATTRIBUTES_UNIT,
     BODY_A_UNIT,
     BODY_B_UNIT,
     DIFFUSION_UNIT,
     NODES_UNIT,
     RELIEF_UNIT,
+    SAMPLE_BUDGET,
     TRIANGLES_UNIT,
     SkinRefinement,
 )
@@ -212,6 +226,10 @@ class SceneRenderer:
         self._plane_table: DataTexture | None = None
         self._plane_table_level: PlaneSet | None = None
         self.skin = SkinRefinement()
+        #: The HDRI, when there is one: its textures and harmonics.
+        self.environment = EnvironmentTextures()
+        #: Bumped when a different HDRI goes on, so the skin starts over.
+        self._environment_serial = 0
         #: What the body map is built from, or ``None`` for no map.
         self._body: BodySource | None = None
         self._trace_parts = {}
@@ -221,8 +239,12 @@ class SceneRenderer:
 
     def initialize(self) -> None:
         self.skin.initialize(shaders.FULLSCREEN_VERTEX)
+        self.environment.initialize()
         self._programs = {
             "mesh": ShaderProgram(shaders.MESH_VERTEX, shaders.MESH_FRAGMENT, "mesh"),
+            "mesh_trace": ShaderProgram(
+                shaders.MESH_VERTEX, shaders.MESH_TRACE_FRAGMENT, "traced skin"
+            ),
             "flat": ShaderProgram(shaders.FLAT_VERTEX, shaders.FLAT_FRAGMENT, "flat"),
             "background": ShaderProgram(
                 shaders.BACKGROUND_VERTEX, shaders.BACKGROUND_FRAGMENT, "background"
@@ -261,6 +283,7 @@ class SceneRenderer:
 
     def dispose(self) -> None:
         self.skin.dispose()
+        self.environment.dispose()
         for program in self._programs.values():
             program.dispose()
         self._programs.clear()
@@ -456,6 +479,13 @@ class SceneRenderer:
         else:
             buffers.upload(mesh)
 
+    def set_environment(self, environment: EnvironmentMap | None) -> None:
+        """Light with ``environment`` where the settings ask for an HDRI; ``None`` for none."""
+        if environment is self.environment.environment:
+            return
+        self.environment.set(environment)
+        self._environment_serial += 1
+
     def set_matcap(self, pixels: np.ndarray | None) -> None:
         if self._matcap is None:
             return
@@ -546,8 +576,8 @@ class SceneRenderer:
         self.skin.prepare_body(self._body if is_skin else None, interactive)
         key = (
             camera.view_matrix().tobytes(), camera.projection_matrix(width / height).tobytes(),
-            repr(settings), self._content_revision, width, height, pixel_ratio, antialiasing,
-            self.skin.body_serial,
+            traced_settings_key(settings), self._content_revision, width, height, pixel_ratio,
+            antialiasing, self.skin.body_serial, self._environment_serial,
         )
         model_mesh = self._trace_parts.get("sculpt")
         if model_mesh is None or not model_mesh.triangle_count:
@@ -569,14 +599,24 @@ class SceneRenderer:
                 # The map is on its way; one more frame will show it.
                 self.skin.needs_frame = True
             if traced:
-                if self.skin.clock.samples < skin.samples:
-                    rw = max(1, int(width * skin.resolution * scale))
-                    rh = max(1, int(height * skin.resolution * scale))
+                # As many samples as fit the frame's budget: each is waited
+                # for, so the next is only started when there is room for it.
+                rw = max(1, int(width * skin.resolution * scale))
+                rh = max(1, int(height * skin.resolution * scale))
+                began = perf_counter()
+                longest = 0.0
+                while self.skin.clock.samples < skin.samples:
+                    started = perf_counter()
                     self.skin.begin(rw, rh)
                     self._draw_frame(
                         camera, settings, rw, rh, pixel_ratio * skin.resolution * scale
                     )
                     self.skin.accumulate(self._draw_fullscreen)
+                    GL.glFinish()
+                    now = perf_counter()
+                    longest = max(longest, now - started)
+                    if now - began + longest > SAMPLE_BUDGET:
+                        break
                 if antialiasing == "fxaa":
                     self._frame.resize(width, height)
                     self._frame.bind()
@@ -700,10 +740,11 @@ class SceneRenderer:
             projection[1] += (2.0 * dy / height) * projection[3]
         planes = settings.section.planes()
         target = current_framebuffer()
+        rig = light_rig(settings, view, self.environment.environment)
 
         light_matrix = None
         if settings.shading_mode.uses_quality and self._has_geometry and not self.skin.tracing:
-            light_matrix = self._render_shadow_map(camera, settings, planes)
+            light_matrix = self._render_shadow_map(camera, settings, planes, rig)
             self._render_occlusion(camera, settings, projection, view, width, height, planes)
             bind_default(target)
         if self._ghost_opacity(settings) is not None:
@@ -720,7 +761,7 @@ class SceneRenderer:
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glDepthFunc(GL.GL_LESS)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
-        self._draw_background(settings)
+        self._draw_background(settings, rig, camera, aspect)
 
         if not self._has_geometry:
             self._draw_grid(camera, projection @ view, settings.grid, width, height, pixel_ratio)
@@ -728,7 +769,7 @@ class SceneRenderer:
 
         self._draw_scene(
             camera, settings, view, projection, planes, light_matrix, width, height,
-            pixel_ratio,
+            pixel_ratio, rig,
         )
         if settings.show_wireframe:
             self._draw_wireframe(settings, view, projection, planes)
@@ -850,7 +891,8 @@ class SceneRenderer:
         GL.glBindVertexArray(0)
         GL.glUseProgram(0)
         for unit in (_SHADOW_UNIT, _OCCLUSION_UNIT, _GHOST_ACCUM_UNIT, _GHOST_REVEAL_UNIT,
-                     NODES_UNIT, TRIANGLES_UNIT, DIFFUSION_UNIT):
+                     NODES_UNIT, TRIANGLES_UNIT, DIFFUSION_UNIT, ATTRIBUTES_UNIT,
+                     ENV_MAP_UNIT, ENV_TEXELS_UNIT, ENV_CDF_UNIT):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
             GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
         for unit in (RELIEF_UNIT, BODY_A_UNIT, BODY_B_UNIT):
@@ -859,12 +901,26 @@ class SceneRenderer:
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
 
-    def _draw_background(self, settings: RenderSettings) -> None:
+    def _draw_background(
+        self, settings: RenderSettings, rig: LightRig, camera: Camera, aspect: float
+    ) -> None:
         GL.glDisable(GL.GL_DEPTH_TEST)
         GL.glDepthMask(GL.GL_FALSE)
+        light = settings.light
+        skin = settings.shading_mode is ShadingMode.HUMAN_SKIN
         with self._programs["background"] as program:
             program.set_vec3("uTopColor", settings.background_top)
             program.set_vec3("uBottomColor", settings.background_bottom)
+            shown = rig.environment and light.environment_background
+            program.set_bool("uBackgroundEnv", shown)
+            if shown:
+                # Developed the way the model is: through the skin's film,
+                # or clamped as the display-space modes are.
+                self.environment.bind(program, rig, 1.0 if skin else math.pi)
+                program.set_matrix3("uBackgroundBasis", background_basis(camera, aspect))
+                program.set_float("uBackgroundLod", light.environment_blur)
+                program.set_bool("uBackgroundFilmic", skin)
+                program.set_float("uBackgroundExposure", settings.skin.bounded().exposure)
             self._draw_fullscreen()
         GL.glDepthMask(GL.GL_TRUE)
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -885,17 +941,19 @@ class SceneRenderer:
         width: int,
         height: int,
         pixel_ratio: float = 1.0,
+        rig: LightRig | None = None,
     ) -> None:
         """The model, the pedestal under it and the flat cap over the cut."""
         assert self._pedestal is not None
-        key_direction, fill_direction = light_directions(settings, view)
+        if rig is None:
+            rig = light_rig(settings, view, self.environment.environment)
 
         parts = self._model_parts(settings)
         solid = [buffers for buffers, opacity in parts if opacity >= 1.0]
         ghosts = [(buffers, opacity) for buffers, opacity in parts if opacity < 1.0]
         ghost_opacity = self._ghost_opacity(settings)
 
-        with self._programs["mesh"] as program:
+        with self._programs["mesh_trace" if self.skin.tracing else "mesh"] as program:
             program.set_matrix4("uView", view)
             program.set_matrix4("uProjection", projection)
             program.set_matrix3("uNormalMatrix", normal_matrix(view))
@@ -952,13 +1010,18 @@ class SceneRenderer:
             program.set_bool("uMatcapFlipY", matcap.flip_y)
 
             light = settings.light
-            program.set_vec3("uKeyDirection", key_direction)
-            program.set_vec3("uFillDirection", fill_direction)
+            program.set_vec3("uKeyDirection", rig.key)
+            program.set_vec3("uFillDirection", rig.fill)
             program.set_vec3("uLightColor", light.color)
-            program.set_float("uKeyIntensity", light.intensity)
-            program.set_float("uFillIntensity", light.fill_intensity)
+            program.set_float("uKeyIntensity", rig.key_intensity)
+            program.set_float("uFillIntensity", rig.fill_intensity)
             program.set_vec3("uAmbientColor", light.ambient_color)
-            program.set_float("uAmbientIntensity", light.ambient_intensity)
+            program.set_float("uAmbientIntensity", rig.ambient_intensity)
+            # The display-space modes read a key of one as white on white,
+            # which is pi times what the same irradiance makes of a surface
+            # physically; the skin is physical.
+            is_skin = settings.shading_mode is ShadingMode.HUMAN_SKIN
+            self.environment.bind(program, rig, 1.0 if is_skin else math.pi)
 
             surface = settings.surface
             program.set_vec3("uSpecularColor", surface.specular_color)
@@ -1264,12 +1327,16 @@ class SceneRenderer:
     # -- high-quality pre-passes ----------------------------------------
 
     def _render_shadow_map(
-        self, camera: Camera, settings: RenderSettings, planes: list
+        self, camera: Camera, settings: RenderSettings, planes: list, rig: LightRig
     ) -> np.ndarray | None:
-        """Render scene depth from the key light and return its view-projection."""
-        if not settings.quality.show_shadows or settings.light.intensity <= 0.0:
+        """Render scene depth from the casting light and return its view-projection.
+
+        The key, when there is one; the HDRI's dominant light when the map
+        lights the model alone.
+        """
+        if not settings.quality.show_shadows or rig.shadow is None:
             return None
-        light_matrix = light_view_projection(camera, settings)
+        light_matrix = light_view_projection(camera, rig.shadow)
 
         self._shadow_map.bind()
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
@@ -1339,6 +1406,28 @@ class SceneRenderer:
                 buffers.draw()
 
 
+def traced_settings_key(settings: RenderSettings) -> str:
+    """What of the settings a refined skin image can show, as a key.
+
+    The refinement starts over whenever this changes, so it leaves out what
+    the traced picture never reads: the matcap and its grading, the contour
+    mode's paper, the analytic modes' surface, the High Quality mode's
+    shadow and occlusion sliders -- the tracer casts its own -- the planes
+    filter while it is off, and the wireframe's colour while there is no
+    wireframe.  Moving any of those in a panel leaves the samples alone.
+    """
+    return repr(replace(
+        settings,
+        matcap=None,
+        matcap_path=None,
+        contour=None,
+        surface=None,
+        quality=None,
+        planes=settings.planes if settings.planes.enabled else None,
+        wireframe_color=settings.wireframe_color if settings.show_wireframe else None,
+    ))
+
+
 def _set_section(program: ShaderProgram, planes: list) -> None:
     """Upload up to two clipping half-spaces; more than two are ignored."""
     program.set_int("uSectionCount", min(len(planes), 2))
@@ -1372,33 +1461,19 @@ def light_directions(settings: RenderSettings, view: np.ndarray) -> tuple[np.nda
     which makes the light behave like a head lamp; otherwise they describe a
     fixed world direction that the object turns within.
     """
-    light = settings.light
-    key = spherical_direction(light.azimuth_deg, light.elevation_deg)
-    fill = spherical_direction(light.azimuth_deg + 180.0, light.elevation_deg * 0.35 - 10.0)
-    if not light.follow_camera:
-        rotation = view[:3, :3]
-        key = rotation @ key
-        fill = rotation @ fill
-    return key, fill
+    rig = light_rig(settings, view, None)
+    return rig.key, rig.fill
 
 
-def key_world_direction(settings: RenderSettings, view: np.ndarray) -> np.ndarray:
-    """The key light's direction in world space, pointing surface -> light."""
-    key = spherical_direction(settings.light.azimuth_deg, settings.light.elevation_deg)
-    if settings.light.follow_camera:
-        # A head lamp is defined in view space, so rotate it back out.
-        return view[:3, :3].T @ key
-    return key
-
-
-def light_view_projection(camera: Camera, settings: RenderSettings) -> np.ndarray:
-    """An orthographic camera at the key light, framing the whole scene.
+def light_view_projection(camera: Camera, direction: np.ndarray) -> np.ndarray:
+    """An orthographic camera at a light shining from ``direction``, framing the whole scene.
 
     The extent is taken from the scene's bounding sphere, so the map covers the
     model wherever the view camera happens to be and the shadow does not swim
     while the artist orbits.
     """
-    direction = key_world_direction(settings, camera.view_matrix())
+    direction = np.asarray(direction, dtype=np.float64)
+    direction = direction / max(float(np.linalg.norm(direction)), 1e-12)
     # A pedestal sits below the model, so allow for a little more than the
     # model's own radius before the shadow gets clipped off the map.
     radius = max(camera.scene_radius, 1e-6) * 1.6

@@ -14,6 +14,8 @@ icon = str(images / ("icon.ico" if sys.platform == "win32" else "icon-large.png"
 hiddenimports = collect_submodules("OpenGL")
 datas = [(str(project_root / "resources"), "resources")]
 datas.append((str(project_root / "pyproject.toml"), "."))
+# The GLSL is read from beside the renderer's modules, so it goes where they do.
+datas.append((str(project_root / "src" / "refview" / "render" / "glsl"), "refview/render/glsl"))
 
 # Conda builds keep CPython's support DLLs in Library/bin, where PyInstaller's
 # dependency scan does not look; without ffi-8.dll the frozen app cannot import

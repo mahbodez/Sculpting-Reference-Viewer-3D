@@ -254,41 +254,78 @@ def _gathered(links: np.ndarray, total: int) -> np.ndarray:
     return root
 
 
-def auto_smooth(mesh: Mesh, degrees: float) -> Mesh:
-    """A copy of ``mesh`` shaded smooth across every edge gentler than ``degrees``.
+class SmoothingGroups:
+    """Which corners of a mesh share a normal under AutoSmooth, worked out once.
 
-    The same thing 3ds Max's AutoSmooth does, and for the same reason.  A form
-    built out of flats is meant to read as flats, but a facet that comes out of
-    a lattice is only *approximately* one plane: its triangles each lean by a
-    fraction of a degree, and flat shading shows every one of those leans as a
-    separate tone.  What should read as one clean plane reads as a mosaic.
+    What :func:`auto_smooth` does, split in two so that the expensive half is
+    done once.  Which corners belong together depends on how the triangles
+    meet and how sharply they turn, and neither changes when the object is
+    moved, turned, scaled or posed a little -- so the groups are read off
+    the object's own mesh when it arrives, and each frame of a drag only
+    sums the face normals of wherever it now stands into them, which costs a
+    few hundredths of what finding them did.
 
-    So the triangles are gathered into groups -- neighbours joined wherever the
-    turn between them is gentler than ``degrees``, which is what a smoothing
-    group is -- and each corner takes the average of the normals in its own
-    group.  Within a facet that averaging is nearly a no-op geometrically and
-    removes the mosaic entirely.  Across a real plane change the turn is too
-    sharp to join, so the two sides stay in different groups, keep different
-    normals at the shared corner, and the edge stays every bit as hard as it
-    was.  Nothing moves: this is a change of shading and not of shape.
-
-    ``degrees`` of zero joins nothing and gives back the flat shading it was
-    handed, which is how the setting is turned off.
+    A loaded model shares its vertices between triangles, and one normal a
+    vertex can only be smooth; so the shaded mesh gives every corner a vertex
+    of its own, which is what lets a corner on a hard edge keep a normal of
+    its own side.  The corners are welded by position for the grouping, so a
+    seam a loader split for its texture coordinates is joined like any other
+    edge.  Nought degrees shades every triangle flat.
     """
-    if float(degrees) <= 0.0 or mesh.triangle_count == 0:
-        return mesh
-    indices = np.asarray(mesh.indices, dtype=np.int64).reshape(-1, 3)
-    # Welded, because the flat mesh holds a separate copy of every corner and
-    # two triangles only share an edge if they share its ends.
-    _, back = np.unique(mesh.positions, axis=0, return_inverse=True)
-    face = back.ravel()[indices]
-    corner = np.arange(3 * len(face), dtype=np.int64).reshape(-1, 3)
 
-    points = np.asarray(mesh.positions, dtype=np.float64)
-    held = points[indices]
-    cross = np.cross(held[:, 1] - held[:, 0], held[:, 2] - held[:, 0])
+    def __init__(self, mesh: Mesh, degrees: float) -> None:
+        self.degrees = float(degrees)
+        self.corners = np.asarray(mesh.indices, dtype=np.int64).reshape(-1)
+        _, welded = np.unique(mesh.positions, axis=0, return_inverse=True)
+        face = welded.ravel()[self.corners].reshape(-1, 3)
+        # A turn of a hundredth of a degree joins only coplanar neighbours,
+        # which gives each triangle its own face normal: flat shading.
+        self.root = _corner_groups(face, _face_cross(mesh.positions, self.corners),
+                                   max(self.degrees, 0.01))
+
+    def fits(self, mesh: Mesh) -> bool:
+        """Whether ``mesh`` is laid out as the one the groups were read from."""
+        return mesh.indices.size == self.corners.size
+
+    def shade(self, mesh: Mesh) -> Mesh:
+        """``mesh`` -- the one the groups were read from, or it moved or posed -- shaded so."""
+        if mesh.triangle_count == 0:
+            return mesh
+        corners = np.asarray(mesh.indices, dtype=np.int64).reshape(-1)
+        cross = _face_cross(mesh.positions, corners)
+        return Mesh(
+            mesh.positions[corners],
+            _group_normals(self.root, cross),
+            np.arange(len(corners), dtype=np.int64).reshape(-1, 3),
+            mesh.name,
+            source_offset=mesh.source_offset,
+            units=mesh.units,
+        )
+
+
+def smoothed_by_angle(mesh: Mesh, degrees: float) -> Mesh:
+    """Any mesh shaded hard past ``degrees``, smooth short of it: :class:`SmoothingGroups`."""
+    if mesh.triangle_count == 0:
+        return mesh
+    return SmoothingGroups(mesh, degrees).shade(mesh)
+
+
+def _face_cross(positions: np.ndarray, corners: np.ndarray) -> np.ndarray:
+    """Each triangle's edge cross product: its normal, as long as twice its area."""
+    held = np.asarray(positions, dtype=np.float64)[corners].reshape(-1, 3, 3)
+    return np.cross(held[:, 1] - held[:, 0], held[:, 2] - held[:, 0])
+
+
+def _corner_groups(face: np.ndarray, cross: np.ndarray, degrees: float) -> np.ndarray:
+    """Join the corners of neighbouring triangles that turn by less than ``degrees``.
+
+    ``face`` names each triangle's corners by welded vertex, so that two
+    triangles share an edge when they share its ends.  Returns, per corner,
+    the corner its group is gathered on.
+    """
     length = np.linalg.norm(cross, axis=1)
     unit = cross / np.maximum(length, 1e-20)[:, None]
+    corner = np.arange(3 * len(face), dtype=np.int64).reshape(-1, 3)
 
     # Every edge of every triangle, named by its two ends in a fixed order so
     # that the same edge of two triangles is written the same way.
@@ -317,8 +354,11 @@ def auto_smooth(mesh: Mesh, degrees: float) -> Mesh:
             np.stack([slots[here, 1], slots[there, 1]], axis=1)[gentle],
         ]
     )
+    return _gathered(links, 3 * len(face))
 
-    root = _gathered(links, 3 * len(face))
+
+def _group_normals(root: np.ndarray, cross: np.ndarray) -> np.ndarray:
+    """Each corner's normal: the area-weighted mean of its group's faces."""
     weighted = np.repeat(cross, 3, axis=0)
     summed = np.stack(
         [np.bincount(root, weights=weighted[:, a], minlength=len(root)) for a in range(3)],
@@ -327,14 +367,47 @@ def auto_smooth(mesh: Mesh, degrees: float) -> Mesh:
     reach = np.linalg.norm(summed, axis=1)
     # A group whose normals cancel outright has nothing to say; the triangle's
     # own facing is the answer there, which is what it had before.
-    normals = np.where(
-        (reach > 1e-12)[:, None],
-        summed / np.maximum(reach, 1e-20)[:, None],
-        np.repeat(unit, 3, axis=0),
-    )
+    unit = weighted / np.maximum(np.linalg.norm(weighted, axis=1), 1e-20)[:, None]
+    return np.where(
+        (reach > 1e-12)[:, None], summed / np.maximum(reach, 1e-20)[:, None], unit
+    ).astype(np.float32)
+
+
+def auto_smooth(mesh: Mesh, degrees: float) -> Mesh:
+    """A copy of ``mesh`` shaded smooth across every edge gentler than ``degrees``.
+
+    The same thing 3ds Max's AutoSmooth does, and for the same reason.  A form
+    built out of flats is meant to read as flats, but a facet that comes out of
+    a lattice is only *approximately* one plane: its triangles each lean by a
+    fraction of a degree, and flat shading shows every one of those leans as a
+    separate tone.  What should read as one clean plane reads as a mosaic.
+
+    So the triangles are gathered into groups -- neighbours joined wherever the
+    turn between them is gentler than ``degrees``, which is what a smoothing
+    group is -- and each corner takes the average of the normals in its own
+    group.  Within a facet that averaging is nearly a no-op geometrically and
+    removes the mosaic entirely.  Across a real plane change the turn is too
+    sharp to join, so the two sides stay in different groups, keep different
+    normals at the shared corner, and the edge stays every bit as hard as it
+    was.  Nothing moves: this is a change of shading and not of shape.
+
+    ``mesh`` is flat -- a vertex of its own for every corner, as the planar
+    stand-ins are built; :class:`SmoothingGroups` does the same for any mesh.
+    ``degrees`` of zero joins nothing and gives back the flat shading it was
+    handed, which is how the setting is turned off.
+    """
+    if float(degrees) <= 0.0 or mesh.triangle_count == 0:
+        return mesh
+    indices = np.asarray(mesh.indices, dtype=np.int64).reshape(-1)
+    # Welded, because the flat mesh holds a separate copy of every corner and
+    # two triangles only share an edge if they share its ends.
+    _, back = np.unique(mesh.positions, axis=0, return_inverse=True)
+    face = back.ravel()[indices].reshape(-1, 3)
+    cross = _face_cross(mesh.positions, indices)
+    root = _corner_groups(face, cross, float(degrees))
     return Mesh(
         mesh.positions,
-        normals.astype(np.float32),
+        _group_normals(root, cross),
         mesh.indices,
         mesh.name,
         source_offset=mesh.source_offset,

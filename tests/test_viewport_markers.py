@@ -495,3 +495,69 @@ def test_loading_matcap_keeps_sixteen_bit_channels(tmp_path):
     pixels = load_matcap_pixels(path)
     assert pixels.dtype == np.uint16
     np.testing.assert_array_equal(pixels[0, 0], [12345, 23456, 34567, 65535])
+
+
+def _right(kind, x, y, modifiers=Qt.KeyboardModifier.ShiftModifier):
+    return QMouseEvent(
+        kind, QPointF(x, y), QPointF(x, y),
+        Qt.MouseButton.RightButton, Qt.MouseButton.RightButton, modifiers,
+    )
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_shift_right_drag_turns_every_light_as_one_undo_step(app, cancel):
+    from refview.core.settings import LightingMode, ShadingMode
+
+    state = ViewerState()
+    state.render.shading_mode = ShadingMode.PBR
+    state.render.light.mode = LightingMode.BOTH
+    viewport = Viewport(state)
+    viewport.resize(800, 600)
+    light = state.render.light
+    before = (light.azimuth_deg, light.elevation_deg, light.environment_rotation_deg)
+
+    viewport.mousePressEvent(_right(QEvent.Type.MouseButtonPress, 400, 300))
+    viewport.mouseMoveEvent(_right(QEvent.Type.MouseMove, 460, 280))
+    # Across turns the key and the map alike; up raises the key.
+    turned = light.azimuth_deg - before[0]
+    assert turned > 0.0
+    assert light.environment_rotation_deg - before[2] == pytest.approx(turned)
+    assert light.elevation_deg > before[1]
+    assert not viewport._navigation.is_dragging   # the camera did not pan
+    if cancel:
+        viewport.cancel_tools()
+        assert (light.azimuth_deg, light.elevation_deg, light.environment_rotation_deg) == before
+        assert not state.history.can_undo
+    else:
+        viewport.mouseReleaseEvent(_right(QEvent.Type.MouseButtonRelease, 460, 280))
+        assert state.history.can_undo
+        state.undo()
+        assert (light.azimuth_deg, light.elevation_deg, light.environment_rotation_deg) == before
+
+
+def test_shift_right_drag_still_pans_where_nothing_is_lit(app):
+    from refview.core.settings import ShadingMode
+
+    state = ViewerState()
+    state.render.shading_mode = ShadingMode.MATCAP
+    viewport = Viewport(state)
+    viewport.resize(800, 600)
+    viewport.mousePressEvent(_right(QEvent.Type.MouseButtonPress, 400, 300))
+    assert viewport._light_drag is None and viewport._navigation.is_dragging
+    viewport.mouseReleaseEvent(_right(QEvent.Type.MouseButtonRelease, 400, 300))
+
+
+def test_only_a_moving_gesture_in_the_view_holds_the_skin_to_its_preview(app):
+    """A button held on a panel, or a click that has not moved, leaves the samples alone."""
+    viewport = Viewport(ViewerState())
+    viewport.resize(800, 600)
+    assert not viewport._interacting()
+    viewport.mousePressEvent(event(QEvent.Type.MouseButtonPress, 400, 300,
+                                   Qt.KeyboardModifier.NoModifier))
+    assert not viewport._interacting()        # a press is a click until it travels
+    viewport.mouseMoveEvent(event(QEvent.Type.MouseMove, 440, 330,
+                                  Qt.KeyboardModifier.NoModifier))
+    assert viewport._interacting()
+    viewport.mouseReleaseEvent(event(QEvent.Type.MouseButtonRelease, 440, 330,
+                                     Qt.KeyboardModifier.NoModifier))
+    assert not viewport._interacting()

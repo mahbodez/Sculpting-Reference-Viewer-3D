@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "2.5.0"
+version = "2.6.0"
 description = "A 3D reference viewer for artists"
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
@@ -17,6 +17,9 @@ dependencies = [
     # Root certificates for the release check: a frozen app, and Python on a
     # Mac, cannot otherwise verify GitHub's certificate.
     "certifi>=2024.2.2",
+    # HDRIs come as OpenEXR, whose usual PIZ compression is not worth
+    # reimplementing; Radiance .hdr is read without it.
+    "OpenEXR>=3.3",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +32,10 @@ refview = "refview.application:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# The shaders are read at run time from beside the renderer.
+refview = ["render/glsl/*.glsl", "render/glsl/*.vert", "render/glsl/*.frag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

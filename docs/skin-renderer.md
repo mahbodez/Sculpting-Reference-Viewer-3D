@@ -150,17 +150,67 @@ and surface-projection sampling discussed in
 ## Scheduling, precision and compatibility
 
 The viewport requests another frame only while preparation/refinement is pending.
-After 200 ms without a changed image or held mouse button, a worker prepares a
-median-split BVH. Obsolete worker results are discarded. Mesh uploads, posed or
+After 200 ms without a changed image or held mouse button, a worker builds the
+BVH. Obsolete worker results are discarded. Mesh uploads, posed or
 sculpted replacements, forms and pedestal colour update the trace scene. Camera,
 material, lights, section, overlays, output dimensions and AA mode invalidate
-image history. The worker never touches OpenGL.
+image history. The worker never touches OpenGL. Each frame then runs as many
+samples as fit in 24 ms (`SAMPLE_BUDGET`), waiting on each, so a fast card
+clears the image in a handful of frames and a slow one still answers the mouse.
 
-Primary hits use rasterization; secondary queries traverse a stackless preorder
-BVH in GLSL 330. Two RGBA32F textures hold nodes and triangles, respecting the
-driver's texture-size limit and float32 integer precision. Capacity errors keep
-the preview available and appear in the viewport caption. Geometry is prepared
-only when idle refinement is enabled.
+Primary hits use rasterization; secondary queries traverse a binary BVH in
+GLSL 330 (`render/skin_bvh.py`). It is built by the binned surface-area
+heuristic, a level of the tree at a time in numpy -- about a quarter of a
+second for sixty thousand triangles, four for a million -- and each interior
+node keeps both children's boxes, four texels: the ray tests the two at once,
+walks into the nearer and keeps the farther on a short stack, so the nearest
+hit is usually found in the first leaf and everything behind it is culled.
+Shadow rays stop at the first triangle. Triangles are stored as a corner and
+two edges with a scaled degeneracy threshold; their normals and furniture
+colour sit in a third table read only for a nearest hit. All tables are laid
+out a power of two wide, so a texel is found with a shift and a mask, within
+the driver's texture-size limit and float32 integer precision. Capacity errors
+keep the preview available and appear in the viewport caption. Geometry is
+prepared only when idle refinement is enabled.
+
+A GPU inlines every call and sizes a shader's registers for its heaviest path,
+which shapes the shader as much as the tree does. Every ray of a sample goes
+through a single traversal in a loop of jobs -- the lights seen from the point,
+the backlight's exits and whether they see the light, the diffusion sample's
+entry and what it sees, the bounce and what it sees, the HDRI's cosine ray and
+its reflection -- later jobs reading what earlier ones found. And the mesh
+shader is compiled twice (`MESH_FRAGMENT`, `MESH_TRACE_FRAGMENT`) with
+`uSkinTrace` a constant in each, so neither the preview nor any other mode
+carries the tracer's register load.
+
+Random numbers are stratified: each pixel walks a two-dimensional
+low-discrepancy sequence per pair of dimensions -- R2 for the first, Kronecker
+lattices on square roots of primes for the rest -- from a random start of its
+own. A pixel's first samples cover the key's disc, the diffusion radii and the
+bounce hemisphere evenly, and the pixels stay uncorrelated, so what noise is
+left is fine grain; sixteen samples look about as clean as the 128 of white
+noise the mode used to default to, and the default is now 64.
+
+## The HDRI
+
+With the **Lighting** set to an HDRI, the preview reads the map's irradiance
+from its nine spherical-harmonic coefficients (`core/environment.py`), with the
+higher bands softened per channel by the diffusion length against the local
+curvature -- the harmonic counterpart of the pre-integrated wrap -- and takes
+the dominant light's share out where the shadow map, cast from it, says it is
+blocked. The reflection is the map's mip level whose texels are as wide as the
+lobe, `log2(width * alpha / 2 pi)`.
+
+Traced, the map is a third light. Each sample picks a direction in proportion
+to the light arriving along it, from a marginal and a conditional distribution
+over a 256-wide copy of the map, and that direction carries the backlight
+through thin places. The diffuse is a ratio estimator: the harmonic irradiance,
+scaled by the share of the light that two rays -- the importance-sampled one
+and a cosine-distributed one -- find unblocked, each weighted by the light it
+would have brought. Radiance over density through one direction a sample is a
+whole panorama squeezed through a keyhole and is grainy for a long time; the
+ratio's noise is only the visibility's. A bounce that misses sees the studio
+sky and not the map, which was already counted as a light.
 
 Two RGBA32F histories alternate; a separate float frame supplies the next sample.
 Samples are averaged in linear radiance with an online mean. Skin uses an
@@ -182,15 +232,19 @@ is persisted by the existing dataclass serializer.
 - `core/body_regions.py`: the regions, their profiles, the bones and bands that
   place a vertex, and the body map the shader samples.
 - `render/skin_detail.py`: the relief volume and the pre-integrated diffusion table.
-- `render/skin_shader.py`: BRDF, relief, marks and regions, diffusion, ray
-  queries, accumulation, display.
+- `render/glsl/skin.glsl`: BRDF, relief, marks and regions, diffusion, ray
+  queries and the job loop; `skin_accumulate.frag` and `skin_present.frag`:
+  accumulation and display. `render/skin_shader.py` loads them.
+- `render/glsl/environment.glsl` and `render/environment.py`: the HDRI's
+  lookups, sampling and textures, and the light rig; `core/environment.py`:
+  reading maps and preparing them.
 - `render/skin_bvh.py`: CPU acceleration layout and texture packing.
 - `render/skin_refinement.py`: idle state, worker lifetime, skin tables, history targets.
 - `render/mesh_renderer.py`: drawn geometry and uniform integration.
 - `ui/panels/shading_panel.py`: artist controls; `ui/viewport.py`: repaint scheduling.
 
 Run `python -m pytest tests/test_skin.py tests/test_skin_gl.py
-tests/test_body_regions.py` in the `refview` environment. GL tests verify actual compiled ray queries and image history;
+tests/test_body_regions.py tests/test_environment.py` in the `refview` environment. GL tests verify actual compiled ray queries and image history;
 they skip only when the host cannot create an OpenGL context. The supplied
 `resources/models/Pose_02.obj` is useful for visual testing of concavities,
 ear/finger backlighting, and cast shadows from the raised arm.

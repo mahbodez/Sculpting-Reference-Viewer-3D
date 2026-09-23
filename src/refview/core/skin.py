@@ -45,7 +45,7 @@ class SkinSettings:
     exposure: float = 1.0
     indirect: float = 1.0
     progressive: bool = True
-    samples: int = 128
+    samples: int = 64
     resolution: float = 0.75
 
     def bounded(self) -> "SkinSettings":

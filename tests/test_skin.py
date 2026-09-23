@@ -9,7 +9,7 @@ from refview.core.mesh import Mesh
 from refview.core.session import Session
 from refview.core.settings import ShadingMode
 from refview.core.skin import SKIN_PRESETS, SkinSettings
-from refview.render.skin_bvh import build_scene, texture_table
+from refview.render.skin_bvh import build_scene, table_width, texture_table
 from refview.render.skin_detail import (
     LUT_LOG_MIN,
     LUT_LOG_SPAN,
@@ -159,41 +159,84 @@ def test_worker_failure_leaves_a_preview_and_stops_repainting(monkeypatch):
     assert "geometry allocation failed" in refinement.status
 
 
-def test_bvh_covers_all_triangles_and_escape_links_skip_subtrees():
-    rng = np.random.default_rng(12)
-    positions = rng.normal(size=(90, 3)).astype(np.float32)
-    mesh = Mesh(positions, np.tile([0, 1, 0], (90, 1)), np.arange(90).reshape(-1, 3))
-    scene = build_scene([(mesh, 0, (0.7, 0.5, 0.4))])
-    nodes = scene.nodes
-    assert int(nodes[0, 0, 3]) == len(nodes)
-    seen = []
-
-    def visit(index):
+def _leaves(scene):
+    """Walk the tree: every leaf's triangles, with the box its parent keeps for it."""
+    nodes, triangles = scene.nodes, scene.triangles
+    found = []
+    stack = [0]
+    visited = set()
+    while stack:
+        index = stack.pop()
+        assert index not in visited   # a tree, not a graph
+        visited.add(index)
         node = nodes[index]
-        count, start = int(node[2, 3]), int(node[1, 3])
-        escape = int(node[0, 3])
-        assert index < escape <= len(nodes)
-        if count:
-            corners = scene.triangles[start:start+count, :3, :3]
-            assert np.all(corners >= node[0, :3])
-            assert np.all(corners <= node[1, :3])
-            assert escape == index + 1
-            seen.extend(range(start, start+count))
-        else:
-            left = index + 1
-            right = int(nodes[left, 0, 3])
-            visit(left)
-            visit(right)
-            assert int(nodes[right, 0, 3]) == escape
-    visit(0)
-    assert sorted(seen) == list(range(mesh.triangle_count))
+        for low, high, ref in ((node[0], node[1], node[0, 3]), (node[2], node[3], node[1, 3])):
+            ref = int(ref)
+            if ref >= 0:
+                child = nodes[ref]
+                # The child's own two boxes sit inside the box kept for it.
+                for inner_low, inner_high in ((child[0], child[1]), (child[2], child[3])):
+                    if inner_low[0] <= inner_high[0]:
+                        assert np.all(inner_low[:3] >= low[:3] - 1e-6)
+                        assert np.all(inner_high[:3] <= high[:3] + 1e-6)
+                stack.append(ref)
+            elif low[0] <= high[0]:
+                first = -ref - 1
+                run = [first]
+                while triangles[run[-1], 0, 3] < 2.0:
+                    run.append(run[-1] + 1)
+                corners = triangles[run, 0, :3][:, None] + np.stack(
+                    [np.zeros((len(run), 3)), triangles[run, 1, :3], triangles[run, 2, :3]], 1
+                )
+                assert np.all(corners >= low[:3] - 1e-5)
+                assert np.all(corners <= high[:3] + 1e-5)
+                found.append(run)
+    assert visited == set(range(len(nodes)))
+    return found
+
+
+def test_bvh_covers_every_triangle_once_inside_its_boxes():
+    rng = np.random.default_rng(12)
+    positions = rng.normal(size=(900, 3)).astype(np.float32)
+    mesh = Mesh(positions, np.tile([0, 1, 0], (900, 1)), np.arange(900).reshape(-1, 3))
+    scene = build_scene([(mesh, 0, (0.7, 0.5, 0.4))])
+    runs = _leaves(scene)
+    seen = sorted(index for run in runs for index in run)
+    assert seen == list(range(mesh.triangle_count))
+    assert max(len(run) for run in runs) <= 16
     assert sorted(scene.triangles[:, 0, 0]) == sorted(mesh.triangles[:, 0, 0])
+    # The corners come back out of the edge form the table stores them in.
+    rebuilt = scene.triangles[:, 0, :3] + scene.triangles[:, 1, :3]
+    assert {tuple(np.round(row, 4)) for row in rebuilt} <= {
+        tuple(np.round(row, 4)) for row in mesh.triangles.reshape(-1, 3)
+    }
+
+
+def test_bvh_of_one_leaf_still_has_a_root():
+    mesh = Mesh(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], np.float32),
+                np.tile([0, 0, 1], (3, 1)), [[0, 1, 2]])
+    scene = build_scene([(mesh, 1, (0.2, 0.3, 0.4))])
+    assert len(scene.nodes) == 1
+    assert _leaves(scene) == [[0]]
+    assert scene.triangles[0, 0, 3] == 1.0 + 2.0   # furniture, and the last of its leaf
+    np.testing.assert_allclose(scene.attributes[0, :, 3], (0.2, 0.3, 0.4))
+
+
+def test_bvh_splits_coincident_triangles_by_rank():
+    """Centres all in one place cannot be binned; the build must still end in small leaves."""
+    corner = np.tile(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], np.float32), (40, 1))
+    mesh = Mesh(corner, np.tile([0, 0, 1], (120, 1)), np.arange(120).reshape(-1, 3))
+    runs = _leaves(build_scene([(mesh, 0, (0.7, 0.5, 0.4))]))
+    assert sorted(index for run in runs for index in run) == list(range(40))
+    assert max(len(run) for run in runs) <= 16
 
 
 def test_packing_and_empty_scene():
     scene = build_scene([])
     assert scene.nodes.size == scene.triangles.size == 0
-    assert texture_table(scene.nodes, 8).shape == (1, 1, 4)
+    # Always a power of two wide, so the shader finds a texel with a shift.
+    assert table_width(8) == 8 and table_width(3000) == 2048 and table_width(4096) == 2048
+    assert texture_table(scene.nodes, 8).shape == (1, 8, 4)
     values = np.arange(15*4, dtype=np.float32).reshape(15, 4)
     table = texture_table(values, 4)
     assert table.shape == (4, 4, 4)
@@ -283,3 +326,33 @@ def test_marks_and_body_regions_write_to_the_material_and_presets_leave_them_alo
     assert panel._body_box.isHidden()
     panel.close()
     app.processEvents()
+
+
+def test_refinement_restarts_only_for_what_the_traced_image_shows():
+    from refview.core.settings import RenderSettings
+    from refview.render.mesh_renderer import traced_settings_key
+
+    settings = RenderSettings(shading_mode=ShadingMode.HUMAN_SKIN)
+    before = traced_settings_key(settings)
+    # Controls of other modes, and of things that are off, leave it alone.
+    settings.matcap.contrast = 2.0
+    settings.matcap_path = "elsewhere.png"
+    settings.contour.density = 90.0
+    settings.surface.roughness = 0.9
+    settings.quality.shadow_strength = 0.1
+    settings.planes.detail = 12.0
+    settings.wireframe_color = (1.0, 0.0, 0.0)
+    assert traced_settings_key(settings) == before
+    # What the picture shows restarts it.
+    for change in (
+        lambda s: setattr(s.skin, "roughness", 0.7),
+        lambda s: setattr(s.light, "azimuth_deg", 10.0),
+        lambda s: setattr(s, "background_top", (1.0, 1.0, 1.0)),
+        lambda s: setattr(s.planes, "enabled", True),
+        lambda s: setattr(s, "show_wireframe", True),
+        lambda s: setattr(s.section, "enabled", True),
+    ):
+        changed = replace(settings, skin=replace(settings.skin), light=replace(settings.light),
+                          planes=replace(settings.planes), section=replace(settings.section))
+        change(changed)
+        assert traced_settings_key(changed) != before

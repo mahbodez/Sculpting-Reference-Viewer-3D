@@ -37,7 +37,6 @@ from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QSurfaceFormat
 from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QApplication
 
 from ..core.annotation import Stroke
 from ..core.armature import ArmatureNode, Buried
@@ -55,6 +54,7 @@ from ..core.grid import build_grid
 from ..core.history import ANNOTATIONS, ARMATURE, FORMS, MEASUREMENTS, SKELETON
 from ..core.landmarks import landmark_title
 from ..core.measurement import Measurement
+from ..core.mesh import SmoothingGroups, concatenated
 from ..core.pedestal import build_pedestal
 from ..core.plane_film import film_key, stage_counts
 from ..core.plane_film import shaded as film_shaded
@@ -116,6 +116,8 @@ HIGHLIGHT_HOLD = 0.7
 HIGHLIGHT_FADE = 0.9
 #: The line's colour: the amber the overlay marks a chosen landmark in.
 HIGHLIGHT_COLOR = (1.0, 0.77, 0.36)
+#: What turning the lights with Shift and the right button moves.
+_LIGHT_ANGLES = ("azimuth_deg", "elevation_deg", "environment_rotation_deg")
 
 
 class Viewport(QOpenGLWidget):
@@ -175,6 +177,14 @@ class Viewport(QOpenGLWidget):
         self.frameSwapped.connect(self._frame_presented)
         self._press_position: tuple[float, float] | None = None
         self._travel = 0.0
+        #: Turning the lights with Shift and the right button: where the
+        #: drag began, and the light's angles then, which are what the undo
+        #: step and Esc go back to.
+        self._light_drag: tuple[float, float, dict[str, float]] | None = None
+        #: AutoSmooth's groups per object, as ``[key, groups, serial, shaded]``,
+        #: and the setting the model was last uploaded under.
+        self._smoothing: dict[int, list] = {}
+        self._smooth_key: tuple = (False, None)
         self._grab_previous: tuple[Measurement, str, tuple] | None = None
         self._node_previous: tuple[ArmatureNode, str, object] | None = None
         #: A landmark drag in progress, as ``(armature index, key, what the
@@ -254,6 +264,7 @@ class Viewport(QOpenGLWidget):
 
         state.mesh_changed.connect(self._upload_mesh)
         state.matcap_changed.connect(self._upload_matcap)
+        state.environment_changed.connect(self._upload_environment)
         state.annotations_changed.connect(self._upload_strokes)
         state.render_changed.connect(self._sync_scene)
         state.armature_changed.connect(self._armature_moved)
@@ -283,6 +294,7 @@ class Viewport(QOpenGLWidget):
         self._ready = True
         self._upload_mesh()
         self._upload_matcap()
+        self._upload_environment()
         self._upload_strokes()
         self._upload_forms()
         self._sync_scene()
@@ -323,12 +335,16 @@ class Viewport(QOpenGLWidget):
             ratio,
             self._antialiasing,
             refine=True,
-            interactive=QApplication.mouseButtons() != Qt.MouseButton.NoButton,
+            interactive=self._interacting(),
         )
         painter.endNativePainting()
         if self._state.render.shading_mode is ShadingMode.HUMAN_SKIN:
             self._overlay.draw_caption(
                 painter, self._renderer.skin.status, self.width(), self.height(), "bottom-left"
+            )
+        if self._light_drag is not None:
+            self._overlay.draw_caption(
+                painter, self._light_caption(), self.width(), self.height(), "top-left"
             )
         if self._renderer.skin.needs_frame and not self._exporting:
             self._skin_timer.start(16 if self._renderer.skin.tracing else 80)
@@ -361,8 +377,65 @@ class Viewport(QOpenGLWidget):
             # orbit smooth; one more frame after the throttle puts them right.
             QTimer.singleShot(int(self._overlay.THROTTLE * 1000) + 20, self.update)
 
+    def _interacting(self) -> bool:
+        """Whether a gesture in the view is moving something right now.
+
+        What holds the skin to its fast preview.  A press that has not yet
+        travelled is a click, and a button held anywhere else in the window
+        -- on a panel, a tab, a menu -- is none of the view's business: the
+        refinement only starts over when what it draws changes, which the
+        renderer works out for itself.
+        """
+        return self._press_position is not None and self._travel > self.CLICK_TOLERANCE
+
     def _parts(self) -> list:
-        return [(mesh, opacity) for _, mesh, opacity in self._state.mesh_parts]
+        """What the renderer draws: each object as it stands, AutoSmoothed if asked."""
+        render = self._state.render
+        if not render.auto_smooth:
+            self._smoothing.clear()
+            return [(mesh, opacity) for _, mesh, opacity in self._state.mesh_parts]
+        present = {id(obj) for obj, _, _ in self._state.mesh_parts}
+        for gone in set(self._smoothing) - present:
+            del self._smoothing[gone]
+        return [
+            (self._smoothed(obj, mesh, render.auto_smooth_deg), opacity)
+            for obj, mesh, opacity in self._state.mesh_parts
+        ]
+
+    def _smoothed(self, obj, mesh, degrees: float):
+        """``mesh`` shaded by the object's smoothing groups, found once and kept.
+
+        The groups are read when the object arrives or the angle moves, and
+        only the normals are summed again after that -- so a moved or posed
+        object stays smoothed through every frame of the drag.
+        """
+        rest = getattr(obj, "rest_mesh", None)
+        key = (rest.serial if rest is not None else mesh.serial, float(degrees))
+        held = self._smoothing.get(id(obj))
+        if held is None or held[0] != key or not held[1].fits(mesh):
+            held = [key, SmoothingGroups(mesh, degrees), None, None]
+            self._smoothing[id(obj)] = held
+        if held[2] != mesh.serial:
+            held[2], held[3] = mesh.serial, held[1].shade(mesh)
+        return held[3]
+
+    def _smoothing_key(self) -> tuple:
+        render = self._state.render
+        return (render.auto_smooth, render.auto_smooth_deg if render.auto_smooth else None)
+
+    def _scene_mesh(self, parts: list):
+        """The whole scene as one mesh, as the planes and the skin tracer read it.
+
+        The state's own when the objects are drawn as they came; joined from
+        the smoothed parts otherwise, so the tracer's normals are the ones
+        that are drawn.
+        """
+        if not self._state.render.auto_smooth:
+            return self._state.mesh
+        meshes = [mesh for mesh, _ in parts]
+        if not meshes:
+            return self._state.mesh
+        return meshes[0] if len(meshes) == 1 else concatenated(meshes)
 
     def _sync_body(self) -> None:
         """Tell the renderer what the skin's body map is made from now."""
@@ -371,9 +444,11 @@ class Viewport(QOpenGLWidget):
     def _upload_mesh(self) -> None:
         if not self._ready:
             return
+        parts = self._parts()
         self.makeCurrent()
-        self._renderer.set_mesh(self._state.mesh, self._parts())
+        self._renderer.set_mesh(self._scene_mesh(parts), parts)
         self.doneCurrent()
+        self._smooth_key = self._smoothing_key()
         self._sync_body()
         self._pedestal_key = self._section_key = self._sculpt_key = None
         # A fresh cache rather than a cleared one: a rebuild still running
@@ -393,8 +468,9 @@ class Viewport(QOpenGLWidget):
         """
         if not self._ready:
             return
+        parts = self._parts()
         self.makeCurrent()
-        self._renderer.set_mesh(self._state.mesh, self._parts())
+        self._renderer.set_mesh(self._scene_mesh(parts), parts)
         self.doneCurrent()
         self._sync_body()
         self._stale_buried()
@@ -417,6 +493,14 @@ class Viewport(QOpenGLWidget):
         self.doneCurrent()
         self.update()
 
+    def _upload_environment(self) -> None:
+        if not self._ready:
+            return
+        self.makeCurrent()
+        self._renderer.set_environment(self._state.environment)
+        self.doneCurrent()
+        self.update()
+
     def _upload_strokes(self) -> None:
         if not self._ready:
             return
@@ -434,6 +518,11 @@ class Viewport(QOpenGLWidget):
         """
         if self._ready:
             render = self._state.render
+            if self._smoothing_key() != self._smooth_key:
+                # AutoSmooth turned on or off, or its angle moved: the model
+                # goes up again shaded the new way, and comes back here.
+                self._upload_mesh()
+                return
             self._sync_body()
             pedestal_key = (id(self._state.mesh), astuple(render.pedestal))
             if pedestal_key != self._pedestal_key:
@@ -1010,6 +1099,12 @@ class Viewport(QOpenGLWidget):
             self._object_held = None
             self.object_tool.end()
             self._state.restore_objects(before)
+        if self._light_drag is not None:
+            _, _, before = self._light_drag
+            self._light_drag = None
+            for name, value in before.items():
+                setattr(self._state.render.light, name, value)
+            self._state.notify_render()
         self._depth_drag = None
         self._press_position = None
         self._join_from = None
@@ -1112,6 +1207,19 @@ class Viewport(QOpenGLWidget):
         self._press_position = (x, y)
         self._travel = 0.0
 
+        if (
+            event.button() == Qt.MouseButton.RightButton
+            and event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+            and self._state.render.shading_mode.uses_lighting
+        ):
+            # Shift and the right button turn the lights, the HDRI with them.
+            light = self._state.render.light
+            self._light_drag = (x, y, {
+                name: getattr(light, name) for name in _LIGHT_ANGLES
+            })
+            self.update()
+            return
+
         if event.button() == Qt.MouseButton.LeftButton and not self._orbit_override(event):
             depth = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             if self.object_tool.active and self._begin_object_drag(x, y):
@@ -1160,6 +1268,9 @@ class Viewport(QOpenGLWidget):
         if self._press_position is not None:
             self._travel = max(self._travel, abs(x - self._press_position[0])
                                + abs(y - self._press_position[1]))
+        if self._light_drag is not None:
+            self._turn_lights(x, y)
+            return
         if self._object_previous is not None:
             self._move_grabbed_object(x, y, self._snap_degrees(event))
             return
@@ -1205,6 +1316,14 @@ class Viewport(QOpenGLWidget):
             return
         was_click = self._travel <= self.CLICK_TOLERANCE
         position = event.position()
+
+        if self._light_drag is not None:
+            if event.button() == Qt.MouseButton.RightButton:
+                self._commit_light_drag()
+                self._press_position = None
+                self._travel = 0.0
+                self.update()
+            return
 
         if event.button() != Qt.MouseButton.LeftButton and (
             self._depth_drag is not None or self._section_gizmo.drag is not None
@@ -1425,6 +1544,43 @@ class Viewport(QOpenGLWidget):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _turn_lights(self, x: float, y: float) -> None:
+        """Turn the lights by how far the drag has come: across about the vertical, up in elevation.
+
+        Measured from where the drag began rather than step by step, so the
+        light comes back to where it was when the mouse does.  The rate is
+        the orbit's, and follows its preference, so the lights turn under
+        the hand the way the model does.
+        """
+        start_x, start_y, before = self._light_drag
+        light = self._state.render.light
+        for name, value in before.items():
+            setattr(light, name, value)
+        rate = NavigationController.ORBIT_DEGREES_PER_PIXEL * self._navigation.orbit_speed
+        light.turned((x - start_x) * rate, (start_y - y) * rate)
+        self._state.notify_render()
+
+    def _commit_light_drag(self) -> None:
+        """Record the turn as one undo step."""
+        _, _, before = self._light_drag
+        self._light_drag = None
+        light = self._state.render.light
+        after = {name: getattr(light, name) for name in _LIGHT_ANGLES}
+        if after != before:
+            self._state.do(
+                SetAttributes(light, after, text="Turn lights", channel="render", previous=before),
+                apply=False,
+            )
+
+    def _light_caption(self) -> str:
+        light = self._state.render.light
+        parts = []
+        if light.mode.uses_studio:
+            parts.append(f"Key {light.azimuth_deg:.0f}° · {light.elevation_deg:.0f}° up")
+        if light.mode.uses_environment:
+            parts.append(f"HDRI {light.environment_rotation_deg:.0f}°")
+        return "  ·  ".join(parts)
 
     @staticmethod
     def _orbit_override(event) -> bool:

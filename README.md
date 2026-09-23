@@ -28,6 +28,18 @@ Built with PySide6 and OpenGL 3.3.
   normals view — each with key/fill/ambient lights and a full surface material
   (diffuse, specular colour and level, shininess, metalness, roughness,
   reflection colour).
+- **HDRI lighting.** Every lit mode — Lambert, Phong, Blinn-Phong, PBR, High
+  Quality and Human Skin — can be lit by an HDRI instead of the studio rig,
+  or by both: **Lighting** in the Light group. The map lights the diffuse from
+  its spherical harmonics and puts its own reflection in the highlights,
+  blurred to the roughness of the surface; with the map as the only light,
+  the shadow map is cast from its brightest direction. Pick one of the maps
+  in `resources/hdris`, **Load HDRI...** an `.hdr` or `.exr` of your own, or
+  drop one on the window. **Strength** is scaled so that one lights the model
+  about as brightly as the studio key, whatever exposure the map was shot at;
+  **Rotation** turns it; the map can be shown, blurred, behind the model.
+  `Shift` + right-drag in the view turns every light at once — the key and
+  the fill across and up, the HDRI with them — as one undo step.
 - A **Contour** shading mode that cuts the form with a stack of evenly spaced
   planes and draws the cuts, the way a contour map reads land: the lines crowd
   where the surface turns across the planes and spread where it runs along
@@ -40,6 +52,11 @@ Built with PySide6 and OpenGL 3.3.
   made, and an optional FPS counter in whichever corner you want it. All under
   **Settings > Preferences > Viewport**.
 - Flat (faceted) shading and a wireframe overlay for reading topology.
+- **AutoSmooth**, under the shading mode: the model shaded smooth across
+  gentle edges and hard across ones sharper than the angle, as 3ds Max's
+  AutoSmooth does — for a scan or a hard-surface model whose normals were
+  lost, or averaged over its creases. The smoothing groups are worked out
+  once per object, so a moved or posed object stays smoothed through the drag.
 - A **Ghost** mode with a solidity slider, which draws the model see-through so
   you can read what is inside it: the far side of a form, the cut of a
   cross-section, the armature standing in it, or the clay of the forms.
@@ -79,6 +96,7 @@ Built with PySide6 and OpenGL 3.3.
 | Alt + left drag | Orbit even while a tool is armed |
 | Alt + click | Make the object under the cursor active, whichever tool is armed |
 | Shift + left drag | Orbit in whole steps of the snap angle (15° by default) |
+| Shift + right drag | Turn the lights, the HDRI with them (lit modes); `Esc` puts them back |
 | `F` | Frame the object |
 | `P` | Toggle perspective / orthographic |
 | `1` … `6` | Front, back, left, right, top, bottom |
@@ -794,6 +812,13 @@ Changes to the camera, lights, material, clipping, geometry, or viewport size st
 a fresh image. Light angular radius controls traced shadow softness. Refinement
 resolution trades detail for speed; use **1.0 × viewport** for a final reference.
 
+Refinement is close to real time: a frame runs as many samples as fit in a
+couple of dozen milliseconds, each sample is a few milliseconds on a current
+GPU, and the samples are stratified, so sixty-four of them — the default —
+look as clean as a hundred and twenty-eight used to, and a figure clears in
+about half a second. Lit by an HDRI, the traced skin samples the map where
+its light is, and shadows, diffuses and backlights with the whole room.
+
 Scattering depth is a fraction of the model's bounding radius because OBJ has no
 physical units. A head and a full figure need different values. Closed meshes give
 the most dependable transmission; holes and intersecting shells can produce light
@@ -890,6 +915,12 @@ into or copying out into a panel of your own. Right-click the sphere to save
 the matcap as an image, graded as you have it or as it came, so a grading
 arrived at by hand can be kept and used anywhere else.
 
+A matcap loaded from outside the matcap folder — with **Load Matcap...**,
+dropped on the window, opened from the File menu or brought in by a session —
+joins the gallery, after the built-in, and stays there from then on.
+Right-click one of those to take it out of the gallery again; the file is
+left where it is.
+
 **Preferences**
 
 `Ctrl+,`, or the Settings menu for one group of them. What belongs to the piece
@@ -967,9 +998,10 @@ publishes the three archives to a GitHub release automatically.
 - PySide6 is pinned below 6.8: newer Qt builds need a more recent MSVC runtime
   than many Windows machines have installed, and fail with
   `DLL load failed while importing QtCore`.
-- `numpy`, `PySide6` and `PyOpenGL` are installed with pip rather than conda so
-  each brings its own runtime libraries; mixing conda-forge numpy with pip Qt
-  wheels can produce a broken BLAS on Windows.
+- `numpy`, `PySide6`, `PyOpenGL` and `OpenEXR` are installed with pip rather
+  than conda so each brings its own runtime libraries; mixing conda-forge
+  numpy with pip Qt wheels can produce a broken BLAS on Windows. `OpenEXR`
+  reads `.exr` HDRIs; `.hdr` files are read without it.
 
 ---
 
@@ -978,6 +1010,7 @@ publishes the three archives to a GitHub release automatically.
 ```
 resources/
   matcaps/   any PNG/JPG dropped here appears in the Matcap gallery
+  hdris/     any .hdr/.exr here is offered in the Light group's HDRI list
   models/    the default folder the file dialog opens in
 ```
 
@@ -1006,8 +1039,12 @@ src/refview/
              they are kept in, the body regions the skin's marks fall by,
              the progress a long job reports through, bookmarks, undo
              commands, settings, session persistence
-  render/    OpenGL: shader programs, matcap textures, offscreen targets, the
-             scene and stroke renderers
+  render/    OpenGL: shader programs, matcap and HDRI textures, offscreen
+             targets, the skin tracer's tables, the scene and stroke renderers
+  render/glsl/
+             the shaders themselves, a file a stage, with the pieces several
+             share -- the cross-section, the HDRI, the skin -- pulled in by
+             #include
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
              armature, forms, pose and transform tools, the 2D overlay, the
              observable document, panels, the docks they live in, the tasks

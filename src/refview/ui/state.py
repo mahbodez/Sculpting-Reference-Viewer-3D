@@ -29,6 +29,7 @@ from ..core.autoskin import AutoSkin
 from ..core.body_regions import REGIONS, BodySource, RegionSource, role_bones
 from ..core.bookmark import BookmarkStore
 from ..core.camera import Camera
+from ..core.environment import EnvironmentMap, load_environment
 from ..core.forms import FormSettings, FormStore
 from ..core.history import (
     ANNOTATIONS,
@@ -60,8 +61,9 @@ from ..core.scene import (
     split_object,
 )
 from ..core.session import Session, sidecar_path
-from ..core.settings import NavigationSettings, RenderSettings
+from ..core.settings import LightingMode, NavigationSettings, RenderSettings
 from ..core.skeleton import Rig, Skeleton, SkeletonSettings, SkeletonStore, skinned_mesh
+from ..paths import available_environments
 from ..render.texture import MatcapLoadError, load_matcap_pixels
 from .tasks import TaskRunner
 
@@ -206,6 +208,8 @@ class ViewerState(QObject):
 
     mesh_changed = Signal()
     matcap_changed = Signal()
+    #: A different HDRI is ready to light with, or none is.
+    environment_changed = Signal()
     render_changed = Signal()
     camera_changed = Signal()
     measurements_changed = Signal()
@@ -272,6 +276,10 @@ class ViewerState(QObject):
         #: renderer draws, so that one object can be ghosted beside another.
         self.mesh_parts: list[tuple[SceneObject, Mesh, float]] = []
         self.matcap_pixels: np.ndarray | None = None
+        #: The HDRI read and prepared, once one has been asked for; and the
+        #: path of the one being read now, if one is.
+        self.environment: EnvironmentMap | None = None
+        self._environment_loading: str | None = None
         #: Whether the drawn mesh was last announced through
         #: :attr:`mesh_deformed`, and so still owes a :attr:`mesh_changed`.
         self._mesh_live = False
@@ -1254,6 +1262,75 @@ class ViewerState(QObject):
             self.render.matcap_path = str(path)
         self.matcap_changed.emit()
 
+    def load_environment(self, path: str | Path, *, light: bool = False) -> None:
+        """Have the HDRI at ``path`` read off the thread, and light with it when it lands.
+
+        The settings name it at once, so the panel shows what was asked for;
+        the old map stays up until the new one is ready.  ``light`` also
+        turns the lighting over to the HDRI if the studio rig alone had it,
+        which is what dropping a map on the window means.
+        """
+        path = Path(path)
+        light_settings = self.render.light
+        light_settings.environment_path = str(path)
+        if light and not light_settings.mode.uses_environment:
+            light_settings.mode = LightingMode.ENVIRONMENT
+        self.notify_render()
+        if self.environment is not None and self.environment.path == path:
+            return
+        if self._environment_loading == str(path):
+            return
+        self._environment_loading = str(path)
+
+        def failed(error: BaseException) -> None:
+            if self._environment_loading == str(path):
+                self._environment_loading = None
+            self.status_message.emit(f"HDRI unavailable: {error}")
+
+        self.tasks.run(
+            f"Reading {path.name}",
+            lambda _progress: load_environment(path),
+            done=self._environment_loaded,
+            failed=failed,
+            blocking=False,
+            cancellable=False,
+        )
+
+    def _environment_loaded(self, environment: EnvironmentMap) -> None:
+        # A map asked for after this one was is the one wanted now.
+        if str(environment.path) != self.render.light.environment_path:
+            return
+        self._environment_loading = None
+        self.set_environment(environment)
+
+    def set_environment(self, environment: EnvironmentMap | None) -> None:
+        """Light with a map already read -- or with none."""
+        self.environment = environment
+        if environment is not None:
+            self.render.light.environment_path = str(environment.path)
+        self.environment_changed.emit()
+        self.notify_render()
+
+    def ensure_environment(self) -> None:
+        """Read the HDRI the settings name, if they light with one that is not here yet.
+
+        With none named, the first bundled map is used, so turning the
+        lighting over to an HDRI shows something at once.
+        """
+        light = self.render.light
+        if not light.mode.uses_environment:
+            return
+        wanted = light.environment_path
+        if wanted is None:
+            bundled = available_environments()
+            if not bundled:
+                self.status_message.emit("No HDRI to light with: load one in the Light group")
+                return
+            wanted = str(bundled[0])
+        if self.environment is not None and str(self.environment.path) == wanted:
+            return
+        self.load_environment(wanted)
+
     def frame_object(self) -> None:
         """Fit the scene in the view without changing the direction."""
         if self.mesh is not None:
@@ -1325,6 +1402,9 @@ class ViewerState(QObject):
             self.render.matcap_path = None
             self.load_matcap(None)
             self.status_message.emit(f"Matcap unavailable, using the built-in one ({error})")
+        # The HDRI the session was lit with, read off the thread; a missing
+        # one is said in the status bar and costs nothing else.
+        self.ensure_environment()
         self._rebuild()
         self.notify_objects()
         self.notify_render()

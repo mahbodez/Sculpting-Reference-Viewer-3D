@@ -354,3 +354,97 @@ def test_a_right_click_offers_to_save(app, monkeypatch):
     menu.actions()[1].trigger()
     menu.actions()[0].trigger()
     assert asked == [False, True]
+
+
+# -- the gallery keeps what was loaded -----------------------------------
+
+
+@pytest.fixture
+def gallery_settings(app):
+    """The gallery's list on a settings file of the tests' own, empty to begin with."""
+    from PySide6.QtCore import QSettings
+
+    from refview.ui.panels.matcap_panel import ADDED_MATCAPS_KEY
+
+    organization = app.organizationName()
+    app.setOrganizationName("refview-tests")
+    QSettings().remove(ADDED_MATCAPS_KEY)
+    yield
+    QSettings().remove(ADDED_MATCAPS_KEY)
+    app.setOrganizationName(organization)
+
+
+def _matcap_file(folder, name):
+    from PySide6.QtGui import QColor, QImage
+
+    image = QImage(16, 16, QImage.Format.Format_RGB32)
+    image.fill(QColor(120, 90, 60))
+    path = folder / name
+    image.save(str(path))
+    return path
+
+
+def _listed(panel):
+    return [
+        panel._gallery.item(index).data(Qt.ItemDataRole.UserRole)
+        for index in range(panel._gallery.count())
+    ]
+
+
+def test_a_matcap_loaded_from_elsewhere_joins_the_gallery(app, gallery_settings, tmp_path):
+    state = ViewerState()
+    panel = MatcapPanel(state)
+    before = _listed(panel)
+    outside = _matcap_file(tmp_path, "clay_from_elsewhere.png")
+    # However it arrives -- here straight through the state, as a drop or a
+    # session does -- it is listed, and selected, second only to the built-in.
+    state.load_matcap(outside)
+    listed = _listed(panel)
+    assert listed[1] == str(outside) and len(listed) == len(before) + 1
+    assert panel._gallery.currentItem().data(Qt.ItemDataRole.UserRole) == str(outside)
+    # A new panel -- the next run -- still has it.
+    again = MatcapPanel(ViewerState())
+    assert str(outside) in _listed(again)
+    # Loading it a second time does not list it twice.
+    state.load_matcap(outside)
+    assert _listed(panel).count(str(outside)) == 1
+
+
+def test_a_matcap_from_the_folder_is_not_added_twice(app, gallery_settings):
+    from refview.paths import available_matcaps
+
+    folder = available_matcaps()
+    if not folder:
+        pytest.skip("No bundled matcaps")
+    state = ViewerState()
+    panel = MatcapPanel(state)
+    before = _listed(panel)
+    state.load_matcap(folder[0])
+    assert _listed(panel) == before
+
+
+def test_an_added_matcap_can_be_taken_out_of_the_gallery(app, gallery_settings, tmp_path):
+    from refview.ui.panels.matcap_panel import added_matcaps, forget_matcap, remember_matcap
+
+    first = _matcap_file(tmp_path, "one.png")
+    second = _matcap_file(tmp_path, "two.png")
+    remember_matcap(first)
+    remember_matcap(second)
+    assert added_matcaps([]) == [second, first]     # newest first
+    forget_matcap(second)
+    assert added_matcaps([]) == [first]
+    # A file that has gone is left out, not forgotten: the drive may come back.
+    first.unlink()
+    assert added_matcaps([]) == []
+    first = _matcap_file(tmp_path, "one.png")
+    assert added_matcaps([]) == [first]
+
+
+def test_thumbnails_are_shared_between_galleries(app, gallery_settings, tmp_path):
+    from refview.ui.panels import matcap_panel
+
+    outside = _matcap_file(tmp_path, "shared.png")
+    state = ViewerState()
+    MatcapPanel(state)
+    state.load_matcap(outside)
+    assert any(key[0] == str(outside) for key in matcap_panel._THUMBNAIL_CACHE)

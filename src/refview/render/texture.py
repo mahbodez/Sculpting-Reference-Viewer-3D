@@ -116,15 +116,27 @@ class DataTexture:
 
 
 class Texture2D:
-    """An RGBA16F 2D texture with clamped edges and mipmapped minification."""
+    """An RGBA16F 2D texture with clamped edges and mipmapped minification.
 
-    def __init__(self) -> None:
+    ``wrap`` repeats it across instead, which a panorama wants: its left edge
+    and its right are the same meridian.
+    """
+
+    def __init__(self, wrap: bool = False) -> None:
         self._id = int(GL.glGenTextures(1))
+        self._wrap = bool(wrap)
+        #: How many mip levels the last upload made, so a shader can be told
+        #: how far it may blur.
+        self.levels = 1
+        self.width = 1
         self._configure()
 
     def _configure(self) -> None:
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._id)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+        GL.glTexParameteri(
+            GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S,
+            GL.GL_REPEAT if self._wrap else GL.GL_CLAMP_TO_EDGE,
+        )
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR_MIPMAP_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
@@ -149,6 +161,8 @@ class Texture2D:
         )
         GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+        self.levels = int(np.floor(np.log2(max(width, height, 1)))) + 1
+        self.width = int(width)
 
     def bind(self, unit: int = 0) -> None:
         GL.glActiveTexture(GL.GL_TEXTURE0 + unit)

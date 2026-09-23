@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QPushButton
 
 from ...core.body_regions import (
     PROFILE_FIELDS,
@@ -19,13 +21,18 @@ from ...core.grid import COUNT_MAX, COUNT_MIN, FADE_MAX, FADE_MIN
 from ...core.settings import (
     CONTOUR_DENSITY_MAX,
     CONTOUR_DENSITY_MIN,
+    ENVIRONMENT_BLUR_MAX,
+    ENVIRONMENT_STRENGTH_MAX,
+    ENVIRONMENT_STRENGTH_MIN,
     GHOST_MIN,
     ContourDirection,
+    LightingMode,
     LightSettings,
     ShadingMode,
     SurfaceSettings,
 )
 from ...core.skin import SKIN_PRESETS, SKIN_RANGES, SkinSettings
+from ...paths import available_environments, environment_dir
 from ..widgets import ColorButton, SliderSpin, collapsible_group, form_group
 from .base import Panel
 from .matcap_panel import MatcapPanel
@@ -50,6 +57,20 @@ class ShadingPanel(Panel):
         )
         self._ghost_opacity = SliderSpin(GHOST_MIN, 1.0, 0.35, decimals=2, step=0.05)
         form.addRow("Shading", self._mode)
+        self._auto_smooth = QCheckBox("AutoSmooth")
+        self._auto_smooth.setToolTip(
+            "Shade the model smooth across gentle edges and hard across sharp\n"
+            "ones, as 3ds Max's AutoSmooth does -- for a scan or a hard-surface\n"
+            "model whose normals were lost or averaged over its creases.  Off,\n"
+            "the model is shaded with the normals its file came with."
+        )
+        self._auto_smooth_deg = SliderSpin(0.0, 180.0, 30.0, decimals=0, step=1.0, suffix=" deg")
+        self._auto_smooth_deg.setToolTip(
+            "How sharp a turn stays hard.  Nought shades every triangle flat;\n"
+            "a hundred and eighty smooths everything."
+        )
+        form.addRow("", self._auto_smooth)
+        form.addRow("Smooth angle", self._auto_smooth_deg)
         form.addRow("", self._wireframe)
         form.addRow("Wire colour", self._wireframe_color)
         form.addRow("", self._ghost)
@@ -60,6 +81,46 @@ class ShadingPanel(Panel):
         self._add(self.matcap_panel)
 
         self._light_box, light_form = form_group("Light")
+        self._light_box.setToolTip(
+            "Shift + right-drag in the view turns the lights -- the key, the fill\n"
+            "and the HDRI together.  Esc while dragging puts them back."
+        )
+        self._light_form = light_form
+        self._lighting = QComboBox()
+        for lighting in LightingMode:
+            self._lighting.addItem(lighting.label, lighting.value)
+        self._lighting.setToolTip(
+            "What lights the model: the studio key, fill and ambient; an HDRI,\n"
+            "a photograph of the light round a real place; or both."
+        )
+        light_form.addRow("Lighting", self._lighting)
+        self._environment = QComboBox()
+        self._environment.setToolTip("The HDRI: the ones that ship, and any you have loaded")
+        self._environment_load = QPushButton("Load HDRI...")
+        self._environment_load.setToolTip("Light with an .hdr or .exr panorama from disk")
+        self._environment_strength = SliderSpin(
+            ENVIRONMENT_STRENGTH_MIN, ENVIRONMENT_STRENGTH_MAX, 1.0, decimals=2, step=0.05
+        )
+        self._environment_strength.setToolTip(
+            "How bright the HDRI is.  One lights a surface facing its brightest\n"
+            "part as brightly as the studio key does, whatever the map's exposure."
+        )
+        self._environment_rotation = SliderSpin(
+            -180.0, 180.0, 0.0, decimals=0, step=1.0, suffix=" deg"
+        )
+        self._environment_rotation.setToolTip("Turn the HDRI about the vertical")
+        self._environment_background = QCheckBox("Show the HDRI behind the model")
+        self._environment_blur = SliderSpin(0.0, ENVIRONMENT_BLUR_MAX, 2.0, decimals=1, step=0.5)
+        self._environment_blur.setToolTip(
+            "How blurred the HDRI is behind the model, so the room does not\n"
+            "compete with the form"
+        )
+        self._environment_shadows = QCheckBox("Cast shadows from its brightest light")
+        self._environment_shadows.setToolTip(
+            "With the HDRI as the only light, cast the shadow map from the\n"
+            "direction most of its light comes from.  Human Skin traces the\n"
+            "whole map's shadows while it refines, whatever this says."
+        )
         self._azimuth = SliderSpin(-180.0, 180.0, 40.0, decimals=0, step=1.0, suffix=" deg")
         self._elevation = SliderSpin(-90.0, 90.0, 35.0, decimals=0, step=1.0, suffix=" deg")
         self._light_color = ColorButton((1.0, 1.0, 1.0))
@@ -76,6 +137,13 @@ class ShadingPanel(Panel):
         light_form.addRow("Ambient", self._ambient)
         light_form.addRow("Ambient colour", self._ambient_color)
         light_form.addRow("", self._follow)
+        light_form.addRow("HDRI", self._environment)
+        light_form.addRow("", self._environment_load)
+        light_form.addRow("Strength", self._environment_strength)
+        light_form.addRow("Rotation", self._environment_rotation)
+        light_form.addRow("", self._environment_background)
+        light_form.addRow("Blur", self._environment_blur)
+        light_form.addRow("", self._environment_shadows)
         self._add(self._light_box)
 
         self._surface_box, surface_form = form_group("Surface")
@@ -308,6 +376,12 @@ class ShadingPanel(Panel):
 
     def _connect(self) -> None:
         self._mode.currentIndexChanged.connect(self._on_mode_changed)
+        self._auto_smooth.toggled.connect(
+            lambda v: self._apply(self.state.render, "auto_smooth", v)
+        )
+        self._auto_smooth_deg.valueChanged.connect(
+            lambda v: self._apply(self.state.render, "auto_smooth_deg", v)
+        )
         self._ghost.toggled.connect(lambda v: self._apply(self.state.render, "ghost", v))
         self._ghost_opacity.valueChanged.connect(
             lambda v: self._apply(self.state.render, "ghost_opacity", v)
@@ -333,6 +407,21 @@ class ShadingPanel(Panel):
         self._ambient.valueChanged.connect(self._light_setter("ambient_intensity"))
         self._ambient_color.colorChanged.connect(self._light_setter("ambient_color"))
         self._follow.toggled.connect(self._light_setter("follow_camera"))
+        self._lighting.currentIndexChanged.connect(self._on_lighting)
+        self._environment.activated.connect(self._on_environment_chosen)
+        self._environment_load.clicked.connect(self.browse_environment)
+        self._environment_strength.valueChanged.connect(
+            self._light_setter("environment_strength")
+        )
+        self._environment_rotation.valueChanged.connect(
+            self._light_setter("environment_rotation_deg")
+        )
+        self._environment_background.toggled.connect(
+            self._light_setter("environment_background")
+        )
+        self._environment_blur.valueChanged.connect(self._light_setter("environment_blur"))
+        self._environment_shadows.toggled.connect(self._light_setter("environment_shadows"))
+        self.state.environment_changed.connect(self._refresh_environments)
 
         self._shadows.toggled.connect(self._quality_setter("show_shadows"))
         self._shadow_strength.valueChanged.connect(self._quality_setter("shadow_strength"))
@@ -484,6 +573,64 @@ class ShadingPanel(Panel):
         """Slot that writes one field of the light settings."""
         return lambda value: self._apply(self.state.render.light, field, value)
 
+    # -- the HDRI -------------------------------------------------------
+
+    def _on_lighting(self, index: int) -> None:
+        if self._busy:
+            return
+        self.state.render.light.mode = LightingMode(self._lighting.itemData(index))
+        self.state.ensure_environment()
+        self.state.notify_render()
+
+    def _on_environment_chosen(self, index: int) -> None:
+        path = self._environment.itemData(index)
+        if path:
+            self.state.load_environment(path, light=True)
+
+    def browse_environment(self) -> None:
+        """Pick an HDRI from disk and light with it."""
+        current = self.state.render.light.environment_path
+        start = Path(current).parent if current else environment_dir()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load HDRI",
+            str(start if start.is_dir() else Path.home()),
+            "HDRI panoramas (*.hdr *.exr)",
+        )
+        if path:
+            self.state.load_environment(path, light=True)
+
+    def _refresh_environments(self) -> None:
+        """List the bundled HDRIs, and the one in use if it is from elsewhere."""
+        current = self.state.render.light.environment_path
+        paths = [str(path) for path in available_environments()]
+        if current and all(Path(current) != Path(path) for path in paths):
+            paths.insert(0, current)
+        if not current and paths:
+            current = paths[0]
+        with self._suppressed():
+            self._environment.clear()
+            for path in paths:
+                self._environment.addItem(Path(path).stem, path)
+                self._environment.setItemData(
+                    self._environment.count() - 1, path, Qt.ItemDataRole.ToolTipRole
+                )
+            if not paths:
+                self._environment.addItem("None -- load one", None)
+            chosen = next(
+                (i for i, path in enumerate(paths) if current and Path(path) == Path(current)), 0
+            )
+            self._environment.setCurrentIndex(chosen)
+
+    def refresh_light(self) -> None:
+        """Put the light's numbers back in line with the settings, after a drag or an undo."""
+        light = self.state.render.light
+        with self._suppressed():
+            self._azimuth.set_value(light.azimuth_deg)
+            self._elevation.set_value(light.elevation_deg)
+            self._environment_rotation.set_value(light.environment_rotation_deg)
+            self._lighting.setCurrentIndex(max(self._lighting.findData(light.mode.value), 0))
+
     def _skin_setter(self, field: str):
         def change(value):
             if self._busy:
@@ -581,10 +728,29 @@ class ShadingPanel(Panel):
         with self._suppressed():
             self._ghost.setChecked(self.state.render.ghost)
         self._mode_form.setRowVisible(self._ghost_opacity, self.state.render.ghost)
+        self._mode_form.setRowVisible(self._auto_smooth_deg, self.state.render.auto_smooth)
         self.matcap_panel.setVisible(mode is ShadingMode.MATCAP)
         with self._suppressed():
             self._mode.setCurrentIndex(self._mode.findData(mode.value))
         self._light_box.setVisible(mode.uses_lighting)
+        light = self.state.render.light
+        self.refresh_light()
+        # The rig's rows when the rig lights the model, the map's when the
+        # map does; a blur only for a map that is shown, and its shadow only
+        # when it is the one light there is to cast one.
+        for widget in (self._azimuth, self._elevation, self._light_color, self._intensity,
+                       self._fill, self._ambient, self._ambient_color):
+            self._light_form.setRowVisible(widget, light.mode.uses_studio)
+        for widget in (self._environment, self._environment_load, self._environment_strength,
+                       self._environment_rotation, self._environment_background):
+            self._light_form.setRowVisible(widget, light.mode.uses_environment)
+        self._light_form.setRowVisible(
+            self._environment_blur,
+            light.mode.uses_environment and light.environment_background,
+        )
+        self._light_form.setRowVisible(
+            self._environment_shadows, light.mode is LightingMode.ENVIRONMENT
+        )
         self._surface_box.setVisible(mode.uses_lighting and mode is not ShadingMode.HUMAN_SKIN)
         self._skin_box.setVisible(mode is ShadingMode.HUMAN_SKIN)
         self._body_box.setVisible(mode is ShadingMode.HUMAN_SKIN)
@@ -662,6 +828,8 @@ class ShadingPanel(Panel):
 
             self._mode.setCurrentIndex(self._mode.findData(render.shading_mode.value))
             self._wireframe.setChecked(render.show_wireframe)
+            self._auto_smooth.setChecked(render.auto_smooth)
+            self._auto_smooth_deg.set_value(render.auto_smooth_deg)
             self._wireframe_color.set_color(render.wireframe_color)
             self._ghost.setChecked(render.ghost)
             self._ghost_opacity.set_value(render.ghost_opacity)
@@ -676,6 +844,12 @@ class ShadingPanel(Panel):
             self._ambient.set_value(light.ambient_intensity)
             self._ambient_color.set_color(light.ambient_color)
             self._follow.setChecked(light.follow_camera)
+            self._environment_strength.set_value(light.environment_strength)
+            self._environment_background.setChecked(light.environment_background)
+            self._environment_blur.set_value(light.environment_blur)
+            self._environment_shadows.setChecked(light.environment_shadows)
+        self._refresh_environments()
+        with self._suppressed():
 
             self._diffuse.set_color(surface.diffuse_color)
             self._specular_color.set_color(surface.specular_color)

@@ -172,9 +172,54 @@ class MatcapSettings:
     flip_y: bool = False
 
 
+class LightingMode(str, Enum):
+    """What the lit shading modes are lit by.
+
+    The studio rig is a key, a fill opposite it and a sky-and-ground ambient;
+    an HDRI is a photograph of the light round a real place, which lights the
+    model from every direction at once.  The two can also be had together:
+    the HDRI for the room and the key for the modelling light an artist
+    wants on top of it.
+    """
+
+    STUDIO = "studio"
+    ENVIRONMENT = "environment"
+    BOTH = "both"
+
+    @property
+    def label(self) -> str:
+        return {
+            LightingMode.STUDIO: "Studio lights",
+            LightingMode.ENVIRONMENT: "HDRI",
+            LightingMode.BOTH: "HDRI + studio lights",
+        }[self]
+
+    @property
+    def uses_studio(self) -> bool:
+        return self is not LightingMode.ENVIRONMENT
+
+    @property
+    def uses_environment(self) -> bool:
+        return self is not LightingMode.STUDIO
+
+
+#: Ends of the HDRI strength slider.  One lights a surface facing the map's
+#: brightest quarter as brightly as the key does at its own default, so
+#: switching the lighting over keeps the picture about as bright.
+ENVIRONMENT_STRENGTH_MIN, ENVIRONMENT_STRENGTH_MAX = 0.0, 4.0
+#: How far the background may be blurred, in mip levels of the map: nought
+#: is the photograph, eight is little more than its colours.
+ENVIRONMENT_BLUR_MAX = 8.0
+
+
 @dataclass
 class LightSettings:
-    """A key light, an opposing fill and a hemispherical ambient term."""
+    """A key light, an opposing fill and a hemispherical ambient term -- or an HDRI.
+
+    Turning the lights (Shift and the right button in the view) turns all of
+    them together: the key and the fill by their azimuth, the HDRI by its own
+    rotation, so a map and a key set against it stay set.
+    """
 
     azimuth_deg: float = 40.0
     elevation_deg: float = 35.0
@@ -184,7 +229,37 @@ class LightSettings:
     ambient_color: Color = (0.42, 0.47, 0.55)
     ambient_intensity: float = 0.30
     #: When true the light stays fixed relative to the camera, like a head lamp.
+    #: The HDRI goes with it, so the whole rig turns with the view or none of it.
     follow_camera: bool = True
+    #: Whether the studio rig, an HDRI or both light the model.
+    mode: LightingMode = LightingMode.STUDIO
+    #: The HDRI, as a path, or ``None`` before one has been chosen -- in which
+    #: case the bundled one is used if there is one.
+    environment_path: str | None = None
+    #: How bright the HDRI is, on the scale described at
+    #: :data:`ENVIRONMENT_STRENGTH_MIN`.
+    environment_strength: float = 1.0
+    #: How far the HDRI is turned about the vertical, in degrees.
+    environment_rotation_deg: float = 0.0
+    #: Draw the HDRI behind the model in place of the background gradient.
+    environment_background: bool = False
+    #: How blurred that background is; see :data:`ENVIRONMENT_BLUR_MAX`.
+    environment_blur: float = 2.0
+    #: Cast the HDRI's shadow from its brightest direction when it is the only
+    #: light.  A map has no one direction, so this is the dominant one's.
+    environment_shadows: bool = True
+
+    def turned(self, degrees: float, elevation: float = 0.0) -> None:
+        """Turn every light by ``degrees`` about the vertical, and tip the key by ``elevation``.
+
+        The azimuth is kept in the half-open turn the panel's slider covers,
+        so a light turned round and round does not walk off the end of it.
+        """
+        self.azimuth_deg = (self.azimuth_deg + degrees + 180.0) % 360.0 - 180.0
+        self.environment_rotation_deg = (
+            (self.environment_rotation_deg + degrees + 180.0) % 360.0 - 180.0
+        )
+        self.elevation_deg = min(max(self.elevation_deg + elevation, -90.0), 90.0)
 
 
 @dataclass
@@ -603,6 +678,13 @@ class RenderSettings:
     #: this, but it stays on the render settings so that sessions written
     #: before that panel existed still restore it.
     flat_shading: bool = False
+    #: Shade the model smooth across gentle edges and hard across sharp
+    #: ones, as 3ds Max's AutoSmooth does: a scan or a hard-surface model
+    #: whose normals were lost or averaged over its creases gets them back.
+    #: Off, the model is shaded with the normals its file came with.
+    auto_smooth: bool = False
+    #: How sharp a turn has to be to stay hard, in degrees.
+    auto_smooth_deg: float = 30.0
     show_wireframe: bool = False
     wireframe_color: Color = (0.08, 0.09, 0.11)
     #: Draw the model see-through.  A reference is often something you want to

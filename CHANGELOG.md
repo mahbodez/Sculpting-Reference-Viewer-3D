@@ -4,6 +4,80 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.6.0]
+
+### Added
+
+- **HDRI lighting.**  Every lit mode -- Lambert, Phong, Blinn-Phong, PBR,
+  High Quality and Human Skin -- can be lit by an HDRI in place of the
+  studio rig, or by both: **Lighting** in the Light group.  The map lights
+  the diffuse from nine spherical-harmonic coefficients and puts its own
+  reflection in the highlights, read off its mip chain at the width of the
+  surface's lobe (the split sum, for PBR); with the map as the only light
+  the shadow map is cast from its dominant direction, and the shadowed
+  places lose that light's share.  The traced skin samples the map in
+  proportion to its light -- a marginal and a conditional distribution over
+  a coarse copy -- and shadows, scatters and backlights with the whole room.
+  The maps in `resources/hdris` are listed, **Load HDRI...** or a drop on
+  the window takes any `.hdr` or `.exr`, and a session remembers which.
+  **Strength** is normalised so that one lights the model about as brightly
+  as the studio key whatever exposure the map was shot at; **Rotation**
+  turns it; it can be shown, blurred, behind the model.  Radiance `.hdr` is
+  read in numpy; OpenEXR through the `OpenEXR` package, now a dependency.
+
+- **Turning the lights by hand.**  `Shift` + right-drag in a lit mode turns
+  every light at once -- the key and the fill across and up, the HDRI with
+  them -- as one undo step, with the angles in a caption while it runs and
+  `Esc` to put them back.
+
+- **AutoSmooth** under the shading mode, with its angle: the model shaded
+  smooth across gentle edges and hard across sharp ones, for a scan or a
+  hard-surface model whose normals were lost or averaged over its creases.
+  The smoothing groups are found once per object, so a moved or posed
+  object stays smoothed through every frame of the drag.
+
+- **The matcap gallery keeps what was loaded.**  A matcap from outside the
+  matcap folder -- loaded, dropped, opened, or brought in by a session --
+  joins the gallery after the built-in and stays there; right-click it to
+  take it out again.
+
+### Changed
+
+- **Human Skin refines close to real time.**  A traced sample costs about a
+  quarter of what it did -- 8 ms against 28 on a full figure, 18 against 63
+  close up -- and a frame runs as many as fit in 24 ms, so 128 samples
+  arrive in one to two seconds where they took three to eight.  The samples are
+  stratified -- a low-discrepancy sequence per pair of dimensions from a
+  random start per pixel -- so 16 now look as clean as 128 of the old
+  noise, and the default is 64.  The pieces:
+  - The tracer's tree is built by the surface-area heuristic, a level at a
+    time in numpy, and keeps both children's boxes in each node, so a ray
+    walks into the nearer first and culls everything behind its first hit.
+  - Shadow rays stop at the first triangle they find.
+  - Every ray of a sample goes through one traversal in a loop of jobs,
+    where it used to be inlined at a dozen call sites.
+  - The mesh shader is compiled twice, with the tracer as a constant in
+    each, so the preview -- and every other mode -- no longer carries the
+    tracer's register load.
+  - Tables are laid out a power of two wide and read with a shift and a
+    mask; triangle normals are read once, for the nearest hit.
+- **The skin refines through what does not concern it.**  A button held on
+  a panel, a tab or a menu used to count as navigating the view and threw
+  the samples away; now only a drag in the view that has moved does.  And
+  the refinement starts over only when something it draws changes -- not
+  for the matcap's grading, the contour paper, the analytic modes' surface,
+  the High Quality sliders, the planes while they are off, or the
+  wireframe's colour while there is no wireframe.
+- **Matcap thumbnails are made once.**  Every gallery in the process shares
+  them, so a rescan or a second window does not decode the collection again.
+- **The shaders live in `render/glsl`**, a file a stage, the pieces several
+  share pulled in with `#include`.
+
+### Fixed
+
+- Traced backlight transmission was always black: the light was looked for
+  through the body before the light through it was worked out.
+
 ## [2.5.0]
 
 ### Added
