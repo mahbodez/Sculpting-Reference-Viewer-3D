@@ -388,7 +388,7 @@ class RenderPanel(Panel):
             "NVIDIA DLSS 5 Neural Rendering: an AI model that relights the finished\n"
             "picture, giving skin and materials a photograph's response to light.\n"
             "Runs on a GeForce RTX 50 series GPU, through the Neuroframe Engine by\n"
-            "Merserk (Visual Enhancer), used with permission.")
+            "Merserk (Visual Enhancer).")
         self._neural_final = QCheckBox("Enhance the render")
         self._neural_final.setToolTip(
             "Run Neural Rendering on the finished render, after denoising.  The\n"

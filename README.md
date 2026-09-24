@@ -865,9 +865,8 @@ so a render matches the refined view.
   render** shows the result as the Render window's **Neural** pass;
   **Enhance the rendered viewport** does the same to the view as it refines.
   It needs a GeForce RTX 50 series GPU and the **Neuroframe Engine** from
-  Merserk's [Visual Enhancer](https://github.com/Merserk/dlss5-visual-enhancer),
-  used with its author's permission: set **Preferences → Folders → Neural
-  engine** to a Visual Enhancer folder.
+  Merserk's [Visual Enhancer](https://github.com/Merserk/dlss5-visual-enhancer): 
+  set **Preferences → Folders → Neural engine** to a Visual Enhancer folder.
 - **Method**: *progressive* refines the whole picture a pass at a time and can
   be stopped whenever it looks done; *bucket* finishes it a tile at a time,
   in a spiral, Hilbert, row or random order. Both give the same image.
@@ -1063,8 +1062,7 @@ publishes the three archives to a GitHub release automatically.
   driver, and the Neuroframe Engine (`neuroframe_engine_neural_rendering.dll`,
   `neuroframe_caller.dll`, `nvngx_dlssnr.dll`) from a Visual Enhancer
   release. The engine DLLs are © Merserk, shipped under the MIT license in
-  that release's `LICENSE-Merserk.txt`, and used here with their author's
-  permission; `nvngx_dlssnr.dll` is NVIDIA's, under `LICENSE-NVIDIA-DLSS.txt`.
+  that release's `LICENSE-Merserk.txt`; `nvngx_dlssnr.dll` is NVIDIA's, under `LICENSE-NVIDIA-DLSS.txt`.
   None of them is committed to this repository. Keep both license files
   beside the DLLs when bundling them.
 

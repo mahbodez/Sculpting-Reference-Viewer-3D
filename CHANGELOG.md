@@ -19,8 +19,8 @@ features land, the patch number when only fixes do.
   structure, colour strength, tone preservation, skin protection and the
   automatic mask are all there.  Changing the view transform or exposure
   enhances the picture again a moment after the slider stops.
-- It runs through the **Neuroframe Engine** from Merserk's Visual Enhancer,
-  used with its author's permission.  The engine is not in this repository:
+- It runs through the **Neuroframe Engine** from Merserk's Visual Enhancer.  
+  The engine is not in this repository:
   point **Preferences > Folders > Neural engine** at a Visual Enhancer
   folder, or build with its `dlssnr` folder in `resources/dlssnr`.  It needs
   a GeForce RTX 50 series GPU.

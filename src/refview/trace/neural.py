@@ -4,7 +4,7 @@ DLSS 5 Neural Rendering is an AI model that relights and re-materials a
 rendered frame: it gives skin, cloth and stone the lighting response a
 photograph has.  NVIDIA offers it to games through its own SDK; the
 **Neuroframe Engine** from Merserk's *Visual Enhancer* is what lets it run on
-a single still picture, and it is used here with its author's permission.
+a single still picture.
 The engine is not part of this repository.  It is three DLLs --
 
 * ``neuroframe_engine_neural_rendering.dll``, the engine (Merserk),

@@ -212,8 +212,8 @@ times a second on a GPU and about once a second on the processor.
 After denoising, a render can go through NVIDIA DLSS 5 Neural Rendering
 (`trace/neural.py`), an AI model that relights the finished picture. NVIDIA
 has no public SDK for it on still images; it runs through the **Neuroframe
-Engine** from Merserk's Visual Enhancer, used with its author's written
-permission. The engine is three DLLs that are never committed here:
+Engine** from Merserk's Visual Enhancer. 
+The engine is three DLLs that are never committed here:
 
 | File | Whose |
 | --- | --- |
