@@ -4,6 +4,67 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.8.0]
+
+### Added
+
+- **Path-traced rendering.**  A new **Render** panel and **Render** menu
+  path-trace the view on the processor, with every core: next-event
+  estimation from the key and fill lights and the HDRI, weighted against the
+  bounces by multiple importance sampling; separate diffuse, glossy and
+  transmission bounce limits; clamping, glossy filtering and Russian
+  roulette; Owen-scrambled Sobol samples; and adaptive sampling that stops
+  each part of the image once its noise falls under the threshold.  The
+  shading panel's settings carry over: PBR, Lambert, Phong, Blinn-Phong and
+  High Quality render as the materials they describe, Matcap, Normals and
+  Contour as a clay of their own, the pedestal and forms in their colours,
+  the cross-section with its cap, and ghosted objects half there.  The
+  kernels are compiled to machine code by numba the first time and kept, so
+  only the first render of a version waits for them.
+
+- **Human Skin, path-traced.**  The whole of the skin shader, ported: the
+  pores and furrows, the regions and their marks, the vessels, the two-lobe
+  oily highlight, disk-projected subsurface scattering, thickness
+  transmission and the fuzz.  Its exposure and Reinhard tone curve are the
+  viewport's, so a render matches the refined view it was made from.
+
+- **Render Image (`F12`)** opens the **Render window**, filling in bucket by
+  bucket or pass by pass.  It shows the beauty, denoised, albedo, normal,
+  depth, alpha and sample-count passes; the view transform and exposure
+  change the finished picture without rendering it again; and it saves PNG
+  (8 or 16 bits), OpenEXR (half or float) or every pass in one multilayer
+  EXR.  `Esc` stops a render, `Ctrl+F12` brings the window back.
+
+- **Rendered viewport (`Shift+F12`).**  The view itself path-traced and
+  denoised as you work in it: coarse while it turns, sharpening as soon as
+  it stops, started over by anything that changes the picture and by
+  nothing that does not.
+
+- **AI denoising.**  Intel Open Image Denoise -- on an NVIDIA GPU through
+  CUDA where there is one, on the processor everywhere else -- and the
+  NVIDIA OptiX denoiser, reached through the graphics driver with nothing
+  to install; a built-in edge-avoiding filter stands in when neither can
+  run.  **Auto** picks the best one here and the panel says which.  A 4K
+  frame denoises in about a fifth of a second on a laptop GPU.
+
+- **Output size and safe frame.**  Presets from 720p to A4 at 300 dpi,
+  the viewport's own size, or any size with its proportions kept.  The
+  **safe frame** shades the view outside what will be rendered and draws
+  the action-safe and title-safe guides; `F12` renders exactly what is
+  inside it.
+
+- **Presets** -- Preview, Draft, Final and Production -- set the samples,
+  noise threshold, bounces and denoising at once; any edit after that makes
+  them Custom.  Every control has a tooltip saying what it does to the
+  picture.
+
+### Changed
+
+- Sessions are version 12 and keep the Render panel's settings; older
+  sessions open with its defaults.
+- `numba` and `mitsuba-oidn` are new dependencies; the desktop releases
+  carry both.
+
 ## [2.7.0]
 
 ### Changed

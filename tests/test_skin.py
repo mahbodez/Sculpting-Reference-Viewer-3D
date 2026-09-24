@@ -9,8 +9,7 @@ from refview.core.mesh import Mesh
 from refview.core.session import Session
 from refview.core.settings import ShadingMode
 from refview.core.skin import SKIN_PRESETS, SkinSettings
-from refview.render.skin_bvh import build_scene, table_width, texture_table
-from refview.render.skin_detail import (
+from refview.core.skin_detail import (
     LUT_LOG_MIN,
     LUT_LOG_SPAN,
     RELIEF_CELLS,
@@ -19,6 +18,7 @@ from refview.render.skin_detail import (
     relief_volume,
     value_noise,
 )
+from refview.render.skin_bvh import build_scene, table_width, texture_table
 from refview.render.skin_refinement import RefinementClock, SkinRefinement, pixel_jitter
 
 

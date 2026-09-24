@@ -3,7 +3,7 @@
 from pathlib import Path
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules, copy_metadata
 
 
 project_root = Path(SPECPATH).parent
@@ -12,7 +12,19 @@ project_root = Path(SPECPATH).parent
 images = project_root / "resources" / "images"
 icon = str(images / ("icon.ico" if sys.platform == "win32" else "icon-large.png"))
 hiddenimports = collect_submodules("OpenGL")
+# The path tracer is imported lazily, from inside functions, so that numba is
+# not loaded at startup; name every module of it rather than trust the scan.
+# (From the checkout, so a build works without the package installed.)
+sys.path.insert(0, str(project_root / "src"))
+hiddenimports += collect_submodules("refview.trace")
+# Intel Open Image Denoise finds Dr.Jit's thread pool beside the drjit
+# package without importing it, and checks both versions through their
+# metadata, so the package and both sets of metadata have to be there.  Its
+# extension is a nanobind "split mode" one, whose backend is a package of its
+# own that loads the compiled part lazily.
+hiddenimports += ["mitsuba_oidn", "drjit"] + collect_submodules("nanobind_backend")
 datas = [(str(project_root / "resources"), "resources")]
+datas += copy_metadata("mitsuba-oidn") + copy_metadata("drjit")
 datas.append((str(project_root / "pyproject.toml"), "."))
 # The GLSL is read from beside the renderer's modules, so it goes where they do.
 datas.append((str(project_root / "src" / "refview" / "render" / "glsl"), "refview/render/glsl"))
@@ -27,6 +39,19 @@ if conda_bin.is_dir():
         dll = conda_bin / name
         if dll.is_file():
             binaries.append((str(dll), "."))
+
+# OIDN loads its CPU and CUDA device modules from the folder its core library
+# is in, and the thread pool from drjit's, so each keeps its own folder.
+binaries += collect_dynamic_libs("mitsuba_oidn") + collect_dynamic_libs("drjit")
+binaries += collect_dynamic_libs("nanobind_backend")
+
+# UPX must leave alone what it breaks or only slows down: LLVM (which
+# llvmlite loads and patches at runtime), the MSVC runtime, and the denoiser's
+# libraries, the CUDA one of which is most of the download and does not shrink.
+upx_exclude = [
+    "*llvmlite*", "vcruntime140*.dll", "msvcp140*.dll",
+    "*mitsuba_oidn*", "*drjit*", "*nanothread*", "*nb_backend*",
+]
 
 a = Analysis(
     [str(project_root / "run.py")],
@@ -54,6 +79,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=upx_exclude,
     console=False,
 )
 

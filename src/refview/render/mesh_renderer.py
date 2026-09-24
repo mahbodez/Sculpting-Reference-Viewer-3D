@@ -356,6 +356,27 @@ class SceneRenderer:
         self._mesh = mesh
         self._plane_axes.clear()
 
+    def trace_mesh(self, name: str) -> Mesh | None:
+        """The mesh drawn as ``"model"``, ``"sculpt"``, ``"pedestal"`` or ``"forms"``, or ``None``.
+
+        What the CPU path tracer renders is what is drawn: these are the very
+        meshes, in world space, and are never changed once handed over.
+        """
+        return self._trace_parts.get(name)
+
+    @property
+    def forms_color(self) -> tuple[float, float, float]:
+        return self._forms_color
+
+    @property
+    def content_revision(self) -> int:
+        """A number that changes whenever anything drawn does."""
+        return self._content_revision
+
+    @property
+    def environment_serial(self) -> int:
+        return self._environment_serial
+
     def set_body(self, source: BodySource | None) -> None:
         """Say what the skin's body map is to be worked out from; see :mod:`body_regions`.
 

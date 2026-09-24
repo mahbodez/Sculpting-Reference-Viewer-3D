@@ -267,6 +267,57 @@ class ViewportOverlay:
                     points += [tuple(at) for at in self._joint_positions(skeleton)]
         return points
 
+    def draw_safe_frame(self, painter: QPainter, width: int, height: int,
+                        size: tuple[int, int], settings) -> None:
+        """Shade the view outside the render's frame, and draw its safe areas.
+
+        The frame is the render's shape fitted inside the view (see
+        :mod:`refview.core.render_frame`); what lies inside it is exactly
+        what a render holds.  The action-safe and title-safe guides are the
+        broadcast ones: keep what matters inside the first, and anything
+        that must not be cut -- text above all -- inside the second.
+        """
+        from ..core.render_frame import frame_rect, safe_rect
+
+        x, y, w, h = frame_rect(width, height, *size)
+        frame = QRectF(x, y, w, h)
+        painter.save()
+        dim = min(max(float(settings.dim), 0.0), 1.0)
+        if dim > 0.0:
+            outside = QPainterPath()
+            outside.addRect(QRectF(0.0, 0.0, float(width), float(height)))
+            inner = QPainterPath()
+            inner.addRect(frame)
+            painter.fillPath(outside.subtracted(inner), QColor(0, 0, 0, int(round(dim * 255))))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(255, 255, 255, 180), 1.0))
+        painter.drawRect(frame.adjusted(0.5, 0.5, -0.5, -0.5))
+        dashed = QPen(QColor(255, 255, 255, 110), 1.0, Qt.PenStyle.DashLine)
+        painter.setPen(dashed)
+        if settings.action_safe:
+            painter.drawRect(QRectF(*safe_rect((x, y, w, h), settings.action)))
+        if settings.title_safe:
+            painter.drawRect(QRectF(*safe_rect((x, y, w, h), settings.title)))
+        if settings.label:
+            font = QFont(painter.font())
+            font.setPointSize(9)
+            painter.setFont(font)
+            text = f"{size[0]} x {size[1]}"
+            metrics = QFontMetricsF(font)
+            # Top right, inside the title-safe guide's corner: the readout
+            # has the view's top left, and the lines must not cross the words.
+            box_w = metrics.horizontalAdvance(text) + 12.0
+            box_h = metrics.height() + 6.0
+            box = QRectF(frame.right() - box_w - 8.0, frame.top() + 8.0, box_w, box_h)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(_HUD_BACKDROP)
+            painter.drawRoundedRect(box, 4.0, 4.0)
+            # As outlines, as every word over the model is: the GL engine's
+            # glyph cache garbles plain text on some drivers.
+            self._draw_text(painter, box.x() + 6.0, box.y() + 3.0 + metrics.ascent(), text,
+                            font, _HUD_TEXT)
+        painter.restore()
+
     def draw_caption(
         self,
         painter: QPainter,

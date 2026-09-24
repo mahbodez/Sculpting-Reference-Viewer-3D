@@ -8,7 +8,7 @@ Palettes are editable tone examples rather than measurements of populations.
 
 Meshes arrive without a UV layout, so the surface detail is a tileable 3D field
 sampled at world position rather than a texture that needs an unwrap. NumPy
-builds a 64³ RGBA16F volume once at start-up (`render/skin_detail.py`): pores
+builds a 64³ RGBA16F volume once at start-up (`core/skin_detail.py`): pores
 are Gaussian pits at Worley cell points, furrows follow the Voronoi edges
 between them, low-frequency noise varies their depth, and two octaves of value
 noise add grain. The volume stores the *slope* of that height field, in height
@@ -245,7 +245,7 @@ is persisted by the existing dataclass serializer.
 - `core/skin.py`: parameters, safe ranges, and tone presets.
 - `core/body_regions.py`: the regions, their profiles, the bones and bands that
   place a vertex, and the body map the shader samples.
-- `render/skin_detail.py`: the relief volume and the pre-integrated diffusion table.
+- `core/skin_detail.py`: the relief volume and the pre-integrated diffusion table.
 - `render/glsl/skin.glsl`: BRDF, relief, marks and regions, diffusion, ray
   queries and the job loop; `skin_accumulate.frag` and `skin_present.frag`:
   accumulation and display. `render/skin_shader.py` loads them.

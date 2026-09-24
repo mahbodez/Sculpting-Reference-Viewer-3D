@@ -194,3 +194,47 @@ class WakeLock:
     def release(self) -> None:
         """Drop the request, if one is out.  Safe to call more than once."""
         self.set_held(False)
+
+
+class ThreadWakeLock:
+    """Holds sleep off from a thread of its own, for as long as some work runs.
+
+    For a render left to run while the artist walks away.  The window's own
+    lock follows whether it is in front; this one follows the work.  On
+    Windows the request is a flag on the calling thread, so two locks on the
+    interface thread would undo one another -- the second letting go would
+    cancel the first -- which is why this one asks from a thread that exists
+    only to hold it.
+    """
+
+    def __init__(self) -> None:
+        self._stop = None
+        self._thread = None
+
+    @property
+    def held(self) -> bool:
+        return self._thread is not None
+
+    def set_held(self, held: bool) -> None:
+        import threading
+
+        if held and self._thread is None:
+            stop = threading.Event()
+
+            def hold() -> None:
+                lock = WakeLock()
+                lock.set_held(True)
+                stop.wait()
+                lock.release()
+
+            self._stop = stop
+            self._thread = threading.Thread(target=hold, name="wake-lock", daemon=True)
+            self._thread.start()
+        elif not held and self._thread is not None:
+            self._stop.set()
+            self._thread.join(1.0)
+            self._thread = None
+            self._stop = None
+
+    def release(self) -> None:
+        self.set_held(False)

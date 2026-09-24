@@ -76,6 +76,7 @@ from .object_tool import ObjectTool
 from .overlay import ViewportOverlay
 from .picking import SurfacePicker
 from .pose_tool import PoseTool
+from .render_preview import ViewportRenderPreview
 from .section_gizmo import SectionGizmo
 from .state import ViewerState
 
@@ -158,6 +159,9 @@ class Viewport(QOpenGLWidget):
         self._skin_timer.timeout.connect(self.update)
         self._navigation = NavigationController()
         self._overlay = ViewportOverlay()
+        #: The rendered viewport: the path tracer drawing the view, when on.
+        self.preview = ViewportRenderPreview(self)
+        self.preview.updated.connect(self.update)
         self.measure_tool = MeasureTool()
         self.annotate_tool = AnnotateTool()
         self.armature_tool = ArmatureTool()
@@ -273,6 +277,7 @@ class Viewport(QOpenGLWidget):
         state.skeleton_changed.connect(self._skeleton_moved)
         state.mesh_deformed.connect(self._upload_geometry)
         state.parts_changed.connect(self._upload_opacities)
+        state.path_trace_changed.connect(self.update)
         for signal in (
             state.camera_changed,
             state.measurements_changed,
@@ -325,28 +330,44 @@ class Viewport(QOpenGLWidget):
             None if glow is None else glow[0], 0.0 if glow is None else glow[1], HIGHLIGHT_COLOR
         )
         painter = QPainter(self)
-        painter.beginNativePainting()
         ratio = self.devicePixelRatioF()
-        self._renderer.render(
-            self._state.camera,
-            self._state.render,
-            int(self.width() * ratio),
-            int(self.height() * ratio),
-            ratio,
-            self._antialiasing,
-            refine=True,
-            interactive=self._interacting(),
+        rendered = self.preview.frame(
+            int(self.width() * ratio), int(self.height() * ratio), self._interacting()
         )
-        painter.endNativePainting()
-        if self._state.render.shading_mode is ShadingMode.HUMAN_SKIN:
+        if rendered is None:
+            painter.beginNativePainting()
+            self._renderer.render(
+                self._state.camera,
+                self._state.render,
+                int(self.width() * ratio),
+                int(self.height() * ratio),
+                ratio,
+                self._antialiasing,
+                refine=True,
+                interactive=self._interacting(),
+            )
+            painter.endNativePainting()
+        else:
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+            painter.drawImage(self.rect(), rendered)
+        if self.preview.enabled:
+            self._overlay.draw_caption(
+                painter, self.preview.caption(), self.width(), self.height(), "bottom-left"
+            )
+        elif self._state.render.shading_mode is ShadingMode.HUMAN_SKIN:
             self._overlay.draw_caption(
                 painter, self._renderer.skin.status, self.width(), self.height(), "bottom-left"
+            )
+        safe = self._state.path_trace.safe_frame
+        if safe.show and not self._exporting:
+            self._overlay.draw_safe_frame(
+                painter, self.width(), self.height(), self.frame_size(), safe
             )
         if self._light_drag is not None:
             self._overlay.draw_caption(
                 painter, self._light_caption(), self.width(), self.height(), "top-left"
             )
-        if self._renderer.skin.needs_frame and not self._exporting:
+        if rendered is None and self._renderer.skin.needs_frame and not self._exporting:
             self._skin_timer.start(16 if self._renderer.skin.tracing else 80)
         else:
             self._skin_timer.stop()
@@ -791,6 +812,65 @@ class Viewport(QOpenGLWidget):
     def state(self) -> ViewerState:
         """The document being drawn."""
         return self._state
+
+    @property
+    def renderer(self) -> SceneRenderer:
+        return self._renderer
+
+    # ------------------------------------------------------------------
+    # The path tracer
+    # ------------------------------------------------------------------
+
+    def frame_size(self) -> tuple[int, int]:
+        """The render's size in pixels, as the Render panel sets it for this view."""
+        from ..core.render_frame import output_size
+
+        ratio = self.devicePixelRatioF()
+        return output_size(
+            self._state.path_trace.output,
+            (int(self.width() * ratio), int(self.height() * ratio)),
+        )
+
+    def trace_inputs(self, width: int, height: int, framed: bool = True):
+        """A snapshot of the scene for the path tracer, as a ``width`` by ``height`` picture.
+
+        What is drawn is what is traced: the objects as they stand (smoothed
+        if AutoSmooth is on, or the planar stand-in in their place), the
+        pedestal and the forms, each as solid as it is drawn.  ``framed``
+        narrows the camera to the safe frame, as a render sees it; the
+        rendered viewport sees the whole view.
+        """
+        import copy
+
+        from ..core.render_frame import framed_camera
+        from ..trace.scene import PartKind, TraceInputs, TracePart
+
+        state = self._state
+        render = copy.deepcopy(state.render)
+        trace = state.path_trace.bounded()
+        camera = state.camera.copy()
+        if framed:
+            camera = framed_camera(camera, self.width(), self.height(), width, height)
+        solidity = render.surface_opacity
+        parts = []
+        sculpt = self._renderer.trace_mesh("sculpt")
+        if sculpt is not None and sculpt.triangle_count:
+            parts.append(TracePart(sculpt, PartKind.MODEL, opacity=solidity))
+        else:
+            for mesh, opacity in self._parts():
+                parts.append(TracePart(mesh, PartKind.MODEL, opacity=solidity * opacity))
+        pedestal = self._renderer.trace_mesh("pedestal")
+        if pedestal is not None:
+            parts.append(TracePart(pedestal, PartKind.PEDESTAL, tuple(render.pedestal.color)))
+        forms = self._renderer.trace_mesh("forms")
+        if forms is not None:
+            parts.append(TracePart(forms, PartKind.FORMS, self._renderer.forms_color))
+        skin = render.shading_mode is ShadingMode.HUMAN_SKIN
+        return TraceInputs(
+            parts=tuple(parts), camera=camera, width=int(width), height=int(height),
+            render=render, path_trace=trace, environment=state.environment,
+            body=state.body_source() if skin else None,
+        )
 
     @property
     def navigation(self) -> NavigationController:

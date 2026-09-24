@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refview"
-version = "2.7.0"
+version = "2.8.0"
 description = "A 3D reference viewer for artists"
 readme = "README.md"
 requires-python = ">=3.11"  # tomllib, used to read this file back at runtime
@@ -20,6 +20,12 @@ dependencies = [
     # HDRIs come as OpenEXR, whose usual PIZ compression is not worth
     # reimplementing; Radiance .hdr is read without it.
     "OpenEXR>=3.3",
+    # The path tracer's kernels are compiled to machine code by numba; its
+    # llvmlite wheel carries its own LLVM, so nothing else need be installed.
+    "numba>=0.67",
+    # Intel Open Image Denoise, on the CPU everywhere, on CUDA wherever an
+    # NVIDIA driver is present and on Metal on a Mac.
+    "mitsuba-oidn>=0.1.2",
 ]
 
 [project.optional-dependencies]

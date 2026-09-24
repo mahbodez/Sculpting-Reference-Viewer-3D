@@ -41,10 +41,13 @@ from .panels.measure_panel import MeasurePanel
 from .panels.model_panel import ModelPanel
 from .panels.planes_panel import PlanesPanel
 from .panels.pose_panel import PosePanel
+from .panels.render_panel import RenderPanel
 from .panels.section_panel import SectionPanel
 from .panels.shading_panel import ShadingPanel
 from .preferences import LAST_MODEL, LAST_SESSION
 from .preferences import store as preference_store
+from .render_controller import RenderController, shutdown_denoise_service
+from .render_window import RenderWindow
 from .settings_window import GROUPS, SettingsWindow
 from .state import ViewerState, same_file
 from .tasks import TaskBanner
@@ -214,6 +217,21 @@ a rig</td></tr>
 <tr><td><b>Double-click a row</b></td><td>Rename a joint or a skeleton</td></tr>
 <tr><td><b>Esc</b></td><td>Drop a pull without disarming the tool</td></tr>
 </table>
+<h3>Rendering</h3>
+<table cellpadding='3'>
+<tr><td><b>F12</b></td><td>Path-trace the view into the Render window</td></tr>
+<tr><td><b>Shift+F12</b></td><td>The rendered viewport: path-trace the view as you work</td></tr>
+<tr><td><b>Ctrl+F12</b></td><td>Bring the Render window back</td></tr>
+<tr><td><b>Esc</b> (Render window)</td><td>Stop the render; what is done is kept</td></tr>
+<tr><td><b>Wheel</b> / <b>drag</b> (Render window)</td><td>Zoom about the cursor /
+move the picture; double-click to fit</td></tr>
+<tr><td><b>Ctrl+S</b> (Render window)</td><td>Save the pass shown</td></tr>
+</table>
+<p>The Render tab sets up a path-traced render: its size, the safe frame that
+shows it in the view, the samples and bounces (or a preset), bucket or
+progressive, the lens, how light becomes pixels, and the denoiser.  A render
+uses the Shading tab as it is -- the mode, the surface, Human Skin and the
+lights -- so what you see is what renders; a matcap renders as clay.</p>
 <h3>Editing</h3>
 <table cellpadding='3'>
 <tr><td><b>Ctrl+Z</b> / <b>Ctrl+Shift+Z</b></td><td>Undo / redo</td></tr>
@@ -398,6 +416,11 @@ class MainWindow(QMainWindow):
         self._forms_panel = FormsPanel(self._state)
         self._pose_panel = PosePanel(self._state)
         self._camera_panel = CameraPanel(self._state)
+        self._render_panel = RenderPanel(self._state)
+        #: Renders: preparing, running and denoising them; see :mod:`refview.ui.render_controller`.
+        self._render_controller = RenderController(self._state, self)
+        #: The Render window, once a render has been asked for.
+        self._render_window: RenderWindow | None = None
 
         self._workspace = Workspace(self)
         # The layout is written down a moment after it stops changing rather
@@ -449,6 +472,7 @@ class MainWindow(QMainWindow):
             ("forms", "Forms", self._forms_panel),
             ("pose", "Pose", self._pose_panel),
             ("camera", "Camera", self._camera_panel),
+            ("render", "Render", self._render_panel),
         ):
             self._workspace.add_panel(key, title, panel)
         # Retain saved custom-control references from the former Matcap dock.
@@ -685,6 +709,30 @@ class MainWindow(QMainWindow):
                 f"Ctrl+{slot}",
                 command=f"camera.recall_{slot}",
             )
+
+        render_menu = self.menuBar().addMenu("&Render")
+        self._menu_action(
+            render_menu, "Render &Image", self._render_image, "F12", command="render.image"
+        )
+        self._rendered_action = self._menu_action(
+            render_menu, "Rendered &Viewport", self._set_rendered_viewport, "Shift+F12",
+            checkable=True, command="render.viewport",
+        )
+        self._menu_action(
+            render_menu, "Show Render &Window", self._show_render_window, "Ctrl+F12",
+            command="render.window",
+        )
+        render_menu.addSeparator()
+        self._safe_frame_action = self._menu_action(
+            render_menu, "&Safe Frame", self._set_safe_frame, checkable=True,
+            command="render.safe_frame",
+        )
+        self._menu_action(
+            render_menu, "Sa&ve Render...", self._save_render, command="render.save"
+        )
+        self._menu_action(
+            render_menu, "&Stop Render", self._render_controller.cancel, command="render.stop"
+        )
 
         settings_menu = self.menuBar().addMenu("&Settings")
         self._menu_action(
@@ -933,6 +981,16 @@ class MainWindow(QMainWindow):
         self._pose_panel.repaint_requested.connect(self._viewport.update)
         self._viewport.skeleton_edited.connect(self._pose_panel.apply_edit)
         self._viewport.joint_selected.connect(self._pose_panel.select_joint)
+        self._render_panel.render_requested.connect(self._render_image)
+        self._render_panel.window_requested.connect(self._show_render_window)
+        self._render_panel.preview_toggled.connect(self._set_rendered_viewport)
+        self._render_controller.status_changed.connect(self._render_panel.set_engine_status)
+        self._render_controller.failed.connect(lambda text: self.statusBar().showMessage(text))
+        # A final render has the processor to itself: the rendered viewport
+        # waits for it, showing its last picture.
+        self._render_controller.started.connect(lambda _r: self._viewport.preview.suspend(True))
+        self._render_controller.finished.connect(lambda _r: self._viewport.preview.suspend(False))
+        self._state.path_trace_changed.connect(self._sync_render_actions)
 
     # ------------------------------------------------------------------
     # Public surface
@@ -1109,6 +1167,59 @@ class MainWindow(QMainWindow):
         )
         self._state.notify_camera()
         self.statusBar().showMessage(camera.projection.label, 2000)
+
+    # ------------------------------------------------------------------
+    # Rendering
+    # ------------------------------------------------------------------
+
+    def _render_image(self) -> None:
+        """Path-trace the view, at the Render panel's size, into the Render window."""
+        ok, reason = self._render_controller.available()
+        if not ok:
+            QMessageBox.warning(self, "Render", f"The path tracer cannot run here: {reason}")
+            return
+        if not len(self._state.objects):
+            self.statusBar().showMessage("Open a model to render first.", 3000)
+            return
+        width, height = self._viewport.frame_size()
+        inputs = self._viewport.trace_inputs(width, height)
+        self._show_render_window()
+        self._render_controller.render(inputs)
+
+    def _show_render_window(self) -> None:
+        if self._render_window is None:
+            self._render_window = RenderWindow(self._state, self._render_controller, self)
+            self._render_window.render_requested.connect(self._render_image)
+        self._render_window.show()
+        self._render_window.raise_()
+        self._render_window.activateWindow()
+
+    def _save_render(self) -> None:
+        if self._render_window is None or self._render_window.result is None:
+            self.statusBar().showMessage("Nothing has been rendered yet: press F12.", 3000)
+            return
+        self._show_render_window()
+        self._render_window.save()
+
+    def _set_rendered_viewport(self, on: bool) -> None:
+        self._viewport.preview.set_enabled(bool(on))
+        self._sync_render_actions()
+
+    def _set_safe_frame(self, on: bool) -> None:
+        self._state.path_trace.safe_frame.show = bool(on)
+        self._state.notify_path_trace()
+        self._render_panel.refresh()
+
+    def _sync_render_actions(self) -> None:
+        enabled = self._viewport.preview.enabled
+        for action, value in (
+            (self._rendered_action, enabled),
+            (self._safe_frame_action, self._state.path_trace.safe_frame.show),
+        ):
+            action.blockSignals(True)
+            action.setChecked(value)
+            action.blockSignals(False)
+        self._render_panel.set_preview_checked(enabled)
 
     def _show_controls(self) -> None:
         """Open the controls reference.
@@ -1536,6 +1647,9 @@ class MainWindow(QMainWindow):
         # without it.  It is asked to stop first, so the wait is one stage.
         # The same goes for whatever else is being worked on a thread.
         self._viewport.stop_recording()
+        self._render_controller.shutdown()
+        self._viewport.preview.shutdown()
+        shutdown_denoise_service()
         self._state.tasks.wait()
         super().closeEvent(event)
 

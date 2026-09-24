@@ -47,6 +47,7 @@ from ..core.mesh import Mesh, MeshLoadError, concatenated
 from ..core.mesh_io import load_mesh as read_mesh
 from ..core.mesh_io import save_mesh
 from ..core.orientation import OrientationSettings
+from ..core.path_trace import PathTraceSettings
 from ..core.rig_file import RIG_SUFFIX, RigFileError, load_rig, save_rig
 from ..core.scene import (
     ObjectRecord,
@@ -211,6 +212,8 @@ class ViewerState(QObject):
     #: A different HDRI is ready to light with, or none is.
     environment_changed = Signal()
     render_changed = Signal()
+    #: A path-trace setting changed: size, sampling, safe frame or look.
+    path_trace_changed = Signal()
     camera_changed = Signal()
     measurements_changed = Signal()
     annotations_changed = Signal()
@@ -247,6 +250,7 @@ class ViewerState(QObject):
         super().__init__(parent)
         self.camera = Camera()
         self.render = RenderSettings()
+        self.path_trace = PathTraceSettings()
         self.measurement_settings = MeasurementSettings()
         self.navigation = NavigationSettings()
         self.measurements = MeasurementStore()
@@ -353,6 +357,9 @@ class ViewerState(QObject):
 
     def notify_render(self) -> None:
         self.render_changed.emit()
+
+    def notify_path_trace(self) -> None:
+        self.path_trace_changed.emit()
 
     def notify_camera(self) -> None:
         self.camera_changed.emit()
@@ -1349,6 +1356,7 @@ class ViewerState(QObject):
             object_settings=self.object_settings,
             camera=self.camera.to_dict(),
             render=self.render,
+            path_trace=self.path_trace,
             measurement_settings=self.measurement_settings,
             navigation=self.navigation,
             orientation=self.orientation,
@@ -1367,6 +1375,7 @@ class ViewerState(QObject):
     def apply_session(self, session: Session) -> None:
         """Adopt a session's settings, leaving the loaded meshes alone."""
         self.render = session.render
+        self.path_trace = session.path_trace.bounded()
         self.measurement_settings = session.measurement_settings
         self.navigation = session.navigation
         self.object_settings = session.object_settings
@@ -1408,6 +1417,7 @@ class ViewerState(QObject):
         self._rebuild()
         self.notify_objects()
         self.notify_render()
+        self.notify_path_trace()
         self.notify_camera()
         self.notify_measurements()
         self.notify_annotations()

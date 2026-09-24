@@ -827,6 +827,50 @@ Ghost mode and exported form-stage videos use the fast preview. Screenshots of t
 viewport retain its current refinement. See [the skin renderer notes](docs/skin-renderer.md)
 for the model, limits and extension points.
 
+**Render**
+
+The **Render** panel path-traces the view on the processor, with every
+core — a real render, not the viewport's approximation of one. Press `F12`
+(**Render → Render Image**) and the **Render window** fills in, bucket by
+bucket or pass by pass; `Esc` stops it, `Ctrl+S` saves it as PNG (8 or
+16 bits) or OpenEXR, and **Save all passes** writes the beauty, denoised,
+albedo, normal and depth passes into one multilayer EXR. The view transform
+and exposure can be changed on the finished picture without rendering again.
+`Shift+F12` turns on the **rendered viewport**: the view itself, path-traced
+and denoised while you work in it, coarse as it turns and sharp once it stops.
+
+What you set up in the Shading panel is what renders. PBR, Lambert, Phong,
+Blinn-Phong and High Quality become the materials they describe, lit by the
+studio key and fill (as soft as **Light softness** says) and the HDRI; Matcap,
+Normals and Contour are ways of looking rather than materials, so they render
+as a clay whose colour and shine the panel sets. Human Skin renders as the
+whole skin shader — pores, marks, vessels, the oily highlight, subsurface
+scattering and backlighting — with the viewport's exposure and tone curve,
+so a render matches the refined view.
+
+- **Presets** — Preview, Draft, Final, Production — set the samples, noise
+  threshold, bounces and denoising together. **Noise threshold** stops each
+  part of the picture once it is clean enough, so flat background costs
+  little and hair-fine detail gets the samples.
+- **Output** sizes run from 720p to A4 at 300 dpi, or the viewport's own
+  size. The **safe frame** shades the view outside the frame and draws the
+  action-safe and title-safe guides; `F12` renders exactly what is inside it.
+- **Denoising** uses Intel Open Image Denoise — on an NVIDIA GPU where there
+  is one — or the NVIDIA OptiX denoiser from the graphics driver, with a
+  built-in filter when neither can run. **Auto** picks the best available
+  and the panel says which. A few dozen samples, denoised, make a clean
+  picture.
+- **Method**: *progressive* refines the whole picture a pass at a time and can
+  be stopped whenever it looks done; *bucket* finishes it a tile at a time,
+  in a spiral, Hilbert, row or random order. Both give the same image.
+- **Light paths**, **camera lens** (depth of field), **film** (pixel filter)
+  and **colour** (view transform, exposure, contrast, gamma) are there when
+  wanted, folded away when not.
+
+The render kernels are compiled to machine code the first time they are
+needed — a few tens of seconds, once per version — and kept. See
+[the path tracer notes](docs/path-tracer.md).
+
 **Pedestal**
 
 Stand the model on a disc, either at its lowest vertex or at a level you
@@ -1002,6 +1046,11 @@ publishes the three archives to a GitHub release automatically.
   than conda so each brings its own runtime libraries; mixing conda-forge
   numpy with pip Qt wheels can produce a broken BLAS on Windows. `OpenEXR`
   reads `.exr` HDRIs; `.hdr` files are read without it.
+- `numba` compiles the path tracer (its `llvmlite` wheel carries LLVM, so no
+  compiler is needed) and `mitsuba-oidn` brings Intel Open Image Denoise.
+  Without numba the viewer runs as before and the Render panel says why it
+  cannot render. The OptiX denoiser needs nothing installed: it is loaded
+  from an NVIDIA graphics driver when there is one.
 
 ---
 
@@ -1045,6 +1094,11 @@ src/refview/
              the shaders themselves, a file a stage, with the pieces several
              share -- the cross-section, the HDRI, the skin -- pulled in by
              #include
+  trace/     the CPU path tracer: numba kernels for the BVH, the materials,
+             the lights, the skin and the integrator, the film and its
+             colour, the render jobs that run them across the cores, and
+             the denoisers (Open Image Denoise, OptiX through ctypes, and a
+             built-in filter)
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
              armature, forms, pose and transform tools, the 2D overlay, the
              observable document, panels, the docks they live in, the tasks
@@ -1054,7 +1108,7 @@ src/refview/
              the controls the panels are built from: the reflowing layout,
              the folding frame, the sliders and swatches drawn by hand, and
              the machinery that copies a control into a panel of your own
-tools/       the matcap generator
+tools/       the matcap generator and the path tracer benchmark
 tests/       pytest suite for the core layer
 ```
 
@@ -1066,6 +1120,11 @@ Three rules keep the pieces apart:
   settings object and gets a drawn frame back. It also restores a neutral GL
   state afterwards, because the 2D overlay is painted with `QPainter` on the
   same context.
+- **`trace` never imports Qt or GL, and nothing imports it at startup.** It
+  takes numpy arrays and settings dataclasses and hands back a film, so it
+  runs on worker threads and in tests without a display; the interface
+  imports it the first time something is rendered, so numba costs nothing
+  until then.
 - **Panels edit dataclasses, never widgets belonging to someone else.** They
   mutate the settings held by `ViewerState` and emit a change signal; the
   viewport listens and repaints.

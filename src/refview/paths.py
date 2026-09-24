@@ -91,6 +91,21 @@ def available_environments() -> list[Path]:
     )
 
 
+def cache_dir() -> Path:
+    """A per-user folder for things that are slow to make and safe to lose.
+
+    The path tracer keeps its compiled kernels here, so a second launch does
+    not compile them again.  Nothing in it is ever the only copy of anything.
+    """
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Caches")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "refview"
+
+
 def image_path(name: str) -> Path:
     return resources_dir() / "images" / name
 

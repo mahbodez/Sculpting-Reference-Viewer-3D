@@ -23,8 +23,8 @@ of region weights laid over the scene, read at the same world position, and
 a multiplier per region and per kind of mark.
 """
 
+from ..core.skin_detail import LUT_LOG_MIN, LUT_LOG_SPAN, RELIEF_CELLS
 from .shader_files import load_glsl
-from .skin_detail import LUT_LOG_MIN, LUT_LOG_SPAN, RELIEF_CELLS
 
 #: The table sizes ``skin.glsl`` is compiled against, set where the tables are built.
 SKIN_CONSTANTS = {

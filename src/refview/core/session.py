@@ -12,6 +12,7 @@ from .bookmark import CameraBookmark
 from .forms import FormSettings, PrimaryForm
 from .measurement import Measurement, MeasurementSettings
 from .orientation import OrientationSettings
+from .path_trace import PathTraceSettings
 from .scene import ObjectRecord, ObjectSettings
 from .serialization import decode, encode
 from .settings import NavigationSettings, RenderSettings
@@ -31,11 +32,12 @@ class Session:
     #: primary forms, 7 the arrangement of the panels, 8 the skeletons and
     #: their pose, 9 the objects -- several models in one scene, each with
     #: its place and its parent -- 10 the skins made here, kept in an
-    #: archive beside the session that each object's record names, and 11
-    #: an orientation for each object, where one had served them all.
+    #: archive beside the session that each object's record names, 11
+    #: an orientation for each object, where one had served them all, and
+    #: 12 the path tracer's settings.
     #: Older files still load: :func:`decode` fills anything missing from
     #: the defaults.
-    version: int = 11
+    version: int = 12
     #: The model, for a file written before there were several; kept as the
     #: first object's file so that an older build can still open a newer
     #: session and see something.
@@ -47,6 +49,9 @@ class Session:
     object_settings: ObjectSettings = field(default_factory=ObjectSettings)
     camera: dict = field(default_factory=dict)
     render: RenderSettings = field(default_factory=RenderSettings)
+    #: What a render is made at: its size, sampling and look.  Kept apart
+    #: from :attr:`render`, which is what the viewport draws with.
+    path_trace: PathTraceSettings = field(default_factory=PathTraceSettings)
     measurement_settings: MeasurementSettings = field(default_factory=MeasurementSettings)
     measurements: list[Measurement] = field(default_factory=list)
     bookmarks: list[CameraBookmark] = field(default_factory=list)

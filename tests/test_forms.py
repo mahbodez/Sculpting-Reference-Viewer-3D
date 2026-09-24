@@ -800,7 +800,7 @@ def test_forms_survive_a_session_round_trip(tmp_path):
     session = Session(forms=[form], form_settings=FormSettings(color=(0.1, 0.2, 0.3), smooth=15.0))
     path = session.save(tmp_path / "forms.refview.json")
     loaded = Session.load(path)
-    assert loaded.version == 11
+    assert loaded.version == 12
     assert len(loaded.forms) == 1
     back = loaded.forms[0]
     assert back.name == "Pelvis" and back.preset == "pelvis"

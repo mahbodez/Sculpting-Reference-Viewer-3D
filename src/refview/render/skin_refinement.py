@@ -10,10 +10,10 @@ from OpenGL import GL
 from OpenGL.error import GLError
 
 from ..core.body_regions import BodySource, build_body_map
+from ..core.skin_detail import diffusion_lut, relief_volume
 from .framebuffer import FrameTarget, bind_default
 from .program import ShaderProgram
 from .skin_bvh import build_scene, table_width, texture_table
-from .skin_detail import diffusion_lut, relief_volume
 from .skin_shader import ACCUMULATE_FRAGMENT, PRESENT_FRAGMENT
 from .texture import DataTexture, Texture3D
 

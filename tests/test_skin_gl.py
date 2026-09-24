@@ -10,12 +10,12 @@ import pytest
 from refview.core.camera import Camera
 from refview.core.mesh import Mesh
 from refview.core.settings import RenderSettings, ShadingMode
+from refview.core.skin_detail import relief_volume
 from refview.render import shaders
 from refview.render.framebuffer import FrameTarget
 from refview.render.mesh_renderer import SceneRenderer
 from refview.render.program import ShaderProgram
 from refview.render.skin_bvh import build_scene, table_width, texture_table
-from refview.render.skin_detail import relief_volume
 from refview.render.texture import DataTexture, Texture3D
 
 

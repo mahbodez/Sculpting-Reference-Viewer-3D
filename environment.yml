@@ -1,8 +1,9 @@
 # conda env create -f environment.yml
 #
-# numpy, PySide6, PyOpenGL and OpenEXR are installed with pip rather than conda: the
-# pip wheels bundle their own OpenBLAS and Qt runtimes, which avoids the
-# mismatched-DLL problems that a mixed conda/pip stack runs into on Windows.
+# numpy, PySide6, PyOpenGL, OpenEXR, numba and mitsuba-oidn are installed with
+# pip rather than conda: the pip wheels bundle their own OpenBLAS, Qt and LLVM
+# runtimes, which avoids the mismatched-DLL problems that a mixed conda/pip
+# stack runs into on Windows.
 name: refview
 channels:
   - conda-forge
@@ -15,4 +16,6 @@ dependencies:
       - certifi>=2024.2.2
       - PyOpenGL>=3.1.7
       - OpenEXR>=3.3
+      - numba>=0.67
+      - mitsuba-oidn>=0.1.2
       - pytest>=7.4

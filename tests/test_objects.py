@@ -329,7 +329,7 @@ def test_sessions_carry_the_objects_and_write_out_the_ones_without_files(app, tm
     saved = state.save_session(tmp_path / "scene.refview.json")
     assert merged.path is not None and merged.path.is_file()
     written = json.loads(saved.read_text(encoding="utf-8"))
-    assert written["version"] == 11 and len(written["objects"]) == 1
+    assert written["version"] == 12 and len(written["objects"]) == 1
 
     fresh = ViewerState()
     fresh.load_session(saved)
