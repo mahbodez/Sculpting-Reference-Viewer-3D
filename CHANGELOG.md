@@ -4,6 +4,32 @@ All notable changes to Reference Viewer are recorded here. Versions follow
 [semantic versioning](https://semver.org/): the minor number moves when
 features land, the patch number when only fixes do.
 
+## [2.9.0]
+
+### Added
+
+- **NVIDIA DLSS 5 Neural Rendering.**  A new **Neural Rendering** group in
+  the Render panel runs DLSS 5's AI model over a render once it is
+  denoised, relighting skin and materials towards a photograph's response
+  to light.  **Enhance the render** does it to every finished render, and
+  the Render window shows the result as a new **Neural** pass, with an
+  **Enhance** button to run it again.  **Enhance the rendered viewport**
+  does it to the viewport each time it is denoised.  Style (Default,
+  Natural, Cinematic), intensity, passes, local tone and structure, skin
+  structure, colour strength, tone preservation, skin protection and the
+  automatic mask are all there.  Changing the view transform or exposure
+  enhances the picture again a moment after the slider stops.
+- It runs through the **Neuroframe Engine** from Merserk's Visual Enhancer,
+  used with its author's permission.  The engine is not in this repository:
+  point **Preferences > Folders > Neural engine** at a Visual Enhancer
+  folder, or build with its `dlssnr` folder in `resources/dlssnr`.  It needs
+  a GeForce RTX 50 series GPU.
+
+### Changed
+
+- The Neural pass is a finished picture, not scene light, so it saves as
+  PNG; saving it as OpenEXR says so instead.
+
 ## [2.8.0]
 
 ### Added

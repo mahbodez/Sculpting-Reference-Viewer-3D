@@ -1,7 +1,7 @@
 {
   "pyproject.toml": {
-    "mtime": 1790259632.2520077,
-    "ast_hash": "7e4a667fb3f34e82bc72bb28225d1d9d",
+    "mtime": 1790266780.172838,
+    "ast_hash": "0e2ecd97ddb4701adbc6b9132deeb7a1",
     "semantic_hash": ""
   },
   "run.py": {
@@ -10,8 +10,8 @@
     "semantic_hash": "76203909f7f8b849ccf755e14b52341c"
   },
   "src/refview/__init__.py": {
-    "mtime": 1790259632.2824426,
-    "ast_hash": "c93ca30022f6ff62ad300c0a8a21d106",
+    "mtime": 1790266780.204622,
+    "ast_hash": "281622ce1c261b460f761fea1905f94d",
     "semantic_hash": ""
   },
   "src/refview/__main__.py": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/main_window.py": {
-    "mtime": 1790257414.2309957,
-    "ast_hash": "f5c295d32372eeabb56ece62f5ae6416",
+    "mtime": 1790266731.162395,
+    "ast_hash": "5ace290eed4643197f73953d3a22457c",
     "semantic_hash": ""
   },
   "src/refview/ui/measure_tool.py": {
@@ -340,13 +340,13 @@
     "semantic_hash": ""
   },
   "CHANGELOG.md": {
-    "mtime": 1790259646.0272033,
-    "ast_hash": "fed8204a8ba042894ce1dcf605fa12cc",
+    "mtime": 1790266767.9601455,
+    "ast_hash": "ff4f2e7a77da665185ab844438cbb25d",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790259680.2671604,
-    "ast_hash": "49f838f4d40b1e177d8c92d1de3e05ee",
+    "mtime": 1790271026.8945842,
+    "ast_hash": "766483e34ae79462292c3c8dc43a60cc",
     "semantic_hash": ""
   },
   "environment.yml": {
@@ -575,8 +575,8 @@
     "semantic_hash": ""
   },
   "tests/test_forms.py": {
-    "mtime": 1789758328.3167975,
-    "ast_hash": "04f57786cec2bcb1b61c967712ac8a1e",
+    "mtime": 1790260266.6299973,
+    "ast_hash": "f047b94afa1dcd59432a8c06d15a546d",
     "semantic_hash": ""
   },
   "tests/test_forms_panel.py": {
@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "src/refview/core/preferences.py": {
-    "mtime": 1789392847.5910668,
-    "ast_hash": "7b441d1a5324517321801bb072c98aa1",
+    "mtime": 1790266731.1613953,
+    "ast_hash": "37a3bc083302c91fb5fab1e81db10bcf",
     "semantic_hash": ""
   },
   "src/refview/ui/markers.py": {
@@ -685,8 +685,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/preferences.py": {
-    "mtime": 1789347044.778011,
-    "ast_hash": "0b0c97c910f4fcd535c745a5b39d2c6e",
+    "mtime": 1790266731.163395,
+    "ast_hash": "e57191a1801b4194ae0d721e0389cb6d",
     "semantic_hash": ""
   },
   "src/refview/ui/section_gizmo.py": {
@@ -695,8 +695,8 @@
     "semantic_hash": ""
   },
   "src/refview/ui/settings_window.py": {
-    "mtime": 1789487779.31762,
-    "ast_hash": "af1159383d33b9f7a219228a47752310",
+    "mtime": 1790266731.1643949,
+    "ast_hash": "5b4e2d01febca3803f8cd32f045f737a",
     "semantic_hash": ""
   },
   "tests/test_matcap_preview.py": {
@@ -770,8 +770,8 @@
     "semantic_hash": ""
   },
   "tests/test_skeleton.py": {
-    "mtime": 1789758328.3193014,
-    "ast_hash": "4bce46c008b5e288908e73d6874ffced",
+    "mtime": 1790260266.6647859,
+    "ast_hash": "b0ff74a5a31335fa79cbd36954f72144",
     "semantic_hash": ""
   },
   "src/refview/core/skin.py": {
@@ -825,8 +825,8 @@
     "semantic_hash": ""
   },
   "tests/test_objects.py": {
-    "mtime": 1789758328.3177981,
-    "ast_hash": "579e532db26d6331bfc7f215bf015eef",
+    "mtime": 1790260258.5397935,
+    "ast_hash": "6133451f2fd55eb020580d66e2d0ee56",
     "semantic_hash": ""
   },
   "tests/test_objects_gl.py": {
@@ -920,8 +920,8 @@
     "semantic_hash": ""
   },
   "src/refview/core/path_trace.py": {
-    "mtime": 1790257059.1668358,
-    "ast_hash": "38b2de55be21d2f9729fa4f7ddae2b7f",
+    "mtime": 1790266731.1613953,
+    "ast_hash": "5ffca651c2c529b0ab63ada356d5d64d",
     "semantic_hash": ""
   },
   "src/refview/core/render_frame.py": {
@@ -1035,8 +1035,8 @@
     "semantic_hash": ""
   },
   "src/refview/trace/scene.py": {
-    "mtime": 1790257059.1668358,
-    "ast_hash": "80e16d58e199535636ced27480de6edd",
+    "mtime": 1790266731.1613953,
+    "ast_hash": "a5d555c2b947e98a25a715d7c5eb38e3",
     "semantic_hash": ""
   },
   "src/refview/trace/skin.py": {
@@ -1055,23 +1055,23 @@
     "semantic_hash": ""
   },
   "src/refview/ui/panels/render_panel.py": {
-    "mtime": 1790257084.5302875,
-    "ast_hash": "5429ff5181af960b638f4dbb562db83f",
+    "mtime": 1790266731.162395,
+    "ast_hash": "bb3f4b5df815f8bf2c6cd3f2155d2fe9",
     "semantic_hash": ""
   },
   "src/refview/ui/render_controller.py": {
-    "mtime": 1790256862.9792736,
-    "ast_hash": "04d7440bebd20fd32e1b4f043e94db51",
+    "mtime": 1790267467.8531685,
+    "ast_hash": "98657c3fa57a9e6369fe98f92d96c66b",
     "semantic_hash": ""
   },
   "src/refview/ui/render_preview.py": {
-    "mtime": 1790257414.22999,
-    "ast_hash": "22508884c8ae4ddfbabeb0faca9d368d",
+    "mtime": 1790266731.163395,
+    "ast_hash": "c988eee11068d95a620f1dbc4d7e7757",
     "semantic_hash": ""
   },
   "src/refview/ui/render_window.py": {
-    "mtime": 1790257362.7506213,
-    "ast_hash": "85ff1169af10b8927a54642b3651f6aa",
+    "mtime": 1790267474.2150874,
+    "ast_hash": "1508cefa8ececdf82eb9f6e227f6dde4",
     "semantic_hash": ""
   },
   "tests/test_optix_abi.py": {
@@ -1080,8 +1080,8 @@
     "semantic_hash": ""
   },
   "tests/test_path_trace_settings.py": {
-    "mtime": 1790255059.0601923,
-    "ast_hash": "fef693941619d253a1c7a0827545e2c7",
+    "mtime": 1790266731.1647122,
+    "ast_hash": "95d021a2f7c0235c6c89c3b84731c136",
     "semantic_hash": ""
   },
   "tests/test_render_frame.py": {
@@ -1090,8 +1090,8 @@
     "semantic_hash": ""
   },
   "tests/test_render_panel.py": {
-    "mtime": 1790257435.680833,
-    "ast_hash": "ef842f1ebab0e38a59ea7d0cce73a2c4",
+    "mtime": 1790267480.301266,
+    "ast_hash": "7d8c71618782c3be75f6b3a7b98a74ac",
     "semantic_hash": ""
   },
   "tests/test_trace_bvh.py": {
@@ -1155,8 +1155,18 @@
     "semantic_hash": ""
   },
   "docs/path-tracer.md": {
-    "mtime": 1790259745.9835002,
-    "ast_hash": "5c2e63b03450e75af13bac8ea626c030",
+    "mtime": 1790271032.7865798,
+    "ast_hash": "d33f0a39b03ab3e36ddbbeaa5c9d3347",
+    "semantic_hash": ""
+  },
+  "src/refview/trace/neural.py": {
+    "mtime": 1790270967.2241683,
+    "ast_hash": "658dee5bd2649bb0ad8571d200e7739e",
+    "semantic_hash": ""
+  },
+  "tests/test_trace_neural.py": {
+    "mtime": 1790270998.3499358,
+    "ast_hash": "7b6ec04aafb15683692a7905afb03dcd",
     "semantic_hash": ""
   }
 }

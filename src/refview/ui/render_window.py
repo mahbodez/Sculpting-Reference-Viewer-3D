@@ -10,6 +10,10 @@ denoised picture, the albedo, normals, depth and coverage the denoisers are
 guided by, and a map of how many samples each pixel took.  The view
 transform and the exposure develop the finished light again, straight
 away, with no new render -- as a frame buffer in Corona or V-Ray does.
+
+The Neural pass is the developed picture after NVIDIA DLSS 5 Neural
+Rendering.  It is made from display values, so it follows the colour
+controls by being made again, a moment after they stop moving.
 """
 
 from __future__ import annotations
@@ -33,11 +37,16 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.path_trace import OutputFormat, ViewTransform
-from .render_controller import RenderController, RenderResult
+from .render_controller import (
+    RenderController,
+    RenderResult,
+    colour_args,
+    enhance_key,
+)
 from .state import ViewerState
 from .widgets import SliderSpin
 
-PASSES = ("Beauty", "Denoised", "Albedo", "Normal", "Depth", "Alpha", "Samples")
+PASSES = ("Beauty", "Denoised", "Neural", "Albedo", "Normal", "Depth", "Alpha", "Samples")
 ZOOMS = (("Fit", None), ("25%", 0.25), ("50%", 0.5), ("100%", 1.0), ("200%", 2.0),
          ("400%", 4.0))
 _BRACKET = QColor(255, 196, 92)
@@ -234,6 +243,8 @@ def stats_text(result: RenderResult) -> str:
     parts.append(f"{stats.memory_bytes / 2 ** 20:.0f} MB")
     if result.denoiser:
         parts.append(f"denoised: {result.denoiser}")
+    if result.enhanced is not None and result.enhancer:
+        parts.append(result.enhancer)
     return "  ·  ".join(parts)
 
 
@@ -254,6 +265,8 @@ class RenderWindow(QWidget):
         self._bytes: np.ndarray | None = None       # (h, w, 4) uint8
         self._qimage: QImage | None = None
         self._busy = False
+        #: Whether the Neural pass has been brought forward for this picture.
+        self._neural_shown = False
 
         self._view = RenderView(self)
         self._render = QPushButton("Render")
@@ -268,11 +281,16 @@ class RenderWindow(QWidget):
             "linear, for compositing")
         self._denoise = QPushButton("Denoise")
         self._denoise.setToolTip("Denoise the render now, with the Render panel's denoiser")
+        self._enhance = QPushButton("Enhance")
+        self._enhance.setToolTip(
+            "Run NVIDIA DLSS 5 Neural Rendering on the picture now, with the\n"
+            "Render panel's Neural Rendering settings (Neuroframe Engine by Merserk)")
         self._pass = QComboBox()
         self._pass.addItems(PASSES)
         self._pass.setToolTip(
-            "What to show: the picture, the denoised picture, or one of the passes\n"
-            "the denoisers are guided by, or how many samples each pixel took")
+            "What to show: the picture, the denoised picture, the picture after\n"
+            "DLSS 5 Neural Rendering, one of the passes the denoisers are guided\n"
+            "by, or how many samples each pixel took")
         self._transform = QComboBox()
         for transform in ViewTransform:
             self._transform.addItem(transform.label, transform.value)
@@ -297,7 +315,8 @@ class RenderWindow(QWidget):
         self._progress.setFixedHeight(6)
 
         bar = QHBoxLayout()
-        for widget in (self._render, self._stop, self._save, self._save_all, self._denoise):
+        for widget in (self._render, self._stop, self._save, self._save_all, self._denoise,
+                       self._enhance):
             bar.addWidget(widget)
         bar.addSpacing(12)
         bar.addWidget(QLabel("Show"))
@@ -318,6 +337,7 @@ class RenderWindow(QWidget):
         self._save.clicked.connect(self.save)
         self._save_all.clicked.connect(self.save_all_passes)
         self._denoise.clicked.connect(lambda: controller.denoise())
+        self._enhance.clicked.connect(lambda: controller.enhance())
         self._pass.currentIndexChanged.connect(lambda _i: self._develop_all())
         self._transform.currentIndexChanged.connect(self._on_transform)
         self._exposure.valueChanged.connect(self._on_exposure)
@@ -332,6 +352,7 @@ class RenderWindow(QWidget):
         controller.progressed.connect(self._on_progressed)
         controller.finished.connect(self._on_finished)
         controller.denoised.connect(self._on_denoised)
+        controller.enhanced.connect(self._on_enhanced)
         controller.status_changed.connect(self._on_status)
         controller.failed.connect(self._on_failed)
         state.path_trace_changed.connect(self.refresh_colour)
@@ -349,6 +370,12 @@ class RenderWindow(QWidget):
             self._exposure.set_value(color.exposure)
         finally:
             self._busy = False
+        result = self._result
+        if (result is not None and result.enhanced is not None
+                and result.enhanced_key != enhance_key(self._state.path_trace)
+                and not self._controller.running):
+            # The Neural pass keeps showing until the new one is back.
+            self._controller.enhance_soon()
         self._develop_all()
 
     def _on_transform(self, index: int) -> None:
@@ -379,11 +406,12 @@ class RenderWindow(QWidget):
 
     def _on_started(self, result: RenderResult) -> None:
         self._result = result
+        self._neural_shown = False
         w, h = result.size
         self._display = np.zeros((h, w, 4), np.float32)
         self._bytes = np.zeros((h, w, 4), np.uint8)
         self._qimage = QImage(self._bytes.data, w, h, w * 4, QImage.Format.Format_RGBA8888)
-        if self._pass.currentText() == "Denoised":
+        if self._pass.currentText() in ("Denoised", "Neural"):
             self._pass.setCurrentIndex(0)
         self._view.set_image(self._qimage)
         self._develop_all()
@@ -426,9 +454,25 @@ class RenderWindow(QWidget):
     def _on_denoised(self, result: RenderResult) -> None:
         if result is not self._result:
             return
+        # A new denoise is a new picture, to be enhanced and shown afresh.
+        self._neural_shown = False
         # A finished, denoised render is shown denoised, as the result.
         if self._pass.currentText() == "Beauty":
             self._pass.setCurrentIndex(PASSES.index("Denoised"))
+        else:
+            self._develop_all()
+        self._status.setText(stats_text(result) + "".join(f"  ·  {n}" for n in result.notes))
+        self._sync_buttons()
+
+    def _on_enhanced(self, result: RenderResult) -> None:
+        if result is not self._result:
+            return
+        # Shown as the result, as a denoised render is -- the first time only,
+        # so making it again for a colour change leaves the pass chosen alone.
+        if not self._neural_shown and self._pass.currentText() in ("Beauty", "Denoised"):
+            self._neural_shown = True
+            self._sync_buttons()
+            self._pass.setCurrentIndex(PASSES.index("Neural"))
         else:
             self._develop_all()
         self._status.setText(stats_text(result) + "".join(f"  ·  {n}" for n in result.notes))
@@ -452,24 +496,18 @@ class RenderWindow(QWidget):
         self._save.setEnabled(has)
         self._save_all.setEnabled(has)
         self._denoise.setEnabled(has and not running)
+        self._enhance.setEnabled(has and not running)
         model = self._pass.model()
-        item = model.item(PASSES.index("Denoised"))
-        if item is not None:
-            item.setEnabled(self._result is not None and self._result.denoised is not None)
+        for name, attribute in (("Denoised", "denoised"), ("Neural", "enhanced")):
+            item = model.item(PASSES.index(name))
+            if item is not None:
+                item.setEnabled(self._result is not None
+                                and getattr(self._result, attribute) is not None)
 
     # -- developing --------------------------------------------------------------
 
     def _colour_args(self):
-        from ..trace.colour import TRANSFORM_CODES, exposure_scale
-
-        result = self._result
-        color = self._state.path_trace.color
-        transform = TRANSFORM_CODES[color.view_transform.resolved(result.skin)]
-        stops = color.exposure + (result.skin_exposure if result.skin else 0.0)
-        transparent = bool(result.settings.output.transparent)
-        return (transform, exposure_scale(stops), float(color.gamma), float(color.contrast),
-                np.asarray(result.background_top, np.float64),
-                np.asarray(result.background_bottom, np.float64), transparent, not transparent)
+        return colour_args(self._result, self._state.path_trace.color)
 
     def _develop_rect(self, rect) -> None:
         from ..trace.colour import develop_region, quantize_region
@@ -486,6 +524,8 @@ class RenderWindow(QWidget):
             return
         w, h = result.size
         shown = self._pass.currentText()
+        if shown == "Neural" and result.enhanced is None:
+            shown = "Denoised"
         if shown == "Beauty" or (shown == "Denoised" and result.denoised is None):
             self._develop_rect((0, 0, w, h))
         else:
@@ -507,6 +547,8 @@ class RenderWindow(QWidget):
 
             develop_region(np.ascontiguousarray(result.denoised, dtype=np.float32), ones, out,
                            0, 0, w, h, *args)
+        elif shown == "Neural":
+            out = result.enhanced
         elif shown == "Albedo":
             albedo = film.albedo_pass()
             if albedo is not None:
@@ -571,6 +613,12 @@ class RenderWindow(QWidget):
         result = self._result
         shown = self._pass.currentText()
         use_denoised = shown == "Denoised" and result.denoised is not None
+        if shown == "Neural" and result.enhanced is not None:
+            if fmt.linear:
+                raise ValueError("Neural Rendering makes a finished picture, not scene light; "
+                                 "choose PNG in the Render panel to save it")
+            save_display(path, result.enhanced, sixteen=fmt is OutputFormat.PNG16)
+            return
         if fmt.linear:
             from ..trace.exr import write_exr
 

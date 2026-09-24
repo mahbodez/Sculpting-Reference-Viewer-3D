@@ -417,7 +417,7 @@ def trace_settings_key(render: RenderSettings, trace: PathTraceSettings) -> str:
     no rendered pixel reads: the grid, the wireframe, the matcap image, the
     contour paper and the section's contour line, and of the path tracer's
     own settings the output size, the safe frame, the colour (applied after
-    rendering) and the denoiser.
+    rendering), the denoiser and Neural Rendering.
     """
     render_part = repr(replace(
         render, matcap=None, matcap_path=None, contour=None, grid=None, quality=None,
@@ -426,5 +426,5 @@ def trace_settings_key(render: RenderSettings, trace: PathTraceSettings) -> str:
                         contour_width=None),
     ))
     trace_part = repr(replace(trace, output=None, safe_frame=None, color=None, denoise=None,
-                              preset=None))
+                              neural=None, preset=None))
     return render_part + trace_part

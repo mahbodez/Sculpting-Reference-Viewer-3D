@@ -4,8 +4,9 @@ The first group is all most renders need: a button, a size, a preset.  The
 rest are there for when the defaults are not what is wanted -- sampling and
 light paths for the noise and the time, the method and threads for how the
 machine is used, the lens for depth of field, the film and colour for how
-light becomes pixels, the denoiser, and the rendered viewport's own
-settings.  The groups that are seldom needed start folded.
+light becomes pixels, the denoiser, NVIDIA DLSS 5 Neural Rendering, and
+the rendered viewport's own settings.  The groups that are seldom needed
+start folded.
 
 The look of the model is not set here: a render uses the Shading panel's
 mode, surface, skin and lights as they are, so what the viewport shows is
@@ -26,6 +27,7 @@ from ...core.path_trace import (
     DenoiserBackend,
     DenoiserDevice,
     DenoiserQuality,
+    NeuralStyle,
     OutputFormat,
     PixelFilter,
     RenderMethod,
@@ -72,6 +74,7 @@ class RenderPanel(Panel):
         self._build_lens()
         self._build_film()
         self._build_denoise()
+        self._build_neural()
         self._build_preview()
         self._build_materials()
         self._add_stretch()
@@ -80,6 +83,10 @@ class RenderPanel(Panel):
         self._probe_timer.setInterval(250)
         self._probe_timer.timeout.connect(self._refresh_denoisers)
         self._denoisers_known = False
+        self._neural_probe = None
+        self._neural_timer = QTimer(self)
+        self._neural_timer.setInterval(250)
+        self._neural_timer.timeout.connect(self._refresh_neural)
 
     # -- construction ----------------------------------------------------------
 
@@ -375,6 +382,64 @@ class RenderPanel(Panel):
         self._denoise_form = form
         self._add(box)
 
+    def _build_neural(self) -> None:
+        box, form = form_group("Neural Rendering")
+        box.setToolTip(
+            "NVIDIA DLSS 5 Neural Rendering: an AI model that relights the finished\n"
+            "picture, giving skin and materials a photograph's response to light.\n"
+            "Runs on a GeForce RTX 50 series GPU, through the Neuroframe Engine by\n"
+            "Merserk (Visual Enhancer), used with permission.")
+        self._neural_final = QCheckBox("Enhance the render")
+        self._neural_final.setToolTip(
+            "Run Neural Rendering on the finished render, after denoising.  The\n"
+            "render without it is kept, as the Denoised and Beauty passes.")
+        self._neural_preview = QCheckBox("Enhance the rendered viewport")
+        self._neural_preview.setToolTip(
+            "Run Neural Rendering on the rendered viewport each time it is denoised")
+        self._neural_style = QComboBox()
+        for style in NeuralStyle:
+            self._neural_style.addItem(style.label, style.value)
+        self._neural_style.setToolTip(
+            "The look the model aims for: Natural is closest to a photograph,\n"
+            "Cinematic is graded and more dramatic")
+        self._neural_auto_mask = QCheckBox("Automatic mask")
+        self._neural_auto_mask.setToolTip(
+            "Let the model choose where to work, and leave the rest of the picture as it is")
+        self._neural_status = QLabel("")
+        self._neural_status.setWordWrap(True)
+        self._neural_status.setToolTip(
+            "Whether Neural Rendering can run here.  The engine is found in the folder\n"
+            "set in Preferences > Folders, or in the one that ships with refview.")
+        form.addRow("", self._neural_final)
+        form.addRow("", self._neural_preview)
+        form.addRow("Style", self._neural_style)
+        form.addRow("Intensity", self._slider(
+            "neural.intensity", 2, 0.05, "", "How far the picture is taken towards the model's"))
+        form.addRow("Passes", self._slider(
+            "neural.passes", 0, 1.0, "",
+            "Run the model over its own result again: each pass goes further and takes\n"
+            "as long as the first"))
+        form.addRow("Local tone", self._slider(
+            "neural.local_tone", 2, 0.05, "", "Local contrast of light and shade"))
+        form.addRow("Local structure", self._slider(
+            "neural.local_structure", 2, 0.05, "", "Fine surface detail"))
+        form.addRow("Skin structure", self._slider(
+            "neural.skin_structure", 2, 0.05, "",
+            "Detail the model adds to skin: pores and fine lines.  -1 leaves it to the model."))
+        form.addRow("Colour strength", self._slider(
+            "neural.color_strength", 2, 0.05, "",
+            "How much of the model's colour is kept; nought keeps the render's own\n"
+            "colour and takes only the light"))
+        form.addRow("Keep tone", self._slider(
+            "neural.tone_preservation", 2, 0.05, "",
+            "How much of the render's own brightness is kept"))
+        form.addRow("Protect skin", self._slider(
+            "neural.face_skin_protection", 2, 0.05, "",
+            "How far faces and skin are kept from change"))
+        form.addRow("", self._neural_auto_mask)
+        form.addRow(self._neural_status)
+        self._add(box)
+
     def _build_preview(self) -> None:
         box, form = collapsible_group("Rendered Viewport")
         box.setToolTip("The rendered viewport's own settings, kept light so it stays quick")
@@ -433,6 +498,7 @@ class RenderPanel(Panel):
             (self._denoiser, "denoise", "backend", DenoiserBackend),
             (self._device, "denoise", "device", DenoiserDevice),
             (self._quality, "denoise", "quality", DenoiserQuality),
+            (self._neural_style, "neural", "style", NeuralStyle),
         )
         for combo, owner, field, kind in combos:
             combo.currentIndexChanged.connect(
@@ -454,6 +520,9 @@ class RenderPanel(Panel):
             (self._use_albedo, "denoise", "use_albedo"),
             (self._use_normal, "denoise", "use_normal"),
             (self._prefilter, "denoise", "prefilter_guides"),
+            (self._neural_final, "neural", "final"),
+            (self._neural_preview, "neural", "preview"),
+            (self._neural_auto_mask, "neural", "auto_mask"),
         )
         for box, owner, field in checks:
             box.toggled.connect(
@@ -560,6 +629,7 @@ class RenderPanel(Panel):
                 (self._denoiser, trace.denoise.backend.value),
                 (self._device, trace.denoise.device.value),
                 (self._quality, trace.denoise.quality.value),
+                (self._neural_style, trace.neural.style.value),
             ):
                 combo.setCurrentIndex(max(combo.findData(value), 0))
             for box, value in (
@@ -578,6 +648,9 @@ class RenderPanel(Panel):
                 (self._use_albedo, trace.denoise.use_albedo),
                 (self._use_normal, trace.denoise.use_normal),
                 (self._prefilter, trace.denoise.prefilter_guides),
+                (self._neural_final, trace.neural.final),
+                (self._neural_preview, trace.neural.preview),
+                (self._neural_auto_mask, trace.neural.auto_mask),
             ):
                 box.setChecked(bool(value))
             self._clay_color.set_color(trace.clay.color)
@@ -633,6 +706,30 @@ class RenderPanel(Panel):
         super().showEvent(event)
         if not self._denoisers_known:
             self._probe_timer.start()
+        self.probe_neural()
+
+    def probe_neural(self) -> None:
+        """Look for the Neural Rendering engine again, as when its folder has changed."""
+        from ..render_controller import neural_service
+
+        self._neural_probe = neural_service().probe()
+        self._neural_timer.start()
+        self._refresh_neural()
+
+    def _refresh_neural(self) -> None:
+        future = self._neural_probe
+        if future is None or not future.done():
+            self._neural_status.setText("Looking for the Neural Rendering engine...")
+            return
+        self._neural_timer.stop()
+        self._neural_probe = None
+        try:
+            info = future.result()
+        except Exception as error:  # noqa: BLE001
+            self._neural_status.setText(f"✗ {error}")
+            return
+        mark = "✓ " if info.available else "✗ "
+        self._neural_status.setText(mark + info.summary)
 
     def _refresh_denoisers(self) -> None:
         from ..render_controller import denoise_service

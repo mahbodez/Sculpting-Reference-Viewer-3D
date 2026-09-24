@@ -49,3 +49,6 @@ CLAUDE.md
 AGENTS.md
 todo.md
 .codex
+# The Neuroframe Engine for DLSS 5 Neural Rendering, bundled into release builds
+# only: its DLLs are Merserk's and NVIDIA's, never committed here.
+/resources/dlssnr/

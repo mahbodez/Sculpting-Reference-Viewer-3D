@@ -163,6 +163,10 @@ class FolderPreferences:
 
     #: Folder to read matcaps from, or empty for the ones that ship.
     matcaps: str = ""
+    #: Where the Neuroframe Engine for DLSS 5 Neural Rendering is: a Visual
+    #: Enhancer install, or the ``dlssnr`` folder inside one.  Empty uses the
+    #: one bundled with the application, if there is one.
+    neural_engine: str = ""
 
 
 @dataclass

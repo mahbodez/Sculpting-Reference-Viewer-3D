@@ -378,8 +378,26 @@ class SettingsWindow(QWidget):
         buttons.addWidget(browse, 1)
         buttons.addWidget(clear, 1)
 
+        self._neural_engine = QLineEdit()
+        self._neural_engine.setPlaceholderText("The engine that ships with the application, if any")
+        self._neural_engine.setToolTip(
+            "Where the Neuroframe Engine for NVIDIA DLSS 5 Neural Rendering is: a Visual "
+            "Enhancer folder, or the dlssnr folder inside one.  Picked up at once; a "
+            "different folder after the engine has run takes a restart."
+        )
+        browse_engine = QPushButton("Browse...")
+        clear_engine = QPushButton("Use Bundled")
+        engine_row = QWidget()
+        engine_buttons = QHBoxLayout(engine_row)
+        engine_buttons.setContentsMargins(0, 0, 0, 0)
+        engine_buttons.setSpacing(6)
+        engine_buttons.addWidget(browse_engine, 1)
+        engine_buttons.addWidget(clear_engine, 1)
+
         form.addRow("Matcaps", self._matcaps)
         form.addRow(row)
+        form.addRow("Neural engine", self._neural_engine)
+        form.addRow(engine_row)
         self._add("folders", box)
 
         self._matcaps.editingFinished.connect(
@@ -387,6 +405,11 @@ class SettingsWindow(QWidget):
         )
         browse.clicked.connect(self._browse_matcaps)
         clear.clicked.connect(lambda: self._write("folders", "matcaps", ""))
+        self._neural_engine.editingFinished.connect(
+            lambda: self._write("folders", "neural_engine", self._neural_engine.text().strip())
+        )
+        browse_engine.clicked.connect(self._browse_neural_engine)
+        clear_engine.clicked.connect(lambda: self._write("folders", "neural_engine", ""))
 
     def _footer(self) -> QWidget:
         """The one button that is not a preference, and what the window is for."""
@@ -475,6 +498,7 @@ class SettingsWindow(QWidget):
                 self._fps_corner.setCurrentIndex(corner)
 
             self._matcaps.setText(prefs.folders.matcaps)
+            self._neural_engine.setText(prefs.folders.neural_engine)
         finally:
             self._busy = False
 
@@ -502,6 +526,13 @@ class SettingsWindow(QWidget):
         if folder:
             self._matcaps.setText(folder)
             self._write("folders", "matcaps", folder)
+
+    def _browse_neural_engine(self) -> None:
+        start = self._neural_engine.text().strip() or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, "Neural Rendering Engine Folder", start)
+        if folder:
+            self._neural_engine.setText(folder)
+            self._write("folders", "neural_engine", folder)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt contract
         QSettings().setValue(_GEOMETRY, self.saveGeometry())

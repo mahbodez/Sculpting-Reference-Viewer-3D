@@ -4,7 +4,8 @@ The path tracer itself knows nothing of Qt (:mod:`refview.trace`).  This is
 the part that does: it prepares a render on a task thread, so reading the
 scene and building its tree show on a card and never stall the window;
 starts the render on its thread pool; looks at it ten times a second to say
-how it is doing; and, when it is done, hands the film to the denoiser.
+how it is doing; and, when it is done, hands the film to the denoiser, and
+the developed picture to DLSS 5 Neural Rendering when that is asked for.
 
 Only one render runs at a time.  Asking for another stops the one running,
 as pressing F12 twice in Blender does.  The computer is kept awake while a
@@ -13,7 +14,7 @@ render runs, since a render left overnight is the usual kind.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -23,6 +24,7 @@ from ..wakelock import ThreadWakeLock
 from .state import ViewerState
 
 _SERVICE = None
+_NEURAL = None
 
 
 def denoise_service():
@@ -37,10 +39,55 @@ def denoise_service():
 
 
 def shutdown_denoise_service() -> None:
-    global _SERVICE
+    global _SERVICE, _NEURAL
     if _SERVICE is not None:
         _SERVICE.shutdown()
         _SERVICE = None
+    if _NEURAL is not None:
+        _NEURAL.shutdown()
+        _NEURAL = None
+
+
+def neural_service():
+    """The one Neural Rendering thread the whole window shares; see :mod:`refview.trace.neural`."""
+    global _NEURAL
+    if _NEURAL is None:
+        from ..trace.neural import NeuralService
+
+        _NEURAL = NeuralService()
+    return _NEURAL
+
+
+def colour_args(result, color) -> tuple:
+    """What :func:`~refview.trace.colour.develop_region` needs to develop ``result``."""
+    from ..trace.colour import TRANSFORM_CODES, exposure_scale
+
+    transform = TRANSFORM_CODES[color.view_transform.resolved(result.skin)]
+    stops = color.exposure + (result.skin_exposure if result.skin else 0.0)
+    transparent = bool(result.settings.output.transparent)
+    return (transform, exposure_scale(stops), float(color.gamma), float(color.contrast),
+            np.asarray(result.background_top, np.float64),
+            np.asarray(result.background_bottom, np.float64), transparent, not transparent)
+
+
+def develop(result, color) -> np.ndarray:
+    """``result`` as display values ``(h, w, 4)``: denoised when it has been, else as rendered."""
+    from ..trace.colour import develop_region
+
+    h, w = result.film.height, result.film.width
+    display = np.zeros((h, w, 4), np.float32)
+    if result.denoised is not None:
+        develop_region(np.ascontiguousarray(result.denoised, dtype=np.float32),
+                       np.ones((h, w), np.int32), display, 0, 0, w, h, *colour_args(result, color))
+    else:
+        develop_region(result.film.rgba, result.film.count, display, 0, 0, w, h,
+                       *colour_args(result, color))
+    return display
+
+
+def enhance_key(trace: PathTraceSettings) -> str:
+    """What an enhanced picture depends on besides the render: colour and engine controls."""
+    return repr((trace.color, replace(trace.neural, final=False, preview=False)))
 
 
 @dataclass
@@ -57,6 +104,11 @@ class RenderResult:
     stats: object = None              # refview.trace.job.RenderStats
     denoised: np.ndarray | None = None
     denoiser: str = ""
+    #: The picture after DLSS 5 Neural Rendering: display values, (h, w, 4).
+    enhanced: np.ndarray | None = None
+    #: The :func:`enhance_key` it was made with.
+    enhanced_key: str = ""
+    enhancer: str = ""
     notes: list[str] = field(default_factory=list)
     job: object = None
 
@@ -76,6 +128,8 @@ class RenderController(QObject):
     finished = Signal(object)
     #: The denoised picture arrived.
     denoised = Signal(object)
+    #: The picture came back from Neural Rendering.
+    enhanced = Signal(object)
     #: Something went wrong, in words.
     failed = Signal(str)
     #: What the path tracer can do here: ready, compiling, or why it cannot.
@@ -97,6 +151,15 @@ class RenderController(QObject):
         self._denoise_timer = QTimer(self)
         self._denoise_timer.setInterval(50)
         self._denoise_timer.timeout.connect(self._poll_denoise)
+        self._enhance_future = None
+        self._enhance_timer = QTimer(self)
+        self._enhance_timer.setInterval(50)
+        self._enhance_timer.timeout.connect(self._poll_enhance)
+        #: Waits for a slider to stop before enhancing again.
+        self._enhance_later = QTimer(self)
+        self._enhance_later.setSingleShot(True)
+        self._enhance_later.setInterval(400)
+        self._enhance_later.timeout.connect(lambda: self.enhance())
 
     # -- what can run ------------------------------------------------------------
 
@@ -218,8 +281,12 @@ class RenderController(QObject):
         else:
             self._set_status("Done")
         self.finished.emit(result)
-        if state is not JobState.FAILED and result.settings.denoise.final:
+        if state is JobState.FAILED:
+            return
+        if result.settings.denoise.final:
             self.denoise(result)
+        elif result.settings.neural.final:
+            self.enhance(result)
 
     def denoise(self, result: RenderResult | None = None) -> None:
         """Denoise a render's film now, with the settings as they are."""
@@ -252,10 +319,60 @@ class RenderController(QObject):
         coverage = result.film.beauty()[..., 3:4]
         result.denoised = np.concatenate([image, coverage], axis=-1)
         result.denoiser = info.summary
+        # What was enhanced was the picture before this denoise.
+        result.enhanced = None
         if note:
             result.notes.append(note)
         self._set_status(f"Done - denoised with {info.summary}")
         self.denoised.emit(result)
+        if self._state.path_trace.neural.final and result is self._result:
+            self.enhance(result)
+
+    def enhance(self, result: RenderResult | None = None) -> None:
+        """Run DLSS 5 Neural Rendering on a render as it is developed now."""
+        self._enhance_later.stop()
+        result = result or self._result
+        if result is None or result.film.count.max() == 0:
+            return
+        if self._enhance_future is not None:
+            # One at a time; ask again once this one is back.
+            self._enhance_later.start()
+            return
+        trace = self._state.path_trace
+        display = develop(result, trace.color)
+        settings = replace(trace.neural)
+        self._set_status("Enhancing with DLSS 5 Neural Rendering...")
+        self._enhance_future = (result, enhance_key(trace),
+                                neural_service().submit(display, settings))
+        self._enhance_timer.start()
+
+    def enhance_soon(self) -> None:
+        """Enhance again once the colour or Neural Rendering sliders stop moving."""
+        self._enhance_later.start()
+
+    def _poll_enhance(self) -> None:
+        if self._enhance_future is None:
+            self._enhance_timer.stop()
+            return
+        result, key, future = self._enhance_future
+        if not future.done():
+            return
+        self._enhance_timer.stop()
+        self._enhance_future = None
+        try:
+            image, info = future.result()
+        except Exception as error:  # noqa: BLE001
+            self._set_status("Done")
+            self.failed.emit(f"Neural Rendering failed: {error}")
+            return
+        result.enhanced = image
+        result.enhanced_key = key
+        result.enhancer = info.summary
+        self._set_status(f"Done - {info.summary}")
+        self.enhanced.emit(result)
+        if key != enhance_key(self._state.path_trace) and result is self._result:
+            # The colour moved while it was being made.
+            self.enhance_soon()
 
     def cancel(self) -> None:
         if self._preparing is not None:

@@ -13,17 +13,22 @@ tracer's pool, and the interface only ever develops what is already in the
 film, so the window stays as responsive with it on as off.  With a
 denoiser at hand the picture is denoised as it refines, a few times a
 second -- which is what makes a handful of samples look like a finished
-render.
+render.  With DLSS 5 Neural Rendering on for the viewport, each new
+denoised picture (or, undenoised, the finished one) is enhanced too, one at
+a time, and shown once it is back.
 """
 
 from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QImage
+
+from ..trace.neural import MIN_SIDE, engine_dir
 
 #: How long the view must be still before the preview renders at its full resolution.
 SETTLE_SECONDS = 0.15
@@ -61,9 +66,19 @@ class ViewportRenderPreview(QObject):
         self._denoise = None
         self._denoised: QImage | None = None
         self._denoised_bytes: np.ndarray | None = None
+        self._denoised_display: np.ndarray | None = None
         self._denoised_samples = 0.0
         self._shown_job = None
         self._last_denoise = 0.0
+        #: The newest picture worth enhancing: (job, serial, display values).
+        self._best = None
+        self._best_serial = 0
+        self._enhance = None
+        self._enhanced: QImage | None = None
+        self._enhanced_bytes: np.ndarray | None = None
+        self._enhanced_key = None
+        #: The settings Neural Rendering last failed with, and why.
+        self._neural_error: tuple[str, str] | None = None
         self._last_interaction = 0.0
         self._timer = QTimer(self)
         self._timer.setInterval(40)
@@ -90,6 +105,7 @@ class ViewportRenderPreview(QObject):
             self._cancel_job()
             self._image = None
             self._denoised = None
+            self._forget_enhanced()
             self._timer.stop()
         self.updated.emit()
 
@@ -144,7 +160,7 @@ class ViewportRenderPreview(QObject):
         w = max(int(width * share), 8)
         h = max(int(height * share), 8)
         if self.suspended:
-            return self._denoised if self._denoised is not None else self._image
+            return self._picture()
         key = self._picture_key(w, h, width, height)
         if key != self._key:
             self._key = key
@@ -152,6 +168,12 @@ class ViewportRenderPreview(QObject):
         if moving and not interacting:
             # Come back once the view has settled, to render it sharp.
             QTimer.singleShot(int(SETTLE_SECONDS * 1000) + 10, self._viewport.update)
+        return self._picture()
+
+    def _picture(self) -> QImage | None:
+        """The best picture there is: enhanced, denoised, or as it is."""
+        if self._enhanced is not None and self._state.path_trace.neural.preview:
+            return self._enhanced
         return self._denoised if self._denoised is not None else self._image
 
     def caption(self) -> str:
@@ -172,6 +194,11 @@ class ViewportRenderPreview(QObject):
                 f"{stats.elapsed:.1f} s")
         if self._denoised is not None:
             text += "  ·  denoised"
+        if self._state.path_trace.neural.preview:
+            if self._enhanced is not None:
+                text += "  ·  DLSS 5 Neural Rendering"
+            elif self._neural_error is not None:
+                text += f"  ·  Neural Rendering: {self._neural_error[1]}"
         return text
 
     def _picture_key(self, w: int, h: int, width: int, height: int) -> tuple:
@@ -263,6 +290,7 @@ class ViewportRenderPreview(QObject):
             self._shown_job = job
             self._denoised = None
             self._denoised_samples = 0.0
+            self._forget_enhanced()
         dirty = job.take_dirty()
         if dirty or self._image is None or self._bytes is None \
                 or self._bytes.shape[:2] != (job.height, job.width):
@@ -272,7 +300,13 @@ class ViewportRenderPreview(QObject):
         elif job.state.finished:
             # The last samples may have landed between two denoises.
             self._maybe_denoise(job, force=True)
+            if self._best is None and self._denoise is None:
+                # Nothing newer is coming: enhance the finished picture as it is shown.
+                self._offer(job, self._denoised_display if self._denoised is not None
+                            else self._display.copy())
         self._collect_denoise(job)
+        self._collect_enhance(job)
+        self._maybe_enhance(job)
 
     def _colour_args(self, job):
         from ..trace.colour import TRANSFORM_CODES, exposure_scale
@@ -350,7 +384,66 @@ class ViewportRenderPreview(QObject):
         self._denoised = QImage(self._denoised_bytes.data, w, h, w * 4,
                                 QImage.Format.Format_RGBA8888)
         self._denoised_samples = samples
+        self._denoised_display = display
+        self._offer(job, display)
         self.updated.emit()
         if job.state.finished:
             return
         self._maybe_denoise(job)
+
+    # -- DLSS 5 Neural Rendering ---------------------------------------------------
+
+    def _forget_enhanced(self) -> None:
+        self._best = None
+        self._enhanced = None
+        self._enhanced_key = None
+
+    def _offer(self, job, display: np.ndarray) -> None:
+        """Make ``display`` the next picture to enhance, when enhancing is on."""
+        if not self._state.path_trace.neural.preview:
+            return
+        self._best_serial += 1
+        self._best = (job, self._best_serial, display)
+
+    def _maybe_enhance(self, job) -> None:
+        from .render_controller import enhance_key, neural_service
+
+        trace = self._state.path_trace
+        if not trace.neural.preview or self._best is None or self._enhance is not None:
+            return
+        owner, serial, display = self._best
+        settings = enhance_key(trace)
+        key = (serial, settings)
+        if owner is not job or key == self._enhanced_key:
+            return
+        if self._neural_error is not None \
+                and self._neural_error[0] == (settings, str(engine_dir())):
+            return      # Failed like this already; wait for the settings or the engine to change.
+        if min(display.shape[:2]) < MIN_SIDE:
+            return      # Too small, as it is while the view turns.
+        self._enhance = (job, key, neural_service().submit(display, replace(trace.neural)))
+
+    def _collect_enhance(self, job) -> None:
+        if self._enhance is None:
+            return
+        owner, key, future = self._enhance
+        if not future.done():
+            return
+        self._enhance = None
+        if owner is not job:
+            return
+        try:
+            image, _info = future.result()
+        except Exception as error:  # noqa: BLE001 -- shown in the caption
+            self._neural_error = ((key[1], str(engine_dir())), str(error))
+            self.updated.emit()
+            return
+        from ..trace.colour import to_rgba8
+
+        self._neural_error = None
+        h, w = image.shape[:2]
+        self._enhanced_bytes = np.ascontiguousarray(to_rgba8(image))
+        self._enhanced = QImage(self._enhanced_bytes.data, w, h, w * 4,
+                                QImage.Format.Format_RGBA8888)
+        self._enhanced_key = key
+        self.updated.emit()

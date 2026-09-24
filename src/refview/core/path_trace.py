@@ -178,6 +178,23 @@ class DenoiserQuality(str, Enum):
         return self.value.capitalize()
 
 
+class NeuralStyle(str, Enum):
+    """The look DLSS 5 Neural Rendering aims for."""
+
+    DEFAULT = "default"
+    NATURAL = "natural"
+    CINEMATIC = "cinematic"
+
+    @property
+    def label(self) -> str:
+        return self.value.capitalize()
+
+    @property
+    def code(self) -> int:
+        """The number the engine knows the style by."""
+        return {NeuralStyle.DEFAULT: 0, NeuralStyle.NATURAL: 1, NeuralStyle.CINEMATIC: 2}[self]
+
+
 @dataclass
 class OutputSettings:
     """How large the picture is and how it is saved."""
@@ -282,6 +299,39 @@ class DenoiseSettings:
 
 
 @dataclass
+class NeuralSettings:
+    """NVIDIA DLSS 5 Neural Rendering, run on the developed picture after denoising.
+
+    The numbers are the engine's own, with its defaults; see
+    :mod:`refview.trace.neural`.
+    """
+
+    #: Enhance the finished render.
+    final: bool = False
+    #: Enhance the rendered viewport as it refines.
+    preview: bool = False
+    style: NeuralStyle = NeuralStyle.DEFAULT
+    #: How far the picture is taken towards the model's version of it.
+    intensity: float = 1.0
+    #: Times the model is run over its own result; each goes further.
+    passes: int = 1
+    #: Local contrast of light and shade.
+    local_tone: float = 1.0
+    #: Fine surface detail.
+    local_structure: float = 1.0
+    #: Detail the model adds to skin; -1 leaves it to the model.
+    skin_structure: float = -1.0
+    #: How much of the model's colour is kept, over the picture's own.
+    color_strength: float = 1.0
+    #: How much of the picture's own brightness is kept.
+    tone_preservation: float = 0.0
+    #: How far faces and skin are kept from change.
+    face_skin_protection: float = 0.0
+    #: Let the model decide where to work, and leave the rest.
+    auto_mask: bool = False
+
+
+@dataclass
 class LensSettings:
     depth_of_field: bool = False
     #: Keep the orbit target in focus, wherever the camera goes.
@@ -336,6 +386,7 @@ class PathTraceSettings:
     film: FilmSettings = field(default_factory=FilmSettings)
     color: ColorSettings = field(default_factory=ColorSettings)
     denoise: DenoiseSettings = field(default_factory=DenoiseSettings)
+    neural: NeuralSettings = field(default_factory=NeuralSettings)
     lens: LensSettings = field(default_factory=LensSettings)
     performance: PerformanceSettings = field(default_factory=PerformanceSettings)
     preview: PreviewSettings = field(default_factory=PreviewSettings)
@@ -425,6 +476,14 @@ PATH_TRACE_RANGES: dict[str, tuple[float, float]] = {
     "color.contrast": (-1.0, 1.0),
     "denoise.mix": (0.0, 1.0),
     "denoise.atrous_passes": (1, 8),
+    "neural.intensity": (0.0, 2.0),
+    "neural.passes": (1, 4),
+    "neural.local_tone": (0.0, 2.0),
+    "neural.local_structure": (0.0, 2.0),
+    "neural.skin_structure": (-1.0, 2.0),
+    "neural.color_strength": (0.0, 1.0),
+    "neural.tone_preservation": (0.0, 1.0),
+    "neural.face_skin_protection": (0.0, 1.0),
     "lens.focus_distance": (0.01, 100.0),
     "lens.aperture": (0.0, 1.0),
     "lens.blades": (0, 12),

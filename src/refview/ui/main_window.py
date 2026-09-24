@@ -385,6 +385,7 @@ class MainWindow(QMainWindow):
         #: The matcap folder as last applied, so that changing some other
         #: preference does not send the gallery back to the disk.
         self._matcap_folder = self._preferences.value.folders.matcaps
+        self._neural_folder = self._preferences.value.folders.neural_engine
         #: Held while this window is the one in front: an artist reads a pose
         #: for minutes at a time without touching the machine.
         self._wake_lock = WakeLock()
@@ -1287,6 +1288,10 @@ class MainWindow(QMainWindow):
         if folder != self._matcap_folder:
             self._matcap_folder = folder
             self._matcap_panel.reload_gallery()
+        folder = prefs.folders.neural_engine
+        if folder != self._neural_folder:
+            self._neural_folder = folder
+            self._render_panel.probe_neural()
 
     def reopen_last_session(self, background: bool = False) -> bool:
         """Pick up whatever was last being worked on, if that was asked for.

@@ -207,6 +207,51 @@ Every backend failure becomes an "unavailable" reason in the panel's
 denoiser list rather than an error. The rendered viewport denoises a few
 times a second on a GPU and about once a second on the processor.
 
+## DLSS 5 Neural Rendering
+
+After denoising, a render can go through NVIDIA DLSS 5 Neural Rendering
+(`trace/neural.py`), an AI model that relights the finished picture. NVIDIA
+has no public SDK for it on still images; it runs through the **Neuroframe
+Engine** from Merserk's Visual Enhancer, used with its author's written
+permission. The engine is three DLLs that are never committed here:
+
+| File | Whose |
+| --- | --- |
+| `neuroframe_engine_neural_rendering.dll` | Merserk: the engine (MIT) |
+| `neuroframe_caller.dll` | Merserk: its loader shim (MIT) |
+| `nvngx_dlssnr.dll` | NVIDIA: the Neural Rendering runtime (DLSS license) |
+
+`engine_dir()` looks for them in the Preferences' **Neural engine** folder
+(a Visual Enhancer folder, its `bin`, `bin/runtime`, or the `dlssnr` folder
+itself), then in `resources/dlssnr`, which `.gitignore` keeps out of the
+repository and the release spec bundles with the rest of `resources/`.
+
+- **What goes in.** Display values, not light: the picture developed through
+  the view transform, exposure, gamma and contrast, `(h, w, 3)` float32 in
+  [0, 1], which is what the engine takes from an 8-bit image. The alpha is
+  kept aside and put back. The engine accepts 64 × 64 up to 7680 × 4320.
+- **The call.** `dlss5nr_init(cuda_ordinal, runtime_dir)` once per process,
+  then `dlss5nr_process_v6(src, dst, w, h, params)`, host memory in and out.
+  `RenderParameters` is the engine's ABI-6 struct (96 bytes; the test pins
+  its offsets). A still sets `reset` every time and leaves the mask and the
+  temporal controls off. `dlss5nr_release_session` frees the features before
+  a picture of another size.
+- **Never shut down.** The engine keeps NGX loaded for the life of the
+  process: its author found that shutting NGX down or unloading it can wedge
+  the driver. Every call runs under a watchdog (45 s a pass); a call that
+  hangs, raises, or reports device loss or corruption marks the engine
+  unusable until restart instead of calling into broken state again.
+- **Threads.** One service thread (`NeuralService`), as with the denoisers:
+  NGX is always called from where it started, one picture at a time.
+- **Where it runs.** The Render window's **Neural** pass
+  (`RenderController.enhance`), made after each denoise when **Enhance the
+  render** is on and again 400 ms after a colour or Neural Rendering slider
+  stops. The rendered viewport enhances each new denoised picture, one at a
+  time, skipping pictures under 64 pixels (as they are while the view turns).
+- **Testing.** `tests/test_trace_neural.py` drives the bridge with a Python
+  stand-in for the DLL. Set `REFVIEW_NEURAL_ENGINE` to a Visual Enhancer
+  folder to run its last test against the real engine.
+
 ## Limits
 
 - One CPU engine. The kernels take scalars and named tuples of arrays and

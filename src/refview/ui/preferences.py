@@ -122,6 +122,9 @@ class PreferenceStore(QObject):
         set_font_size(interface.font_size)
         frame.set_fold_disabled(interface.fold_disabled)
         paths.set_matcap_dir(self._value.folders.matcaps or None)
+        from ..trace.neural import set_engine_dir
+
+        set_engine_dir(self._value.folders.neural_engine or None)
 
         app = QApplication.instance()
         if isinstance(app, QApplication):

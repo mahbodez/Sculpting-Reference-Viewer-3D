@@ -128,3 +128,26 @@ def test_a_malformed_path_trace_block_falls_back_field_by_field(tmp_path):
     assert trace.sampling.samples == PathTraceSettings().sampling.samples
     assert trace.sampling.seed == 7
     assert trace.performance.method is RenderMethod.PROGRESSIVE
+
+
+def test_neural_rendering_settings_are_kept_in_range_and_in_a_session(tmp_path):
+    from refview.core.path_trace import NeuralStyle
+
+    settings = PathTraceSettings()
+    assert not settings.neural.final and not settings.neural.preview
+    settings.neural.passes = 9
+    settings.neural.skin_structure = -5.0
+    settings.neural.intensity = math.inf
+    bounded = settings.bounded()
+    assert bounded.neural.passes == 4
+    assert bounded.neural.skin_structure == -1.0
+    assert bounded.neural.intensity == 1.0
+
+    session = Session()
+    session.path_trace.neural.final = True
+    session.path_trace.neural.style = NeuralStyle.CINEMATIC
+    session.path_trace.neural.color_strength = 0.4
+    path = session.save(tmp_path / "s.refview.json")
+    loaded = Session.load(path).path_trace.neural
+    assert loaded.final and loaded.style is NeuralStyle.CINEMATIC
+    assert loaded.color_strength == 0.4

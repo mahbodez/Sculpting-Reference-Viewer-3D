@@ -860,6 +860,14 @@ so a render matches the refined view.
   built-in filter when neither can run. **Auto** picks the best available
   and the panel says which. A few dozen samples, denoised, make a clean
   picture.
+- **Neural Rendering** runs NVIDIA DLSS 5's AI model over the denoised
+  picture, relighting skin and materials towards a photograph. **Enhance the
+  render** shows the result as the Render window's **Neural** pass;
+  **Enhance the rendered viewport** does the same to the view as it refines.
+  It needs a GeForce RTX 50 series GPU and the **Neuroframe Engine** from
+  Merserk's [Visual Enhancer](https://github.com/Merserk/dlss5-visual-enhancer),
+  used with its author's permission: set **Preferences → Folders → Neural
+  engine** to a Visual Enhancer folder.
 - **Method**: *progressive* refines the whole picture a pass at a time and can
   be stopped whenever it looks done; *bucket* finishes it a tile at a time,
   in a spiral, Hilbert, row or random order. Both give the same image.
@@ -1051,6 +1059,38 @@ publishes the three archives to a GitHub release automatically.
   Without numba the viewer runs as before and the Render panel says why it
   cannot render. The OptiX denoiser needs nothing installed: it is loaded
   from an NVIDIA graphics driver when there is one.
+- DLSS 5 Neural Rendering needs a GeForce RTX 50 series GPU, a current
+  driver, and the Neuroframe Engine (`neuroframe_engine_neural_rendering.dll`,
+  `neuroframe_caller.dll`, `nvngx_dlssnr.dll`) from a Visual Enhancer
+  release. The engine DLLs are © Merserk, shipped under the MIT license in
+  that release's `LICENSE-Merserk.txt`, and used here with their author's
+  permission; `nvngx_dlssnr.dll` is NVIDIA's, under `LICENSE-NVIDIA-DLSS.txt`.
+  None of them is committed to this repository. Keep both license files
+  beside the DLLs when bundling them.
+
+#### Getting the Neural Rendering engine
+
+The engine is never committed, so the desktop releases built by GitHub
+Actions do not carry it; a build made on a machine with it in
+`resources/dlssnr/` does. The Render panel's Neural Rendering group says
+whether it was found. To get it:
+
+1. Download the latest `Visual.Enhancer.v*.zip` from the
+   [Visual Enhancer releases](https://github.com/Merserk/dlss5-visual-enhancer/releases/latest)
+   (about 700 MB; only a few files are needed).
+2. In the zip, open `bin/runtime/dlssnr/`. It holds the three DLLs and the
+   two license files.
+3. Either copy those five files into `resources/dlssnr/` in this repository
+   (which a release build then bundles), or unzip Visual Enhancer anywhere
+   and set **Preferences → Folders → Neural engine** to its folder. The
+   Visual Enhancer folder, its `bin` or `bin/runtime`, or the `dlssnr`
+   folder itself all work.
+4. Open the Render panel: the Neural Rendering group should show
+   *✓ DLSS 5 Neural Rendering (Neuroframe Engine …)*. Tick **Enhance the
+   render** and press `F12`.
+
+To check the engine on your GPU, run
+`REFVIEW_NEURAL_ENGINE=resources/dlssnr pytest tests/test_trace_neural.py -k real`.
 
 ---
 
@@ -1061,6 +1101,8 @@ resources/
   matcaps/   any PNG/JPG dropped here appears in the Matcap gallery
   hdris/     any .hdr/.exr here is offered in the Light group's HDRI list
   models/    the default folder the file dialog opens in
+  dlssnr/    optional, never committed: the Neuroframe Engine's three DLLs,
+             bundled into a release build for DLSS 5 Neural Rendering
 ```
 
 Regenerate the bundled matcap set (analytic sphere renders, no downloads):
@@ -1098,7 +1140,8 @@ src/refview/
              the lights, the skin and the integrator, the film and its
              colour, the render jobs that run them across the cores, and
              the denoisers (Open Image Denoise, OptiX through ctypes, and a
-             built-in filter)
+             built-in filter), and DLSS 5 Neural Rendering through the
+             Neuroframe Engine
   ui/        Qt: viewport widget, navigation, the measuring, annotating,
              armature, forms, pose and transform tools, the 2D overlay, the
              observable document, panels, the docks they live in, the tasks
